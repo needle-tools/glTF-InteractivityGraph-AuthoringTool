@@ -192,8 +192,8 @@ export class BabylonDecorator extends ADecorator {
                 return [NaN, NaN, NaN, NaN]
             }
 
-            console.log(`Camera rotation: ${activeCamera.absoluteRotation.x}, ${activeCamera.absoluteRotation.y}, ${activeCamera.absoluteRotation.z}, ${activeCamera.absoluteRotation.w}`)
-            return [activeCamera.absoluteRotation.x, -1 *activeCamera.absoluteRotation.y, activeCamera.absoluteRotation.z, activeCamera.absoluteRotation.w]
+            // console.log(`Camera rotation: ${activeCamera.absoluteRotation.x}, ${activeCamera.absoluteRotation.y}, ${activeCamera.absoluteRotation.z}, ${activeCamera.absoluteRotation.w}`)
+            return [-activeCamera.absoluteRotation.x, activeCamera.absoluteRotation.y, activeCamera.absoluteRotation.z, -activeCamera.absoluteRotation.w]
         }, (path, value) => {
             //no-op
         }, "float4", true)
@@ -204,7 +204,7 @@ export class BabylonDecorator extends ADecorator {
                 return [NaN, NaN, NaN]
             }
 
-            console.log(`Camera position: ${activeCamera.position.x}, ${activeCamera.position.y}, ${activeCamera.position.z}`)
+            // console.log(`Camera position: ${activeCamera.position.x}, ${activeCamera.position.y}, ${activeCamera.position.z}`)
             return [-1 * activeCamera.position.x, activeCamera.position.y, activeCamera.position.z]
         }, (path, value) => {
             //no-op
@@ -643,21 +643,14 @@ export class BabylonDecorator extends ADecorator {
             const node = this.world.glTFNodes[Number(parts[2])];
 
 
-            console.log(node.scaling, node.rotationQuaternion, node.position)
-            
-            
-            console.log(node.scaling, node.rotationQuaternion, node.position)
+            // console.log(node.scaling, node.rotationQuaternion, node.position)
+            // console.log(node.scaling, node.rotationQuaternion, node.position)
             
             const scaleMatrix = Matrix.Scaling(node.scaling.x, node.scaling.y, node.scaling.z);
             const rotationMatrix = Matrix.FromQuaternionToRef(node.rotationQuaternion, Matrix.Identity());
 
-
-            console.log(scaleMatrix, rotationMatrix)
-       
-            
-            
-            console.log(scaleMatrix, rotationMatrix)
-       
+            // console.log(scaleMatrix, rotationMatrix)
+            // console.log(scaleMatrix, rotationMatrix)       
             
             const matrix: Matrix = scaleMatrix.multiply(rotationMatrix);
             matrix.setTranslation(new Vector3(node.position.x, node.position.y, node.position.z));
@@ -689,6 +682,35 @@ export class BabylonDecorator extends ADecorator {
         }, (path, value) => {
             //no-op
         }, "float4x4", true);
+
+        // Single morph target weight
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/weights/${maxGltfNode}`, (path) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            if (!(node instanceof AbstractMesh) || !node.morphTargetManager) {
+                console.warn(`Node at path ${path} is not an AbstractMesh, cannot get morph target weight.`);
+                return [NaN];
+            }
+            const morphTargetIndex = Number(parts[4]);
+            if (morphTargetIndex < 0 || morphTargetIndex >= node.morphTargetManager.numTargets) {
+                console.warn(`Morph target index ${morphTargetIndex} out of bounds for node at path ${path}.`);
+                return [NaN];
+            }
+            return [node.morphTargetManager.getTarget(morphTargetIndex).influence];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            if (!(node instanceof AbstractMesh) || !node.morphTargetManager) {
+                console.warn(`Node at path ${path} is not an AbstractMesh, cannot set morph target weight.`);
+                return;
+            }
+            const morphTargetIndex = Number(parts[4]);
+            if (morphTargetIndex < 0 || morphTargetIndex >= node.morphTargetManager.numTargets) {
+                console.warn(`Morph target index ${morphTargetIndex} out of bounds for node at path ${path}.`);
+                return;
+            }
+            node.morphTargetManager.getTarget(morphTargetIndex).influence = value;
+        }, "float", false);
 
         this.registerJsonPointer(`/nodes/${maxGltfNode}/mesh`, (path) => {
             const parts: string[] = path.split("/");

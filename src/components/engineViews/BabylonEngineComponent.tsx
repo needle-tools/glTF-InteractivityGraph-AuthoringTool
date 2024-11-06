@@ -35,10 +35,15 @@ GLTFLoader.RegisterExtension(KHR_INTERACTIVITY_EXTENSION_NAME, (loader) => {
 
 
 
-export const BabylonEngineComponent = () => {
+interface BabylonEngineComponentProps {
+    modelUrl?: string | null;
+}
+
+export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ modelUrl }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const engineRef = useRef<Engine | null>(null);
     const sceneRef = useRef<Scene>();
+    const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const [activeKey, setActiveKey] = useState("1");
     const [graphRunning, setGraphRunning] = useState(false);
     const [openModal, setOpenModal] = useState<BabylonEngineModal>(BabylonEngineModal.NONE);
@@ -55,18 +60,45 @@ export const BabylonEngineComponent = () => {
 
         createScene();
 
+        // Attempt to load model from URL if provided
+        if (modelUrl) {
+            loadModelFromUrl(modelUrl);
+        }
+
         // Run the render loop
         engineRef.current?.runRenderLoop(() => {
             sceneRef.current?.render();
         });
 
+        // Handle canvas resize with debouncing to prevent excessive updates
+        const resizeHandler = () => {
+            if (canvasRef.current && engineRef.current) {
+                // Resize the engine which will update canvas dimensions
+                engineRef.current.resize();
+            }
+        };
+        
+        // Set up ResizeObserver to watch for canvas size changes
+        const observer = new ResizeObserver(() => {
+            resizeHandler();
+        });
+        
+        if (canvasRef.current) {
+            observer.observe(canvasRef.current);
+            resizeObserverRef.current = observer;
+        }
+
         return () => {
-            // Clean up resources when the component unmounts
+            if (resizeObserverRef.current && canvasRef.current) {
+                resizeObserverRef.current.unobserve(canvasRef.current);
+                resizeObserverRef.current.disconnect();
+            }
+            
             sceneRef.current?.dispose();
             engineRef.current?.dispose();
             babylonEngineRef.current?.clearCustomEventListeners();
         };
-    }, []);
+    }, [modelUrl]);  // Add modelUrl as a dependency
 
     useEffect(() => {
         if (fileUploaded !== null) {
@@ -103,9 +135,19 @@ export const BabylonEngineComponent = () => {
         sceneRef.current?.dispose();
         createScene();
 
-        const file = fileInputRef.current!.files![0]
-
-        const url = URL.createObjectURL(file);
+        let url: string;
+        
+        if (modelUrl) {
+            // Use the URL provided via props
+            url = modelUrl;
+        } else if (fileInputRef.current?.files?.[0]) {
+            // Use the file from file input
+            const file = fileInputRef.current.files[0];
+            url = URL.createObjectURL(file);
+        } else {
+            console.warn("No model URL or file provided for Babylon engine");
+            return { nodes: [], animations: [], materials: [], meshes: [] };
+        }
 
         SceneLoader.OnPluginActivatedObservable.add( (loader) => {
             if (loader.name === "gltf") {
@@ -124,6 +166,13 @@ export const BabylonEngineComponent = () => {
             if (aPointer > bPointer) return 1;
             return 0;
         });
+
+        // Rotate the camera by 180° and move it to the other side
+        const camera = sceneRef.current?.activeCamera as ArcRotateCamera;
+        camera.useFramingBehavior = true;
+        camera.alpha += Math.PI;
+        camera.setPosition(new Vector3(camera.position.x, camera.position.y, camera.position.z * -1));
+        camera.beta = Math.PI / 2;
 
         //TODO: the true meshes of glTF are not the ones babylon exposes as objects (these are instantiated node meshes) we should find a way to pass the mesh itself and not the instantiation via a node
         // or else we have cases where two nodes refere to the single mesh => we will have 2 meshes where really we only truly have one in glTF
@@ -183,7 +232,12 @@ export const BabylonEngineComponent = () => {
     }
 
     const exportKHRInteractivityGLB = async () => {
-        const file = fileInputRef.current!.files![0];
+        if (!fileInputRef.current?.files?.[0]) {
+            console.warn("No file selected for export");
+            return;
+        }
+        
+        const file = fileInputRef.current.files[0];
         const reader = new FileReader();
 
         reader.onload = function (e) {
@@ -287,9 +341,66 @@ export const BabylonEngineComponent = () => {
         camera.radius = distance;
     }
 
+    const loadModelFromUrl = async (url: string) => {
+        try {
+            // Create a scene if it doesn't exist
+            if (!sceneRef.current) {
+                createScene();
+            }
+            
+            SceneLoader.OnPluginActivatedObservable.add((loader) => {
+                if (loader.name === "gltf") {
+                    (loader as GLTFFileLoader).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
+                }
+            });
+            
+            const container = await SceneLoader.LoadAssetContainerAsync("", url, sceneRef.current, undefined, ".glb");
+            container.addAllToScene();
+            
+            sceneRef.current?.createDefaultCamera(true, true, true);
+            
+            const worldInfo = {
+                glTFNodes: buildGlTFNodeLayout(container.rootNodes[0]), 
+                animations: container.animationGroups, 
+                materials: container.materials,
+                meshes: container.meshes,
+            };
+            
+            // Update the file uploaded state to enable play button
+            setFileUploaded(url.split('/').pop() || "model.glb");
+            
+            // Setup the engine with the loaded model
+            const eventBus = new DOMEventBus();
+            babylonEngineRef.current = new BabylonDecorator(new BasicBehaveEngine(60, eventBus), worldInfo, sceneRef.current!);
+            
+            const extractedBehaveGraph = babylonEngineRef.current.extractBehaveGraphFromScene();
+            if (extractedBehaveGraph) {
+                loadGraphFromJson(extractedBehaveGraph);
+                babylonEngineRef.current.loadBehaveGraph(getExecutableGraph());
+            } else {
+                babylonEngineRef.current.loadBehaveGraph(getExecutableGraph());
+            }
+        } catch (error) {
+            console.error("Error loading model from URL:", error);
+        }
+    };
+
     return (
         <div style={{width: "90vw", margin: "0 auto"}}>
             <div style={{background: "#3d5987", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16}}>
+                <input className="d-none" type="file" accept=".glb" ref={fileInputRef} data-testid={"babylon-engine-file-input"} onChange={() => {
+                    if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
+                        setFileUploaded(null);
+                        return;
+                    }
+                    setFileUploaded(fileInputRef.current.files[0].name)
+                }}/>
+                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
+                    Upload glb
+                </Button>
+
+                <Spacer width={16} height={0}/>
+
                 <Button variant="outline-light" onClick={() => {
                     play(false)
                 }} disabled={fileUploaded == null}>
@@ -300,20 +411,6 @@ export const BabylonEngineComponent = () => {
 
                 <Button variant="outline-light" onClick={() => setOpenModal(BabylonEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
                     Send Custom Event
-                </Button>
-
-                <Spacer width={16} height={0}/>
-
-                <label className="mx-3" style={{color: "white"}}>Choose file: </label>
-                <input className="d-none" type="file" accept=".glb" ref={fileInputRef} data-testid={"babylon-engine-file-input"} onChange={() => {
-                    if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
-                        setFileUploaded(null);
-                        return;
-                    }
-                    setFileUploaded(fileInputRef.current.files[0].name)
-                }}/>
-                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
-                    Upload glb
                 </Button>
 
                 <Spacer width={16} height={0}/>
