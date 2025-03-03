@@ -1,7 +1,7 @@
 import {BehaveEngineNode, IBehaviourNodeProps} from "../../BehaveEngineNode";
 
 export class MultiGate extends BehaveEngineNode {
-    REQUIRED_CONFIGURATIONS = {isRandom: {}, loop: {}}
+    REQUIRED_CONFIGURATIONS = {isRandom: {}, isLoop: {}}
     _numberOutputFlows: number;
     _currentIndex: number;
     _isRandom: boolean;
@@ -15,10 +15,10 @@ export class MultiGate extends BehaveEngineNode {
         this.validateValues(this.values);
         this.validateConfigurations(this.configuration);
 
-        const { isRandom, loop} = this.evaluateAllConfigurations(Object.keys(this.REQUIRED_CONFIGURATIONS));
+        const { isRandom, isLoop} = this.evaluateAllConfigurations(Object.keys(this.REQUIRED_CONFIGURATIONS));
         this._numberOutputFlows = Object.keys(this.flows).length;
         this._isRandom = JSON.parse(isRandom);
-        this._loop = JSON.parse(loop);
+        this._loop = JSON.parse(isLoop);
         this._orderedOutFlows =  Object.keys(this.flows).sort();
         this._unSeenOutIndexes = Array(this._numberOutputFlows).fill(0).map((_, index) => index);
         this._currentIndex = 0;

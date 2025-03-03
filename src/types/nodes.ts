@@ -3395,7 +3395,14 @@ const flowNodeSpecs: IInteractivityNode[] = [
         op: "flow/multiGate",
         declaration: knownDeclarations.findIndex(declaration => declaration.op === "flow/multiGate"),
         description: "Multiplex the control flow based on a selection",
-        flows: {
+        configuration: {
+            isRandom: {
+                value: [false]
+            },
+            isLoop: {
+                value: [false]
+            },
+        },  flows: {
             input: {
                 in: {
                     node: undefined,
