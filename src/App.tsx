@@ -57,10 +57,57 @@ export const App = () => {
     }
   }, []);
 
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      // Get the model URL from the URL parameters
+      const params = new URLSearchParams(window.location.search);
+      const modelParam = params.get('model');
+      const engineParam = params.get('engine');
+      
+      // Update the model URL state if it exists in the URL
+      if (modelParam) {
+        setModelUrl(modelParam);
+      }
+      
+      // Update engine type if needed
+      if (engineParam) {
+        switch (engineParam.toLowerCase()) {
+          case 'logging':
+            setEngineType(EngineType.LOGGING);
+            break;
+          case 'three':
+            setEngineType(EngineType.THREE);
+            break;
+          case 'babylon':
+            setEngineType(EngineType.BABYLON);
+            break;
+        }
+      }
+    };
+
+    // Add event listener for popstate
+    window.addEventListener('popstate', handlePopState);
+
+    // Clean up the event listener when component unmounts
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   // Save engine type when it changes
   const handleEngineTypeChange = (type: EngineType) => {
     setEngineType(type);
     localStorage.setItem(ENGINE_TYPE_STORAGE_KEY, type);
+    
+    // Update URL with engine type
+    const params = new URLSearchParams(window.location.search);
+    params.set('engine', type.toLowerCase());
+    // Keep model parameter if it exists
+    if (modelUrl) {
+      params.set('model', modelUrl);
+    }
+    window.history.pushState({ engineType: type, modelUrl }, '', `${window.location.pathname}?${params}`);
   };
 
   const handleModelUrlChange = (url: string) => {
@@ -71,7 +118,19 @@ export const App = () => {
     if (modelUrl) {
       const params = new URLSearchParams(window.location.search);
       params.set('model', modelUrl);
-      window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+      // set title based on model name
+      const modelName = modelUrl.split('/').pop()?.split('.').shift();
+      if (modelName) {
+        document.title = `${modelName}`;
+      } else {
+        document.title = 'glTF Interactivity';
+      }
+      // only push state if modelUrl is different from current URL parameter
+      const currentModelParam = new URLSearchParams(window.location.search).get('model');
+      if (currentModelParam !== modelUrl) {
+        // Update the URL without reloading the page
+        window.history.pushState({ modelUrl }, '', `${window.location.pathname}?${params}`);
+      }
     }
   }, [modelUrl]);
 
@@ -163,7 +222,7 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                 >
                     <Tab title={"Babylon Engine"} eventKey={2}/>
                     <Tab title={"Three.js (experimental)"} eventKey={3}/>
-                    <Tab title={"Logging Engine (for devel2opment)"} eventKey={1}/>
+                    <Tab title={"Logging Engine (for development)"} eventKey={1}/>
                 </Tabs>
             </div>
         </div>
