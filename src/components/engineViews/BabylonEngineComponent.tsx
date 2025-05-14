@@ -35,7 +35,11 @@ GLTFLoader.RegisterExtension(KHR_INTERACTIVITY_EXTENSION_NAME, (loader) => {
 
 
 
-export const BabylonEngineComponent = () => {
+interface BabylonEngineComponentProps {
+    modelUrl?: string | null;
+}
+
+export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ modelUrl }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const engineRef = useRef<Engine | null>(null);
     const sceneRef = useRef<Scene>();
@@ -55,16 +59,13 @@ export const BabylonEngineComponent = () => {
 
         createScene();
 
-        // Run the render loop
-        engineRef.current?.runRenderLoop(() => {
-            sceneRef.current?.render();
-        });
+        // Attempt to load model from URL if provided
+        if (modelUrl) {
+            loadModelFromUrl(modelUrl);
+        }
 
         return () => {
-            // Clean up resources when the component unmounts
-            sceneRef.current?.dispose();
             engineRef.current?.dispose();
-            babylonEngineRef.current?.clearCustomEventListeners();
         };
     }, []);
 
@@ -278,6 +279,50 @@ export const BabylonEngineComponent = () => {
         camera.setPosition(new Vector3(center.x, center.y + maxDimension * 0.5, center.z + distance));
         camera.radius = distance;
     }
+
+    const loadModelFromUrl = async (url: string) => {
+        try {
+            // Create a scene if it doesn't exist
+            if (!sceneRef.current) {
+                createScene();
+            }
+            
+            SceneLoader.OnPluginActivatedObservable.add((loader) => {
+                if (loader.name === "gltf") {
+                    (loader as GLTFFileLoader).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
+                }
+            });
+            
+            const container = await SceneLoader.LoadAssetContainerAsync("", url, sceneRef.current, undefined, ".glb");
+            container.addAllToScene();
+            
+            sceneRef.current?.createDefaultCamera(true, true, true);
+            
+            const worldInfo = {
+                nodes: buildGlTFNodeLayout(container.rootNodes[0]), 
+                animations: container.animationGroups, 
+                materials: container.materials,
+                meshes: container.meshes,
+            };
+            
+            // Update the file uploaded state to enable play button
+            setFileUploaded(url.split('/').pop() || "model.glb");
+            
+            // Setup the engine with the loaded model
+            const eventBus = new DOMEventBus();
+            babylonEngineRef.current = new BabylonDecorator(new BasicBehaveEngine(60, eventBus), worldInfo, sceneRef.current!);
+            
+            const extractedBehaveGraph = babylonEngineRef.current.extractBehaveGraphFromScene();
+            if (extractedBehaveGraph) {
+                loadGraphFromJson(extractedBehaveGraph);
+                babylonEngineRef.current.loadBehaveGraph(getExecutableGraph());
+            } else {
+                babylonEngineRef.current.loadBehaveGraph(getExecutableGraph());
+            }
+        } catch (error) {
+            console.error("Error loading model from URL:", error);
+        }
+    };
 
     return (
         <div style={{width: "90vw", margin: "0 auto"}}>

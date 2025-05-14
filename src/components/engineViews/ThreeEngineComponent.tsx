@@ -18,7 +18,11 @@ enum ThreeEngineModal {
     NONE = "NONE"
 }
 
-export const ThreeEngineComponent = () => {
+interface ThreeEngineComponentProps {
+    modelUrl?: string | null;
+}
+
+export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ modelUrl }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const rendererRef = useRef<WebGLRenderer | null>(null);
     const sceneRef = useRef<Scene | null>(null);
@@ -123,82 +127,54 @@ export const ThreeEngineComponent = () => {
         };
         
         animate();
-
-        // Handle resize with debounce to prevent excessive ResizeObserver callbacks
-        let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-        const handleResize = () => {
-            if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
-            
-            // Clear any pending resize timeout
-            if (resizeTimeout) {
-                clearTimeout(resizeTimeout);
-            }
-            
-            // Debounce the resize operation
-            resizeTimeout = setTimeout(() => {
-                const width = containerRef.current?.clientWidth || 800;
-                const height = containerRef.current?.clientHeight || 600;
+        
+        // Handle window resize
+        const resizeHandler = () => {
+            if (containerRef.current && rendererRef.current && cameraRef.current) {
+                const width = containerRef.current.clientWidth;
+                const height = containerRef.current.clientHeight;
                 
-                if (cameraRef.current) {
-                    cameraRef.current.aspect = width / height;
-                    cameraRef.current.updateProjectionMatrix();
-                }
-                if (rendererRef.current) {
-                    rendererRef.current.setSize(width, height);
-                }
-            }, 100); // 100ms debounce
+                cameraRef.current.aspect = width / height;
+                cameraRef.current.updateProjectionMatrix();
+                
+                rendererRef.current.setSize(width, height);
+            }
         };
         
-        // Use ResizeObserver instead of window resize event
+        const observer = new ResizeObserver(entries => {
+            resizeHandler();
+        });
+        
         if (containerRef.current) {
-            const resizeObserver = new ResizeObserver((entries) => {
-                // Only handle resize if component is mounted
-                if (containerRef.current) {
-                    handleResize();
-                }
-            });
-            
-            resizeObserver.observe(containerRef.current);
-            resizeObserverRef.current = resizeObserver;
+            observer.observe(containerRef.current);
+            resizeObserverRef.current = observer;
         }
         
-        // Fallback to window resize event as well
-        window.addEventListener('resize', handleResize);
+        // Load model from URL if provided
+        if (modelUrl) {
+            loadModelFromUrl(modelUrl);
+        }
 
         return () => {
-            // Clean up resources when the component unmounts
-            window.removeEventListener('resize', handleResize);
-            
-            // Cancel any pending resize timeout
-            if (resizeTimeout) {
-                clearTimeout(resizeTimeout);
-            }
-            
-            // Disconnect ResizeObserver
-            if (resizeObserverRef.current) {
-                resizeObserverRef.current.disconnect();
-            }
-            
-            // Cancel animation frame
+            // Clean up resources when component unmounts
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
             }
             
+            if (resizeObserverRef.current && containerRef.current) {
+                resizeObserverRef.current.unobserve(containerRef.current);
+                resizeObserverRef.current.disconnect();
+            }
+            
             if (rendererRef.current) {
-                // Check if parent element still contains the renderer's domElement before removing
-                if (containerRef.current && containerRef.current.contains(rendererRef.current.domElement)) {
-                    containerRef.current.removeChild(rendererRef.current.domElement);
-                }
                 rendererRef.current.dispose();
+                
+                // Remove canvas from DOM
+                containerRef.current?.removeChild(rendererRef.current.domElement);
             }
             
-            if (controlsRef.current) {
-                controlsRef.current.dispose();
-            }
-            
-            if (threeEngineRef.current) {
-                threeEngineRef.current.clearCustomEventListeners();
-            }
+            // Clear other references
+            threeEngineRef.current?.clearCustomEventListeners();
         };
     }, []);
 
@@ -505,6 +481,88 @@ export const ThreeEngineComponent = () => {
         };
 
         reader.readAsArrayBuffer(file);
+    };
+
+    // Function to load a model from a URL
+    const loadModelFromUrl = async (url: string) => {
+        console.log("Loading model from URL:", url);
+        
+        try {
+            if (!sceneRef.current || !threeLoaderRef.current) {
+                console.error("Scene or loader not initialized");
+                return;
+            }
+            
+            // Clear previous model
+            if (loadedModel) {
+                sceneRef.current.remove(loadedModel);
+                setLoadedModel(null);
+            }
+            
+            const gltf = await loadGLTF(url);
+            console.log("GLTF loaded successfully from URL:", gltf);
+            
+            // Keep a reference to loaded model's scene
+            const loadedModelScene = gltf.scene;
+            
+            // Add model to scene
+            sceneRef.current.add(loadedModelScene);
+            setLoadedModel(loadedModelScene);
+            
+            // Set up animations
+            if (gltf.animations && gltf.animations.length > 0) {
+                console.log("Found animations:", gltf.animations.length);
+                animationMixerRef.current = new AnimationMixer(loadedModelScene);
+                setAnimations(gltf.animations);
+            }
+            
+            // Reset camera position and controls
+            if (cameraRef.current && controlsRef.current) {
+                // Calculate bounding box to properly frame the model
+                const box = new Box3().setFromObject(loadedModelScene);
+                const center = box.getCenter(new Vector3());
+                const size = box.getSize(new Vector3());
+                
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = cameraRef.current.fov * (Math.PI / 180);
+                const cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 1.5;
+                
+                cameraRef.current.position.set(center.x, center.y, center.z + cameraZ);
+                controlsRef.current.target.set(center.x, center.y, center.z);
+                controlsRef.current.update();
+            }
+            
+            // Extract necessary elements from the model
+            const result = {
+                loadedModelScene, 
+                nodes: extractGLTFNodes(loadedModelScene),
+                materials: extractMaterials(loadedModelScene),
+                animations: gltf.animations || [],
+                meshes: extractMeshes(loadedModelScene),
+                parser: gltf.parser,
+            };
+            
+            // Update the file uploaded state to enable play button
+            setFileUploaded(url.split('/').pop() || "model.glb");
+            
+            // Run the engine with the loaded model
+            await runGraph(
+                threeEngineRef, 
+                getExecutableGraph(), 
+                result.loadedModelScene, 
+                result.nodes, 
+                result.materials, 
+                result.animations, 
+                result.meshes, 
+                true, 
+                result.parser
+            );
+            
+            setGraphRunning(true);
+            
+        } catch (error) {
+            console.error("Error loading model from URL:", error);
+        }
     };
 
     return (
