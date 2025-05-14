@@ -67,7 +67,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
         return () => {
             engineRef.current?.dispose();
         };
-    }, []);
+    }, [modelUrl]);  // Add modelUrl as a dependency
 
     useEffect(() => {
         if (fileUploaded !== null) {
@@ -104,9 +104,19 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
         sceneRef.current?.dispose();
         createScene();
 
-        const file = fileInputRef.current!.files![0]
-
-        const url = URL.createObjectURL(file);
+        let url: string;
+        
+        if (modelUrl) {
+            // Use the URL provided via props
+            url = modelUrl;
+        } else if (fileInputRef.current?.files?.[0]) {
+            // Use the file from file input
+            const file = fileInputRef.current.files[0];
+            url = URL.createObjectURL(file);
+        } else {
+            console.warn("No model URL or file provided for Babylon engine");
+            return { nodes: [], animations: [], materials: [], meshes: [] };
+        }
 
         SceneLoader.OnPluginActivatedObservable.add( (loader) => {
             if (loader.name === "gltf") {
@@ -176,7 +186,12 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     }
 
     const exportKHRInteractivityGLB = async () => {
-        const file = fileInputRef.current!.files![0];
+        if (!fileInputRef.current?.files?.[0]) {
+            console.warn("No file selected for export");
+            return;
+        }
+        
+        const file = fileInputRef.current.files[0];
         const reader = new FileReader();
 
         reader.onload = function (e) {

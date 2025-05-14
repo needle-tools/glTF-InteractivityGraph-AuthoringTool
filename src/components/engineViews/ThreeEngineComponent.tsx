@@ -176,7 +176,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             // Clear other references
             threeEngineRef.current?.clearCustomEventListeners();
         };
-    }, []);
+    }, [modelUrl]);  // Add modelUrl as a dependency
 
     useEffect(() => {
         if (fileUploaded !== null) {
@@ -196,7 +196,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
 
     const resetScene = async () => {
         console.log("Reset scene called");
-        if (!sceneRef.current || !threeLoaderRef.current || !fileInputRef.current?.files?.[0]) {
+        if (!sceneRef.current || !threeLoaderRef.current) {
             console.warn("Missing required references for scene reset");
             return { loadedModelScene: null, nodes: [], materials: [], animations: [], meshes: [], parser: null };
         }
@@ -207,8 +207,20 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             setLoadedModel(null);
         }
         
-        const file = fileInputRef.current.files[0];
-        const url = URL.createObjectURL(file);
+        let url: string;
+        
+        if (modelUrl) {
+            // Use the URL provided via props
+            url = modelUrl;
+        } else if (fileInputRef.current?.files?.[0]) {
+            // Use the file from file input
+            const file = fileInputRef.current.files[0];
+            url = URL.createObjectURL(file);
+        } else {
+            console.warn("No model URL or file provided for Three.js engine");
+            return { loadedModelScene: null, nodes: [], materials: [], animations: [], meshes: [], parser: null };
+        }
+        
         console.log("Loading GLB from URL:", url);
         
         try {
@@ -404,6 +416,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
 
     const exportKHRInteractivityGLB = async () => {
         if (!fileInputRef.current?.files?.[0]) {
+            console.warn("No file selected for export");
             return;
         }
         

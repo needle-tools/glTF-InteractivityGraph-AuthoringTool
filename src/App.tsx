@@ -58,6 +58,8 @@ export const App = () => {
 
   // Save engine type when it changes
   const handleEngineTypeChange = (type: EngineType) => {
+    // When changing engine type, store the type but don't reload any model
+    // This will prevent URL.createObjectURL errors when switching engines
     setEngineType(type);
     localStorage.setItem(ENGINE_TYPE_STORAGE_KEY, type);
   };
@@ -65,8 +67,6 @@ export const App = () => {
   return (
     <InteractivityGraphProvider>
         <div style={{width: "100vw", height: "100vh"}}>
- 
-        <AuthoringComponent/>
     
         <EngineSelector setEngineType={handleEngineTypeChange} currentEngineType={engineType}/>
 
@@ -81,6 +81,8 @@ export const App = () => {
         <RenderIf shouldShow={engineType === EngineType.THREE}>
             <ThreeEngineComponent modelUrl={modelUrl} />
         </RenderIf>
+
+        <AuthoringComponent/>
       </div>
     </InteractivityGraphProvider>
       
