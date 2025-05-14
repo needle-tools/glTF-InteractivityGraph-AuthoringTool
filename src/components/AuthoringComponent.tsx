@@ -240,6 +240,7 @@ export const AuthoringComponent = () => {
     return (
         <div style={{width: "100vw", height: "75vh", textAlign: "center", padding: 16}}>
             <h2 style={{padding: 16}}>Interactivity Graph Authoring</h2>
+            <p>Hello world</p>
             <div ref={reactFlowRef} style={{width: "90%", height: "90%", border: "1px solid black", margin: "0 auto"}} data-testid={"authoring-view"}>
                 <ReactFlow
                     id={"flow-container"}

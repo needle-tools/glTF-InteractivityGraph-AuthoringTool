@@ -140,12 +140,12 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
           zIndex: 1030 
         }}
       >
-        ☰ Examples
+        ☰ Samples and Tests
       </Button>
 
       <Offcanvas show={show} onHide={handleClose} placement="end">
         <Offcanvas.Header closeButton>
-          <Offcanvas.Title>Sample Models</Offcanvas.Title>
+          <Offcanvas.Title>Samples and Tests</Offcanvas.Title>
         </Offcanvas.Header>
         <Offcanvas.Body>
             <>
@@ -186,6 +186,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
           {sampleModels.length > 0 && (
             <>
               <h5 className="mt-3 mb-2">Sample Models</h5>
+              <a href="https://github.com/needle-tools/glTF-Interactivity-Sample-Assets" target="_blank">See on GitHub</a>
               <ListGroup>
                 {sampleModels.map((model, index) => (
                   <ListGroup.Item 
@@ -218,6 +219,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
           {testModels.length > 0 && (
             <>
               <h5 className="mt-4 mb-2">Test Assets</h5>
+              <a href="https://github.com/needle-tools/glTF-Interactivity-Sample-Assets/" target="_blank">See on GitHub</a>
               <ListGroup>
                 {testModels.map((model, index) => (
                   <ListGroup.Item 

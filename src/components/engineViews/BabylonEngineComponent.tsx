@@ -380,6 +380,19 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     return (
         <div style={{width: "90vw", margin: "0 auto"}}>
             <div style={{background: "#3d5987", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16}}>
+                <input className="d-none" type="file" accept=".glb" ref={fileInputRef} data-testid={"babylon-engine-file-input"} onChange={() => {
+                    if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
+                        setFileUploaded(null);
+                        return;
+                    }
+                    setFileUploaded(fileInputRef.current.files[0].name)
+                }}/>
+                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
+                    Upload glb
+                </Button>
+
+                <Spacer width={16} height={0}/>
+
                 <Button variant="outline-light" onClick={() => {
                     play(false)
                 }} disabled={fileUploaded == null}>
@@ -390,20 +403,6 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
 
                 <Button variant="outline-light" onClick={() => setOpenModal(BabylonEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
                     Send Custom Event
-                </Button>
-
-                <Spacer width={16} height={0}/>
-
-                <label className="mx-3" style={{color: "white"}}>Choose file: </label>
-                <input className="d-none" type="file" accept=".glb" ref={fileInputRef} data-testid={"babylon-engine-file-input"} onChange={() => {
-                    if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
-                        setFileUploaded(null);
-                        return;
-                    }
-                    setFileUploaded(fileInputRef.current.files[0].name)
-                }}/>
-                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
-                    Upload glb
                 </Button>
 
                 <Spacer width={16} height={0}/>

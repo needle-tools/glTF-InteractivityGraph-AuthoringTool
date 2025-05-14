@@ -581,6 +581,12 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
     return (
         <div style={{width: "90vw", margin: "0 auto"}}>
             <div style={{background: "#3d5987", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16}}>
+                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
+                    Upload glb
+                </Button>
+
+                <Spacer width={16} height={0}/>
+
                 <Button variant="outline-light" onClick={() => {
                     play(false)
                 }} disabled={fileUploaded == null}>
@@ -595,7 +601,10 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
 
                 <Spacer width={16} height={0}/>
 
-                <label className="mx-3" style={{color: "white"}}>Choose file: </label>
+                <Button variant="outline-light" disabled={fileUploaded == null} onClick={() => exportKHRInteractivityGLB()}>
+                    Download glb
+                </Button>
+
                 <input className="d-none" type="file" accept=".glb" ref={fileInputRef} onChange={() => {
                     if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
                         setFileUploaded(null);
@@ -603,15 +612,6 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
                     }
                     setFileUploaded(fileInputRef.current.files[0].name)
                 }}/>
-                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
-                    Upload glb
-                </Button>
-
-                <Spacer width={16} height={0}/>
-
-                <Button variant="outline-light" disabled={fileUploaded == null} onClick={() => exportKHRInteractivityGLB()}>
-                    Download glb
-                </Button>
             </div>
 
             <div ref={containerRef} style={{ width: '100%', height: '700px' }} />
