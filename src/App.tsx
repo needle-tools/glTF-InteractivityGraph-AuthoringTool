@@ -8,6 +8,7 @@ import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponen
 import {Tab, Tabs} from "react-bootstrap";
 import {Spacer} from "./components/Spacer";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
+import { SampleSidebar } from './components/SampleSidebar';
 
 // Storage key for persisting the engine type
 const ENGINE_TYPE_STORAGE_KEY = 'interactivity-graph-engine-type';
@@ -62,11 +63,17 @@ export const App = () => {
     localStorage.setItem(ENGINE_TYPE_STORAGE_KEY, type);
   };
 
+  const handleModelUrlChange = (url: string) => {
+    setModelUrl(url);
+  };
+
   return (
     <InteractivityGraphProvider>
         <div style={{width: "100vw", height: "100vh"}}>
     
         <EngineSelector setEngineType={handleEngineTypeChange} currentEngineType={engineType}/>
+
+        <SampleSidebar onSelectModel={handleModelUrlChange} />
 
         <Spacer width={0} height={32}/>
 
