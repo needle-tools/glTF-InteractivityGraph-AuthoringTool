@@ -64,8 +64,15 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             loadModelFromUrl(modelUrl);
         }
 
+        // Run the render loop
+        engineRef.current?.runRenderLoop(() => {
+            sceneRef.current?.render();
+        });
+
         return () => {
+            sceneRef.current?.dispose();
             engineRef.current?.dispose();
+            babylonEngineRef.current?.clearCustomEventListeners();
         };
     }, [modelUrl]);  // Add modelUrl as a dependency
 

@@ -58,8 +58,6 @@ export const App = () => {
 
   // Save engine type when it changes
   const handleEngineTypeChange = (type: EngineType) => {
-    // When changing engine type, store the type but don't reload any model
-    // This will prevent URL.createObjectURL errors when switching engines
     setEngineType(type);
     localStorage.setItem(ENGINE_TYPE_STORAGE_KEY, type);
   };
