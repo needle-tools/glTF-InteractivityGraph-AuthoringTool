@@ -67,6 +67,14 @@ export const App = () => {
     setModelUrl(url);
   };
 
+  useEffect(() => {
+    if (modelUrl) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('model', modelUrl);
+      window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+    }
+  }, [modelUrl]);
+
   return (
     <InteractivityGraphProvider>
         <div style={{width: "100vw", height: "100vh"}}>
