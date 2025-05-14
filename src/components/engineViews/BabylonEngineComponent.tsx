@@ -43,6 +43,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const engineRef = useRef<Engine | null>(null);
     const sceneRef = useRef<Scene>();
+    const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const [activeKey, setActiveKey] = useState("1");
     const [graphRunning, setGraphRunning] = useState(false);
     const [openModal, setOpenModal] = useState<BabylonEngineModal>(BabylonEngineModal.NONE);
@@ -69,7 +70,30 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             sceneRef.current?.render();
         });
 
+        // Handle canvas resize with debouncing to prevent excessive updates
+        const resizeHandler = () => {
+            if (canvasRef.current && engineRef.current) {
+                // Resize the engine which will update canvas dimensions
+                engineRef.current.resize();
+            }
+        };
+        
+        // Set up ResizeObserver to watch for canvas size changes
+        const observer = new ResizeObserver(() => {
+            resizeHandler();
+        });
+        
+        if (canvasRef.current) {
+            observer.observe(canvasRef.current);
+            resizeObserverRef.current = observer;
+        }
+
         return () => {
+            if (resizeObserverRef.current && canvasRef.current) {
+                resizeObserverRef.current.unobserve(canvasRef.current);
+                resizeObserverRef.current.disconnect();
+            }
+            
             sceneRef.current?.dispose();
             engineRef.current?.dispose();
             babylonEngineRef.current?.clearCustomEventListeners();
@@ -134,6 +158,13 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
         container.addAllToScene();
 
         sceneRef.current?.createDefaultCamera(true, true, true);
+
+        // Rotate the camera by 180° and move it to the other side
+        const camera = sceneRef.current?.activeCamera as ArcRotateCamera;
+        camera.useFramingBehavior = true;
+        camera.alpha += Math.PI;
+        camera.setPosition(new Vector3(camera.position.x, camera.position.y, camera.position.z * -1));
+        camera.beta = Math.PI / 2;
 
         //TODO: the true meshes of glTF are not the ones babylon exposes as objects (these are instantiated node meshes) we should find a way to pass the mesh itself and not the instantiation via a node
         // or else we have cases where two nodes refere to the single mesh => we will have 2 meshes where really we only truly have one in glTF

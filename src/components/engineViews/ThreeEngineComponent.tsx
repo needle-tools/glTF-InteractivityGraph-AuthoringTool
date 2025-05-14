@@ -60,12 +60,12 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
 
         // Create camera
         const camera = new PerspectiveCamera(
-            75,
+            45,
             (containerRef.current?.clientWidth || 800) / (containerRef.current?.clientHeight || 600),
             0.1,
             1000
         );
-        camera.position.z = 5;
+        camera.position.z = 0;
         cameraRef.current = camera;
 
         // Add lights

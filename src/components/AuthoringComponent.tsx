@@ -204,8 +204,8 @@ export const AuthoringComponent = () => {
                     node.type = "NoOp";
                 }
             }
-            console.log(loadedNodes)
-            console.log(result[1])
+            // console.log(loadedNodes)
+            // console.log(result[1])
             setNodes(loadedNodes);
             setTimeout(() => {
                 // react flow has an issue connecting handles for our custom nodes since they heavily rely on the node data 
