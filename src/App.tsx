@@ -137,7 +137,7 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
 
     return (
         <div style={{width: "90vw", margin: "0 auto", textAlign: "center", marginTop: 32}}>
-            <h2>Behave Graph Execution</h2>
+            <h2>glTF Interactivity Runtime</h2>
             <div data-testid={"engine-selector"}>
                 <Tabs
                     activeKey={activeKey}
