@@ -116,18 +116,21 @@ export class ThreeDecorator extends ADecorator {
                 }
             }, "float3", false);
 
+            const piRotation = new Quaternion().setFromEuler(new Euler(Math.PI, 0, Math.PI));
+            const tempQuaternion = new Quaternion();
+
             this.registerJsonPointer(`/extensions/KHR_interactivity/activeCamera/rotation`, (path) => {
                 if (!this.camera || !(this.camera instanceof PerspectiveCamera)) return [0, 0, 0, 1];
 
                 // Convert euler rotation to quaternion if needed
-                const quaternion = new Quaternion();
-                quaternion.setFromEuler(this.camera.rotation);
+                tempQuaternion.copy(this.camera.quaternion);
+                tempQuaternion.multiply(piRotation);
 
                 return [
-                    quaternion.x,
-                    quaternion.y,
-                    quaternion.z,
-                    quaternion.w
+                    tempQuaternion.x,
+                    tempQuaternion.y,
+                    tempQuaternion.z,
+                    tempQuaternion.w
                 ];
             }, (path, value) => {
                 if (this.camera) {

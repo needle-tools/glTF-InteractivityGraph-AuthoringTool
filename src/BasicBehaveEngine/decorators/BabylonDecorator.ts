@@ -290,7 +290,7 @@ export class BabylonDecorator extends ADecorator {
             }
 
             console.log(`Camera rotation: ${activeCamera.absoluteRotation.x}, ${activeCamera.absoluteRotation.y}, ${activeCamera.absoluteRotation.z}, ${activeCamera.absoluteRotation.w}`)
-            return [activeCamera.absoluteRotation.x, -1 *activeCamera.absoluteRotation.y, activeCamera.absoluteRotation.z, activeCamera.absoluteRotation.w]
+            return [-activeCamera.absoluteRotation.x, activeCamera.absoluteRotation.y, activeCamera.absoluteRotation.z, -activeCamera.absoluteRotation.w]
         }, (path, value) => {
             //no-op
         }, "float4", true)
