@@ -29,8 +29,10 @@ export class OnHoverIn extends BehaveEngineNode {
 
     setUpOnHoverIn() {
         const callback = (selectedNodeIndex: number, controllerIndex: number) => {
-            if (this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverIn) {
-                this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverIn = false;
+            const node = this.graphEngine.getWorld().glTFNodes[this._nodeIndex];
+            const metadata = node.metadata || node.userData;
+            if (metadata.shouldExecuteHoverIn) {
+                metadata.shouldExecuteHoverIn = false;
                 this.outValues.selectedNodeIndex = {
                     type: this.getTypeIndex('int'),
                     value: [selectedNodeIndex],
@@ -50,6 +52,8 @@ export class OnHoverIn extends BehaveEngineNode {
             }
         }
 
-        this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.onHoverInCallback = callback;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        this.graphEngine.addNodeHoverInListener(this._nodeIndex, callback);
     }
 }

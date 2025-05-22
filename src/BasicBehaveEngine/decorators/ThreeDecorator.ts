@@ -50,6 +50,12 @@ export class ThreeDecorator extends ADecorator {
         this.behaveEngine.addNodeClickedListener = this.addNodeClickedListener;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
+        this.behaveEngine.addNodeHoverInListener = this.addNodeHoverInListener;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        this.behaveEngine.addNodeHoverOutListener = this.addNodeHoverOutListener;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
         this.behaveEngine.stopAnimation = this.stopAnimation;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
@@ -413,6 +419,22 @@ export class ThreeDecorator extends ADecorator {
 
         node.userData = node.userData || {};
         node.userData.onSelectCallback = callback;
+    }
+
+    public addNodeHoverInListener = (nodeIndex: number, callback: (selectedNodeIndex: number, controllerIndex: number) => void): void => {
+        const node = this.world.glTFNodes[nodeIndex];
+        if (!node) return;
+        
+        node.userData = node.userData || {};
+        node.userData.onHoverInCallback = callback;
+    }
+
+    public addNodeHoverOutListener = (nodeIndex: number, callback: (selectedNodeIndex: number, controllerIndex: number) => void): void => {
+        const node = this.world.glTFNodes[nodeIndex];
+        if (!node) return;
+        
+        node.userData = node.userData || {};
+        node.userData.onHoverOutCallback = callback;
     }
 
     public startAnimation = (animation: number, startTime: number, endTime: number, speed: number, callback: () => void): void => {

@@ -42,16 +42,22 @@ export class BabylonDecorator extends ADecorator {
         this.behaveEngine.extractBehaveGraphFromScene = this.extractBehaveGraphFromScene
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        this.behaveEngine.alertParentOnSelect = this.alertParentOnSelect
+        this.behaveEngine.alertParentOnSelect = this.alertParentOnSelect;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        this.behaveEngine.alertParentOnHoverIn = this.alertParentOnHoverIn
+        this.behaveEngine.alertParentOnHoverIn = this.alertParentOnHoverIn;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        this.behaveEngine.alertParentOnHoverOut = this.alertParentOnHoverOut
+        this.behaveEngine.alertParentOnHoverOut = this.alertParentOnHoverOut;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        this.behaveEngine.addNodeClickedListener = this.addNodeClickedListener
+        this.behaveEngine.addNodeClickedListener = this.addNodeClickedListener;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        this.behaveEngine.addNodeHoverInListener = this.addNodeHoverInListener;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        this.behaveEngine.addNodeHoverOutListener = this.addNodeHoverOutListener;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         this.behaveEngine.stopAnimation = this.stopAnimation
@@ -916,6 +922,22 @@ export class BabylonDecorator extends ADecorator {
                 }
             }
         });
+    }
+
+    public addNodeHoverInListener = (nodeIndex: number, callback: (selectedNodeIndex: number, controllerIndex: number) => void): void => {
+        const node = this.world.glTFNodes[nodeIndex];
+        if (!node) return;
+        
+        node.metadata = node.metadata || {};
+        node.metadata.onHoverInCallback = callback;
+    }
+
+    public addNodeHoverOutListener = (nodeIndex: number, callback: (selectedNodeIndex: number, controllerIndex: number) => void): void => {
+        const node = this.world.glTFNodes[nodeIndex];
+        if (!node) return;
+        
+        node.metadata = node.metadata || {};
+        node.metadata.onHoverOutCallback = callback;
     }
 
     public alertParentOnSelect = (selectionPoint: number[], selectedNodeIndex: number, controllerIndex: number, selectionRayOrigin: number[], childNodeIndex: number): void => {

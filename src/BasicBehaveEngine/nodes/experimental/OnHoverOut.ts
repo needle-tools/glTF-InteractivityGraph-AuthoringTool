@@ -29,9 +29,11 @@ export class OnHoverOut extends BehaveEngineNode {
 
     setUpOnHoverOut() {
         const callback = (selectedNodeIndex: number, controllerIndex: number) => {
-            if (this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverOut) {
-                this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.shouldExecuteHoverOut = false;
-
+            const node = this.graphEngine.getWorld().glTFNodes[this._nodeIndex];
+            const metadata = node.metadata || node.userData;
+            if (metadata.shouldExecuteHoverOut) {
+                metadata.shouldExecuteHoverOut = false;
+                
                 this.outValues.selectedNodeIndex = {
                     type: this.getTypeIndex('int'),
                     value: [selectedNodeIndex],
@@ -51,6 +53,8 @@ export class OnHoverOut extends BehaveEngineNode {
             }
         }
 
-        this.graphEngine.getWorld().glTFNodes[this._nodeIndex].metadata.onHoverOutCallback = callback;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        this.graphEngine.addNodeHoverOutListener(this._nodeIndex, callback);
     }
 }
