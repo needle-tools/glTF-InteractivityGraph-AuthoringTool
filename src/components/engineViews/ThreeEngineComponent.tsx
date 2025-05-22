@@ -109,7 +109,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             const delta = clockRef.current?.getDelta() || 0;
             
             if (controlsRef.current) {
-                controlsRef.current.update();
+                controlsRef.current.update(delta);
             }
             
             if (animationMixerRef.current) {
@@ -407,7 +407,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         if ((!behaveGraph.nodes || behaveGraph.nodes.length === 0 || shouldOverride) && extractedBehaveGraph) {
             // Use the graph from the loaded file
             loadGraphFromJson(extractedBehaveGraph);
-            threeEngineRef.current.loadBehaveGraph(extractedBehaveGraph);
+            threeEngineRef.current.loadBehaveGraph(getExecutableGraph());
         } else {
             // Use the graph from the authoring tool
             threeEngineRef.current.loadBehaveGraph(behaveGraph);

@@ -178,7 +178,7 @@ export class BabylonDecorator extends ADecorator {
             const t = Math.min(elapsedDuration / easingParameters.easingDuration, 1);
             if (easingParameters.valueType === "float3") {
                 const v = easeFloat3(t, easingParameters);
-                console.log(v);
+                // console.log(v);
                 this.behaveEngine.setPathValue(path, v);
             } else if (easingParameters.valueType === "float4") {
                 this.behaveEngine.setPathValue(path, easeFloat4(t, easingParameters));
@@ -289,7 +289,7 @@ export class BabylonDecorator extends ADecorator {
                 return [NaN, NaN, NaN, NaN]
             }
 
-            console.log(`Camera rotation: ${activeCamera.absoluteRotation.x}, ${activeCamera.absoluteRotation.y}, ${activeCamera.absoluteRotation.z}, ${activeCamera.absoluteRotation.w}`)
+            // console.log(`Camera rotation: ${activeCamera.absoluteRotation.x}, ${activeCamera.absoluteRotation.y}, ${activeCamera.absoluteRotation.z}, ${activeCamera.absoluteRotation.w}`)
             return [-activeCamera.absoluteRotation.x, activeCamera.absoluteRotation.y, activeCamera.absoluteRotation.z, -activeCamera.absoluteRotation.w]
         }, (path, value) => {
             //no-op
@@ -301,7 +301,7 @@ export class BabylonDecorator extends ADecorator {
                 return [NaN, NaN, NaN]
             }
 
-            console.log(`Camera position: ${activeCamera.position.x}, ${activeCamera.position.y}, ${activeCamera.position.z}`)
+            // console.log(`Camera position: ${activeCamera.position.x}, ${activeCamera.position.y}, ${activeCamera.position.z}`)
             return [-1 * activeCamera.position.x, activeCamera.position.y, activeCamera.position.z]
         }, (path, value) => {
             //no-op
@@ -740,21 +740,14 @@ export class BabylonDecorator extends ADecorator {
             const node = this.world.glTFNodes[Number(parts[2])];
 
 
-            console.log(node.scaling, node.rotationQuaternion, node.position)
-            
-            
-            console.log(node.scaling, node.rotationQuaternion, node.position)
+            // console.log(node.scaling, node.rotationQuaternion, node.position)
+            // console.log(node.scaling, node.rotationQuaternion, node.position)
             
             const scaleMatrix = Matrix.Scaling(node.scaling.x, node.scaling.y, node.scaling.z);
             const rotationMatrix = Matrix.FromQuaternionToRef(node.rotationQuaternion, Matrix.Identity());
 
-
-            console.log(scaleMatrix, rotationMatrix)
-       
-            
-            
-            console.log(scaleMatrix, rotationMatrix)
-       
+            // console.log(scaleMatrix, rotationMatrix)
+            // console.log(scaleMatrix, rotationMatrix)       
             
             const matrix: Matrix = scaleMatrix.multiply(rotationMatrix);
             matrix.setTranslation(new Vector3(node.position.x, node.position.y, node.position.z));

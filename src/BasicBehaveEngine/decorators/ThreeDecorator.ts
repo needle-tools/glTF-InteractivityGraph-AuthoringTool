@@ -688,6 +688,51 @@ export class ThreeDecorator extends ADecorator {
             node.matrixWorldNeedsUpdate = true;
         }, "float4", false);
 
+        // local matrix
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/matrix`, (path) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            if (!node.matrix) return [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+            ];
+            const m = node.matrix.elements;
+            return [
+                [ m[0], m[1], m[2], m[3] ],
+                [ m[4], m[5], m[6], m[7] ],
+                [ m[8], m[9], m[10], m[11] ],
+                [ m[12], m[13], m[14], m[15] ]
+            ];
+        }
+        , (path, value) => {
+            // no-op
+        }, "float4x4", false);
+        
+        // global matrix
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/globalMatrix`, (path) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            console.log("Getting global matrix for node", node);
+            if (!node.matrixWorld) return [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+            ];
+            const m = node.matrixWorld.elements;
+            return [
+                [ m[0], m[1], m[2], m[3] ],
+                [ m[4], m[5], m[6], m[7] ],
+                [ m[8], m[9], m[10], m[11] ],
+                [ m[12], m[13], m[14], m[15] ]
+            ];
+        }, (path, value) => {
+            //no-op
+        }
+        , "float4x4", true);
+
         // Node visibility
         this.registerJsonPointer(`/nodes/${maxGltfNode}/extensions/KHR_node_visibility/visible`, (path) => {
             const parts: string[] = path.split("/");
