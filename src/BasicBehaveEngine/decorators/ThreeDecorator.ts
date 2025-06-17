@@ -755,6 +755,36 @@ export class ThreeDecorator extends ADecorator {
         }
         , "float4x4", true);
 
+        // Primitives
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/mesh`, (path) => {
+            const parts: string[] = path.split("/");
+            const nodeId = Number(parts[2]);
+            const node = this.world.glTFNodes[nodeId];
+            const primitiveIndex = Number(parts[4]);
+            // TODO handle primitive index and return some index of the primitive
+            return [nodeId];
+        }
+        , (path, value) => {
+            // no-op
+        }, "int", true);
+
+        // Materials from primitive
+        this.registerJsonPointer(`/meshes/${maxGltfNode}/primitives/${maxGltfNode}/material`, (path) => {
+            const parts: string[] = path.split("/");
+            const nodeId = Number(parts[2]);
+            const primitiveId = Number(parts[4]);
+            const node = this.world.glTFNodes[Number(parts[2])];
+            // TODO handle primitive index
+            for (let i = 0; i < this.world.materials.length; i++) {
+                if (node.material === this.world.materials[i]) {
+                    return [i];
+                }
+            }
+        }
+        , (path, value) => {
+            // no-op
+        }, "int", true);
+
         // Node visibility
         this.registerJsonPointer(`/nodes/${maxGltfNode}/extensions/KHR_node_visibility/visible`, (path) => {
             const parts: string[] = path.split("/");
