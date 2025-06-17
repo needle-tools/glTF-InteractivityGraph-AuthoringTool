@@ -736,7 +736,6 @@ export class ThreeDecorator extends ADecorator {
         this.registerJsonPointer(`/nodes/${maxGltfNode}/globalMatrix`, (path) => {
             const parts: string[] = path.split("/");
             const node = this.world.glTFNodes[Number(parts[2])];
-            console.log("Getting global matrix for node", node);
             if (!node.matrixWorld) return [
                 1, 0, 0, 0,
                 0, 1, 0, 0,
