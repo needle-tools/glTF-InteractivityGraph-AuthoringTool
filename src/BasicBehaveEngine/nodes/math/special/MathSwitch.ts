@@ -46,16 +46,12 @@ export class MathSwitch extends BehaveEngineNode {
             }
         }
 
-        console.log(this._cases);
-        console.log(caseVals);
-
         const selectionIndex = Number(selection);
         if (selectionIndex < 0 || selectionIndex >= this._cases.length) {
             return {
                 'value': {value: [defaultSelection], type: typeIndexDefault}
             };
         } else {
-            console.log(Object.values(caseVals)[selectionIndex]);
             return {
                 'value': {value: [Object.values(caseVals)[selectionIndex]], type: typeIndexDefault}
             };
