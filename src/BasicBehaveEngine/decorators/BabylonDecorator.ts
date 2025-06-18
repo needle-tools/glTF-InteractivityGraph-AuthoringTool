@@ -786,6 +786,35 @@ export class BabylonDecorator extends ADecorator {
             //no-op
         }, "float4x4", true);
 
+        // Single morph target weight
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/weights/${maxGltfNode}`, (path) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            if (!(node instanceof AbstractMesh) || !node.morphTargetManager) {
+                console.warn(`Node at path ${path} is not an AbstractMesh, cannot get morph target weight.`);
+                return [NaN];
+            }
+            const morphTargetIndex = Number(parts[4]);
+            if (morphTargetIndex < 0 || morphTargetIndex >= node.morphTargetManager.numTargets) {
+                console.warn(`Morph target index ${morphTargetIndex} out of bounds for node at path ${path}.`);
+                return [NaN];
+            }
+            return [node.morphTargetManager.getTarget(morphTargetIndex).influence];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            if (!(node instanceof AbstractMesh) || !node.morphTargetManager) {
+                console.warn(`Node at path ${path} is not an AbstractMesh, cannot set morph target weight.`);
+                return;
+            }
+            const morphTargetIndex = Number(parts[4]);
+            if (morphTargetIndex < 0 || morphTargetIndex >= node.morphTargetManager.numTargets) {
+                console.warn(`Morph target index ${morphTargetIndex} out of bounds for node at path ${path}.`);
+                return;
+            }
+            node.morphTargetManager.getTarget(morphTargetIndex).influence = value;
+        }, "float", false);
+
         this.registerJsonPointer(`/nodes/${maxGltfNode}/mesh`, (path) => {
             const parts: string[] = path.split("/");
             const node = this.world.glTFNodes[Number(parts[2])];

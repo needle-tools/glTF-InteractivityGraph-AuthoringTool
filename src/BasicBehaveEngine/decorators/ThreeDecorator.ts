@@ -754,6 +754,19 @@ export class ThreeDecorator extends ADecorator {
         }
         , "float4x4", true);
 
+        // Single morph target weight
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/weights/${maxGltfNode}`, (path) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            if (!node.morphTargetInfluences) return [];
+            const weight = node.morphTargetInfluences[Number(parts[4])];
+            return [weight];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            node.morphTargetInfluences[Number(parts[4])] = value;
+        }, "float", false);
+
         // Primitives
         this.registerJsonPointer(`/nodes/${maxGltfNode}/mesh`, (path) => {
             const parts: string[] = path.split("/");
