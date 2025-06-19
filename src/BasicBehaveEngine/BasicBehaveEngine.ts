@@ -434,8 +434,8 @@ export class BasicBehaveEngine implements IBehaveEngine {
         this.registerBehaveEngineNode("math/gt", GreaterThan);
         this.registerBehaveEngineNode("math/dot", Dot);
         this.registerBehaveEngineNode("math/normalize", Normalize);
-        this.registerBehaveEngineNode("math/rotate2d", Rotate2D);
-        this.registerBehaveEngineNode("math/rotate3d", Rotate3D);
+        this.registerBehaveEngineNode("math/rotate2D", Rotate2D);
+        this.registerBehaveEngineNode("math/rotate3D", Rotate3D);
         this.registerBehaveEngineNode("math/length", VectorLength);
         this.registerBehaveEngineNode("math/isinf", IsInfNode);
         this.registerBehaveEngineNode("math/isnan", IsNaNNode);

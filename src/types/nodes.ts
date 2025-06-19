@@ -1778,7 +1778,7 @@ const mathVectorNodeSpecs: IInteractivityNode[] = [
         }
     },
     {
-        op: "math/rotate2d",
+        op: "math/rotate2D",
         declaration: knownDeclarations.findIndex(declaration => declaration.op === "math/rotate2d"),
         description: "Rotate a 2D vector by an angle in radians",
         values: {
@@ -1804,31 +1804,26 @@ const mathVectorNodeSpecs: IInteractivityNode[] = [
         }
     },
     {
-        op: "math/rotate3d",
+        op: "math/rotate3D",
         declaration: knownDeclarations.findIndex(declaration => declaration.op === "math/rotate3d"),
         description: "Rotate a 3D vector around an axis by an angle in radians",
         values: {
             input: {
                 a: {
-                    typeOptions: [4],
-                    type: 4,
+                    typeOptions: [3],
+                    type: 3,
                     value: [undefined, undefined, undefined]
                 },
                 b: {
                     typeOptions: [4],
                     type: 4,
-                    value: [undefined, undefined, undefined]
+                    value: [undefined, undefined, undefined,  undefined]
                 },
-                c: {
-                    typeOptions: [2],
-                    type: 2,
-                    value: [undefined]
-                }
             },
             output: {
                 value: {
-                    typeOptions: [4],
-                    type: 4,
+                    typeOptions: [3],
+                    type: 3,
                     value: [undefined, undefined, undefined]
                 }
             }
