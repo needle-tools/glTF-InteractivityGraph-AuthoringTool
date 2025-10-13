@@ -1,14 +1,14 @@
-import { ADecorator } from "./ADecorator";
-import { BehaveEngineNode } from "../BehaveEngineNode";
-import { IBehaveEngine } from "../IBehaveEngine";
-import { cubicBezier, easeFloat, easeFloat3, easeFloat4, linearFloat, slerpFloat4 } from "../easingUtils";
-import { IInteractivityFlow } from "../../types/InteractivityGraph";
-import { AnimationStart } from "../nodes/animation/AnimationStart";
-import { AnimationStop } from "../nodes/animation/AnimationStop";
-import { AnimationStopAt } from "../nodes/animation/AnimationStopAt";
-import { OnSelect } from "../nodes/experimental/OnSelect";
-import { OnHoverIn } from "../nodes/experimental/OnHoverIn";
-import { OnHoverOut } from "../nodes/experimental/OnHoverOut";
+import { ADecorator } from "../BasicBehaveEngine/ADecorator";
+import { BehaveEngineNode } from "../BasicBehaveEngine/BehaveEngineNode";
+import { IBehaveEngine } from "../BasicBehaveEngine/IBehaveEngine";
+import { cubicBezier, easeFloat, easeFloat3, easeFloat4, linearFloat, slerpFloat4 } from "../BasicBehaveEngine/easingUtils";
+import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGraph";
+import { AnimationStart } from "../BasicBehaveEngine/nodes/animation/AnimationStart";
+import { AnimationStop } from "../BasicBehaveEngine/nodes/animation/AnimationStop";
+import { AnimationStopAt } from "../BasicBehaveEngine/nodes/animation/AnimationStopAt";
+import { OnSelect } from "../BasicBehaveEngine/nodes/experimental/OnSelect";
+import { OnHoverIn } from "../BasicBehaveEngine/nodes/experimental/OnHoverIn";
+import { OnHoverOut } from "../BasicBehaveEngine/nodes/experimental/OnHoverOut";
 import { Scene, Object3D, Raycaster, Vector2, Camera, PerspectiveCamera, Quaternion, Euler, AnimationClip, AnimationMixer, LoopRepeat, LoopOnce, Clock, Material, Mesh, MeshStandardMaterial, Intersection } from "three";
 
 export class ThreeDecorator extends ADecorator {
@@ -64,7 +64,11 @@ export class ThreeDecorator extends ADecorator {
         // @ts-ignore
         this.behaveEngine.startAnimation = this.startAnimation;
 
-        this.behaveEngine.animateProperty = this.animateProperty;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        this.behaveEngine.getParentNodeIndex = this.getParentNodeIndex;
+
+        // this.behaveEngine.animateProperty = this.animateProperty;
         this.behaveEngine.animateCubicBezier = this.animateCubicBezier;
         this.behaveEngine.getWorld = this.getWorld;
 
@@ -93,6 +97,15 @@ export class ThreeDecorator extends ADecorator {
 
     getWorld = (): any => {
         return this.world;
+    }
+
+    getParentNodeIndex = (nodeIndex: number) => {
+        const node = this.world.glTFNodes[nodeIndex];
+        if (!node || !node.parent) {
+            return undefined;
+        }
+        const parentNodeIndex = this.world.glTFNodes.findIndex((value: { uniqueId: number; }) => value.uniqueId === node.parent.uniqueId);
+        return parentNodeIndex !== -1 ? parentNodeIndex : undefined;
     }
 
     public extractBehaveGraphFromScene = (): any => {

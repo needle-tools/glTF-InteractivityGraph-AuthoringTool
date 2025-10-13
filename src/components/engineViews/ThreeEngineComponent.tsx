@@ -9,7 +9,7 @@ import { Spacer } from "../Spacer";
 import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { DOMEventBus } from "../../BasicBehaveEngine/eventBuses/DOMEventBus";
 import { KHR_interactivity_three } from "../../loaderExtensions/KHR_interactivity";
-import { ThreeDecorator } from "../../BasicBehaveEngine/decorators/ThreeDecorator";
+import { ThreeDecorator } from "../../decorators/ThreeDecorator";
 import { BasicBehaveEngine } from "../../BasicBehaveEngine/BasicBehaveEngine";
 import { WebGLRenderer, Scene, PerspectiveCamera, AnimationMixer, Clock, Group, AnimationClip, SRGBColorSpace, AmbientLight, DirectionalLight, Box3, Vector3, Object3D, Material, Mesh } from "three";
 
