@@ -199,12 +199,16 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             return { nodes: [], animations: [], materials: [], meshes: [] };
         }
 
-        SceneLoader.OnPluginActivatedObservable.add( (loader) => {
+        // OnPluginActivatedObservable is a static observable shared by every SceneLoader call in
+        // the app, so the added observer must be removed once this load is done, or every
+        // Play/reset permanently stacks another one onto it (leaks + O(n) work per future load).
+        const pluginObserver = SceneLoader.OnPluginActivatedObservable.add( (loader) => {
             if (loader.name === "gltf") {
                 ( loader as GLTFFileLoader ).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
             }
         });
         const container = await SceneLoader.LoadAssetContainerAsync("", url, sceneRef.current, undefined, ".glb");
+        SceneLoader.OnPluginActivatedObservable.remove(pluginObserver);
         container.addAllToScene();
         reportGlbExtensionDiagnostics();
 
@@ -220,7 +224,6 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             if (aIndex > bIndex) return 1;
             return 0;
         });
-        console.log(container.materials);
         //TODO: the true meshes of glTF are not the ones babylon exposes as objects (these are instantiated node meshes) we should find a way to pass the mesh itself and not the instantiation via a node
         // or else we have cases where two nodes refere to the single mesh => we will have 2 meshes where really we only truly have one in glTF
         return {
@@ -397,13 +400,16 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
                 createScene();
             }
             
-            SceneLoader.OnPluginActivatedObservable.add((loader) => {
+            // See the matching comment in resetScene: this observable is static/global, so the
+            // observer must be removed after this load or it stacks up forever across model loads.
+            const pluginObserver = SceneLoader.OnPluginActivatedObservable.add((loader) => {
                 if (loader.name === "gltf") {
                     (loader as GLTFFileLoader).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
                 }
             });
-            
+
             const container = await SceneLoader.LoadAssetContainerAsync("", url, sceneRef.current, undefined, ".glb");
+            SceneLoader.OnPluginActivatedObservable.remove(pluginObserver);
             container.addAllToScene();
             reportGlbExtensionDiagnostics();
 

@@ -54,6 +54,10 @@ export abstract class ADecorator implements IBehaveEngine {
 
     /** Tears down listeners/observers registered by this decorator. Call before discarding it. */
     dispose(): void {
+        // The wrapped engine's tick loop reschedules itself via setTimeout; without this it keeps
+        // running forever after dispose, processing a stale world/graph and stacking up another
+        // zombie loop on every subsequent Play/reload/model-load.
+        this.behaveEngine.pauseEventQueue();
         this.clearCustomEventListeners();
     }
 

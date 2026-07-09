@@ -20,6 +20,12 @@ interface InteractivityGraphContextType {
     // don't trigger a context re-render — the reactflow canvas owns its own visual state); a graph
     // *load* replaces its identity via setGraph, which is what drives the canvas rebuild.
     graph: AuthoredGraph,
+    // uid -> node and uid -> list-index lookups over graph.nodes, rebuilt once whenever the node set
+    // changes (load, add, remove) instead of each consumer scanning graph.nodes. AuthoringGraphNode
+    // did several such O(n) scans per render (own node, wired sources, node index), which is O(n^2)
+    // across a big graph; these make each an O(1) map hit.
+    nodeByUid: Map<string, AuthoredNode>,
+    nodeIndexByUid: Map<string, number>,
     diagnostics: IGraphDiagnostic[],
     setDiagnosticsForCategory: (category: DiagnosticCategory, diagnostics: IGraphDiagnostic[]) => void,
     clearDiagnostics: () => void,
@@ -73,6 +79,8 @@ export const initialGraph: AuthoredGraph = {
 
 const initialContext: InteractivityGraphContextType = {
     graph: initialGraph,
+    nodeByUid: new Map(),
+    nodeIndexByUid: new Map(),
     diagnostics: [],
     setDiagnosticsForCategory: () => {return null},
     clearDiagnostics: () => {return null},
@@ -108,6 +116,21 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // canvas can rebuild off that; interactive edits keep mutating this same object in place (no
     // setGraph) exactly as before, so they don't force a context re-render.
     const [graph, setGraph] = useState<AuthoredGraph>(initialGraph);
+    // Bumped whenever the node *set* changes in place (add/remove) without swapping graph identity,
+    // so the uid lookup maps below rebuild. A load swaps identity via setGraph and rebuilds them too.
+    const [nodesVersion, setNodesVersion] = useState(0);
+    const { nodeByUid, nodeIndexByUid } = useMemo(() => {
+        const byUid = new Map<string, AuthoredNode>();
+        const idxByUid = new Map<string, number>();
+        graph.nodes.forEach((n, i) => {
+            if (n.uid !== undefined) {
+                byUid.set(n.uid, n);
+                idxByUid.set(n.uid, i);
+            }
+        });
+        return { nodeByUid: byUid, nodeIndexByUid: idxByUid };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [graph, nodesVersion]);
     // last cycle state we surfaced as a diagnostic. getExecutableGraph runs during render (JSON
     // view), so we guard on this ref and defer the setState to avoid an update-during-render loop.
     const cycleReportedRef = useRef<boolean>(false);
@@ -255,104 +278,92 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         });
       
         // set up structure for nodes if one does not exist
-        if (!nodes.some(node => node.position.y !== 0 || node.position.x !== 0)) {
-          // Build adjacency list
-          const adjacencyList: Record<string, string[]> = {};
-          edges.forEach((edge) => {
-            const { source, target } = edge;
-            if (!adjacencyList[source]) {
-              adjacencyList[source] = [];
-            }
-            if (!adjacencyList[target]) {
-              adjacencyList[target] = [];
-            }
-            adjacencyList[source].push(target);
-            adjacencyList[target].push(source);
-          });
-      
-          const visited: Record<string, boolean> = {};
-          const disjointGraphs: string[][] = [];
-          const queue: string[] = [];
-      
-          // Traverse graph and assign disjointGraphs
-          nodes.forEach((node) => {
-            const { id } = node;
-            if (!visited[id]) {
-              visited[id] = true;
-              const disjointGraph: string[] = [];
-              queue.push(id);
-      
-              while (queue.length > 0) {
-                const currentNode = queue.shift() as string;
-                disjointGraph.push(currentNode);
-      
-                if (adjacencyList[currentNode]) {
-                  adjacencyList[currentNode].forEach((neighbor) => {
-                    if (!visited[neighbor]) {
-                      visited[neighbor] = true;
-                      queue.push(neighbor);
+                if (!nodes.some(node => node.position.y !== 0 || node.position.x !== 0)) {
+                    const nodeById = new Map<string, Node>(nodes.map((n) => [n.id, n]));
+                    const adjacencyList = new Map<string, string[]>();
+                    const outgoingBySource = new Map<string, string[]>();
+                    const incomingTargetCounts = new Map<string, number>();
+
+                    for (const node of nodes) {
+                        adjacencyList.set(node.id, []);
+                        outgoingBySource.set(node.id, []);
+                        incomingTargetCounts.set(node.id, 0);
                     }
-                  });
+
+                    for (const edge of edges) {
+                        adjacencyList.get(edge.source)?.push(edge.target);
+                        adjacencyList.get(edge.target)?.push(edge.source);
+                        outgoingBySource.get(edge.source)?.push(edge.target);
+                        incomingTargetCounts.set(edge.target, (incomingTargetCounts.get(edge.target) ?? 0) + 1);
+                    }
+
+                    const visited = new Set<string>();
+                    const disjointGraphs: string[][] = [];
+
+                    for (const node of nodes) {
+                        const id = node.id;
+                        if (visited.has(id)) { continue; }
+                        const component: string[] = [];
+                        const queue: string[] = [id];
+                        let queueIndex = 0;
+                        visited.add(id);
+
+                        while (queueIndex < queue.length) {
+                            const currentNode = queue[queueIndex++];
+                            component.push(currentNode);
+                            for (const neighbor of adjacencyList.get(currentNode) ?? []) {
+                                if (visited.has(neighbor)) { continue; }
+                                visited.add(neighbor);
+                                queue.push(neighbor);
+                            }
+                        }
+
+                        disjointGraphs.push(component);
+                    }
+
+                    let layerYAdditive = 0;
+                    let lastMaxY = 0;
+
+                    for (const disjointGraph of disjointGraphs) {
+                        let lastLayer = disjointGraph.filter(nodeId => (incomingTargetCounts.get(nodeId) ?? 0) === 0);
+                        if (lastLayer.length === 0 && disjointGraph.length > 0) {
+                            lastLayer = [disjointGraph[0]];
+                        }
+
+                        let y = 0;
+                        for (let i = 0; i < lastLayer.length; i++) {
+                            const node = nodeById.get(lastLayer[i]);
+                            if (!node) { continue; }
+                            node.position.x = -500;
+                            y = 500 * i + layerYAdditive;
+                            node.position.y = y;
+                            if (y > lastMaxY) {
+                                lastMaxY = y;
+                            }
+                        }
+
+                        let nextLayer = [...new Set(lastLayer.flatMap((nodeId) => outgoingBySource.get(nodeId) ?? []))];
+
+                        let xOffset = 0;
+                        while (nextLayer.length > 0) {
+                            lastLayer = nextLayer;
+                            for (let i = 0; i < lastLayer.length; i++) {
+                                const node = nodeById.get(lastLayer[i]);
+                                if (!node) { continue; }
+                                node.position.x = xOffset;
+                                y = 500 * i + layerYAdditive;
+                                node.position.y = y;
+                                if (y > lastMaxY) {
+                                    lastMaxY = y;
+                                }
+                            }
+
+                            nextLayer = [...new Set(lastLayer.flatMap((nodeId) => outgoingBySource.get(nodeId) ?? []))];
+                            xOffset += 500;
+                        }
+                        layerYAdditive = 800 + lastMaxY;
+                    }
                 }
-              }
-      
-              disjointGraphs.push(disjointGraph);
-            }
-          });
-      
-            // Y layer additive reflects the Y to start each new graph at. Should start with 0, and then on a subsequent disjoint graph, add some padding + the last max y.
-            let layerYAdditive = 0;
-            let lastMaxY = 0;
-      
-            console.log("DISJOINT GRAPHS");
-            console.log(disjointGraphs);
-            disjointGraphs.forEach((disjointGraph) => {  
-              // Each layer is a vertical column of a disjoint graph. Since we start at the leftmost column where x = -500 (starting point).
-              let lastLayer: string[] = disjointGraph.filter(nodeId => !edges.some(edge => edge.target === nodeId));
-              let y = 0;
-              for (let i = 0; i < lastLayer.length; i++) {
-                const node = nodes.find(node => node.id === lastLayer[i])!;
-                node.position.x = -500;
-                y = 500 * i + layerYAdditive;
-                node.position.y = y;
-                if (y > lastMaxY) {
-                  lastMaxY = y;
-                }
-              }
-      
-              let nextLayer: string[] = [];
-              for (const nodeId of lastLayer) {
-                const nodeOutEdges: Edge[] = edges.filter(edge => edge.source === nodeId);
-                nextLayer.push(...nodeOutEdges.map(edge => edge.target));
-              }
-              nextLayer = [...new Set(nextLayer)];
-      
-              let xOffset = 0;
-              while (nextLayer.length > 0) {
-                lastLayer = nextLayer;
-                for (let i = 0; i < lastLayer.length; i++) {
-                  const node = nodes.find(node => node.id === lastLayer[i])!;
-                  node.position.x = xOffset;
-                  y = 500 * i + layerYAdditive;
-                  node.position.y = y;
-                  if (y > lastMaxY) {
-                    lastMaxY = y;
-                  }
-                }
-      
-                nextLayer = [];
-                for (const nodeId of lastLayer) {
-                  const nodeOutEdges: Edge[] = edges.filter(edge => edge.source === nodeId);
-                  nextLayer.push(...nodeOutEdges.map(edge => edge.target));
-                }
-                nextLayer = [...new Set(nextLayer)];
-                xOffset += 500;
-              }
-              layerYAdditive = 800 + lastMaxY;
-          });
-      
-      
-        }
       
         return [nodes, edges, events, variables];
       };
@@ -791,16 +802,20 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     const addNode = (node: AuthoredNode) => {
         graph.nodes.push(node);
+        setNodesVersion(v => v + 1);
         markGraphDirty();
     };
 
     const removeNode = (uid: string) => {
         graph.nodes = graph.nodes.filter(node => node.uid !== uid);
+        setNodesVersion(v => v + 1);
         markGraphDirty();
     };
 
     const context: InteractivityGraphContextType = {
         graph: graph,
+        nodeByUid: nodeByUid,
+        nodeIndexByUid: nodeIndexByUid,
         diagnostics: diagnostics,
         setDiagnosticsForCategory: setDiagnosticsForCategory,
         clearDiagnostics: clearDiagnostics,

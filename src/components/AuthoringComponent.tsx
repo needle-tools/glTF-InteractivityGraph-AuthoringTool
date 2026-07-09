@@ -233,6 +233,11 @@ const DiagnosticsCounter = (props: { diagnostics: IGraphDiagnostic[], onJumpToNo
     );
 };
 
+// Above this node/edge count, the initial load is trickled in over multiple animation frames
+// instead of mounted in one synchronous burst (see the graph-load effect below).
+const LARGE_GRAPH_CHUNK_THRESHOLD = 300;
+const LARGE_GRAPH_CHUNK_SIZE = 250;
+
 const isOverScrollableElement = (target: Element | null, boundary: Element | null): boolean => {
     let el = target;
     while (el && el !== boundary) {
@@ -257,6 +262,8 @@ export const AuthoringComponent = () => {
     const [ancestorNodeIds, setAncestorNodeIds] = useState<Set<string>>(new Set());
     // ids of the edges connecting that upstream hierarchy, highlighted alongside the nodes
     const [ancestorEdgeIds, setAncestorEdgeIds] = useState<Set<string>>(new Set());
+    // progress of a large-graph chunked load (null while idle / for small graphs that load instantly)
+    const [loadProgress, setLoadProgress] = useState<{ done: number; total: number; phase: "nodes" | "edges" } | null>(null);
 
     const {graph, getAuthorGraph, addDeclaration, getDeclarationIndex, addNode, removeNode, allDiagnostics, graphDirty, markGraphDirty, requestPlay} = useContext(InteractivityGraphContext);
     // the graph object identity we last rebuilt the canvas from; a load replaces graph identity
@@ -681,6 +688,10 @@ export const AuthoringComponent = () => {
 
         const result = getAuthorGraph(graph);
         const loadedNodes: Node[] = result[0];
+        const loadedEdges: Edge[] = result[1];
+        // O(1) lookup instead of graph.nodes.find(...) per node, which was O(n^2) and noticeably
+        // slow on graphs with thousands of nodes (e.g. the KHR_interactivity math test suite).
+        const graphNodeByUid = new Map(graph.nodes.map((n) => [n.uid, n]));
         for (const node of loadedNodes) {
             node.data.op = node.type;
             node.data.recolorEdges = recolorEdges;
@@ -689,23 +700,88 @@ export const AuthoringComponent = () => {
             if (!isKnownOp) {
                 node.type = "NoOp";
             }
+            // Seed a dimension estimate so reactflow's onlyRenderVisibleElements can cull off-screen
+            // nodes immediately. Without it a node's width/height are undefined until measured, and
+            // reactflow treats unmeasured nodes as always-visible — so on a large graph it would
+            // mount every node just to measure it (the crash). The real size replaces this once the
+            // node actually mounts; it only needs to be a generous over-estimate for culling.
+            node.width = 260;
+            node.height = 200;
             // seed the model with the (possibly auto-laid-out) positions immediately, so an
             // export right after load carries them instead of waiting for a drag (the old 5s
             // position timer used to backfill these)
-            const graphNode = graph.nodes.find(graphNode => graphNode.uid === node.id);
+            const graphNode = graphNodeByUid.get(node.id);
             if (graphNode !== undefined) {
                 graphNode.metadata = {positionX: node.position.x, positionY: node.position.y};
             }
         }
-        setNodes(loadedNodes);
-        setTimeout(() => {
+
+        // Large graphs open at overview zoom so their nodes mount as lightweight LOD placeholders
+        // from the very first frame (below AuthoringGraphNode's LOD threshold) rather than as full
+        // nodes that then zoom out — the initial full-detail burst is exactly what exhausted memory.
+        // The trailing fitView keeps a big graph zoomed out anyway (clamped to minZoom, 0.1).
+        if (loadedNodes.length > LARGE_GRAPH_CHUNK_THRESHOLD) {
+            reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 0.1 });
+        }
+
+        let cancelled = false;
+        // A large graph is trickled in over multiple frames, so show a progress overlay while it
+        // does; small graphs commit in one shot and never show it. Progress counts nodes + edges
+        // committed so far against the total of both.
+        const totalItems = loadedNodes.length + loadedEdges.length;
+        const isLargeGraph = loadedNodes.length > LARGE_GRAPH_CHUNK_THRESHOLD;
+        let committed = 0;
+        if (isLargeGraph) { setLoadProgress({ done: 0, total: totalItems, phase: "nodes" }); }
+        const reportProgress = (added: number, phase: "nodes" | "edges") => {
+            committed += added;
+            if (isLargeGraph && !cancelled) { setLoadProgress({ done: committed, total: totalItems, phase }); }
+        };
+
+        // Very large graphs (thousands of nodes, e.g. the KHR_interactivity math test suite) can
+        // blow the browser's memory/CPU budget if mounted into ReactFlow in one synchronous burst,
+        // crashing the tab before the first paint. Trickle them in over multiple animation frames
+        // instead, so the browser can breathe (and paint) between chunks. Small graphs are set in
+        // one shot, unchanged from before.
+        const commitInChunks = <T, >(items: T[], commit: (updater: (prev: T[]) => T[]) => void, phase: "nodes" | "edges", onDone: () => void) => {
+            if (items.length <= LARGE_GRAPH_CHUNK_THRESHOLD) {
+                commit(() => items);
+                reportProgress(items.length, phase);
+                onDone();
+                return;
+            }
+            commit(() => []);
+            let i = 0;
+            const step = () => {
+                if (cancelled) { return; }
+                const chunk = items.slice(i, i + LARGE_GRAPH_CHUNK_SIZE);
+                commit((prev) => [...prev, ...chunk]);
+                i += chunk.length;
+                reportProgress(chunk.length, phase);
+                if (i < items.length) {
+                    requestAnimationFrame(step);
+                } else {
+                    onDone();
+                }
+            };
+            requestAnimationFrame(step);
+        };
+
+        commitInChunks(loadedNodes, setNodes, "nodes", () => {
+            if (cancelled) { return; }
             // react flow has an issue connecting handles for our custom nodes since they heavily rely on the node data
             // "Couldn’t create edge for source/target handle id: “some-id”; edge id" I tried to fix this using useUpdateNodeInternals()
             // to alert the AuthoringGraphNode of changes which would update the handles, it seems the hook does not work properly as advertised
             // soI am just adding a small delay between the node handles synthesizing synchronously and the edges being created in an async event
-            setEdges(result[1]);
-            reactFlowInstance?.fitView();
-        }, 1000);
+            setTimeout(() => {
+                if (cancelled) { return; }
+                commitInChunks(loadedEdges, setEdges, "edges", () => {
+                    if (!cancelled) { reactFlowInstance?.fitView(); }
+                    setLoadProgress(null);
+                });
+            }, 1000);
+        });
+
+        return () => { cancelled = true; setLoadProgress(null); };
     }, [graph, reactFlowInstance]);
 
     useEffect(() => {
@@ -811,13 +887,36 @@ export const AuthoringComponent = () => {
             <p>You can inspect and adjust the Interactivity Graph here.</p>
             <div
                 ref={reactFlowRef}
-                style={{width: "90%", height: "90%", border: "1px solid black", margin: "0 auto"}}
+                style={{width: "90%", height: "90%", border: "1px solid black", margin: "0 auto", position: "relative"}}
                 data-testid={"authoring-view"}
                 onContextMenuCapture={suppressBrowserContextMenu}
                 onContextMenu={suppressBrowserContextMenu}
             >
+                <RenderIf shouldShow={loadProgress !== null}>
+                    <div className={"graph-load-overlay"}>
+                        <div className={"graph-load-card"}>
+                            <div className={"graph-load-spinner"} />
+                            <div className={"graph-load-label"}>
+                                {loadProgress?.phase === "edges" ? "Connecting edges…" : "Loading nodes…"}
+                            </div>
+                            <div className={"graph-load-track"}>
+                                <div
+                                    className={"graph-load-fill"}
+                                    style={{ width: `${loadProgress && loadProgress.total > 0 ? Math.round((loadProgress.done / loadProgress.total) * 100) : 0}%` }}
+                                />
+                            </div>
+                            <div className={"graph-load-count"}>
+                                {loadProgress?.done ?? 0} / {loadProgress?.total ?? 0}
+                            </div>
+                        </div>
+                    </div>
+                </RenderIf>
                 <ReactFlow
                     id={"flow-container"}
+                    // Large graphs (thousands of nodes) otherwise mount every node's DOM/React
+                    // tree regardless of viewport, which is what was crashing the tab on big
+                    // KHR_interactivity test files — only mount nodes actually on/near screen.
+                    onlyRenderVisibleElements={true}
                     nodes={displayNodes}
                     onNodesChange={onNodesChange}
                     edges={displayEdges}

@@ -7,6 +7,73 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* ---- large-graph load progress overlay ---- */
+
+.graph-load-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(1px);
+}
+
+.graph-load-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 28px;
+    min-width: 240px;
+    background: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.graph-load-spinner {
+    width: 26px;
+    height: 26px;
+    border: 3px solid #e0e0e0;
+    border-top-color: #4a90d9;
+    border-radius: 50%;
+    animation: graph-load-spin 0.8s linear infinite;
+}
+
+@keyframes graph-load-spin {
+    to { transform: rotate(360deg); }
+}
+
+.graph-load-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+}
+
+.graph-load-track {
+    width: 220px;
+    height: 6px;
+    background: #ececec;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.graph-load-fill {
+    height: 100%;
+    background: #4a90d9;
+    border-radius: 3px;
+    transition: width 0.1s linear;
+}
+
+.graph-load-count {
+    font-size: 11px;
+    color: #777;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ---- top menu bar (replaces the old top-right stacked button panel) ---- */
 
 .graph-menu-bar {
@@ -329,6 +396,18 @@
 
 .flow-node-body {
     padding: 16px;
+}
+
+/* level-of-detail placeholder (rendered at overview zoom): a compact stack of bare socket handles
+   with no controls. Each socket gets its own short row so reactflow measures a distinct vertical
+   position per handle and edges land in roughly the right place. */
+.flow-node-body--lod {
+    padding: 8px 16px;
+}
+
+.flow-node-lod-socket {
+    position: relative;
+    height: 16px;
 }
 
 /* consistent vertical layout for the configuration section */

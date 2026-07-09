@@ -4203,6 +4203,16 @@ export const interactivityNodeSpecs: AuthoredNode[] = rawNodeSpecs.map((node, in
     declaration: index,
 }));
 
+// op -> spec lookup so callers don't scan interactivityNodeSpecs (linear over the whole catalogue)
+// on every node render. Built once; the spec list is static.
+const nodeSpecByOp = new Map<string, AuthoredNode>(
+    interactivityNodeSpecs.map((spec) => [spec.op!, spec]),
+);
+
+/** The spec for an op, or undefined if unknown. O(1) replacement for interactivityNodeSpecs.find. */
+export const getNodeSpecByOp = (op: string | undefined): AuthoredNode | undefined =>
+    op === undefined ? undefined : nodeSpecByOp.get(op);
+
 
 /**
  * Spec-declared socket names that share `group` on a node. Membership is read from the immutable

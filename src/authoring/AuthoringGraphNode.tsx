@@ -1,12 +1,12 @@
-import { CSSProperties, useCallback, useContext, useEffect, useReducer, useRef, useState } from "react";
-import { Handle, Position, useReactFlow, useUpdateNodeInternals } from "reactflow";
+import { CSSProperties, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Handle, Position, useReactFlow, useStore, useUpdateNodeInternals } from "reactflow";
 import { OverlayTrigger, Tooltip } from "react-bootstrap";
 
 import { RenderIf } from "../components/RenderIf";
 import { NodeInfoTooltip, NodeTooltipSections } from "./NodeInfoTooltip";
 import { IInteractivityFlow, IInteractivityConfigurationValue, IInteractivityEvent, IInteractivityVariable, InteractivityValueType, InteractivityConfigurationValueType } from "../BasicBehaveEngine/types/InteractivityGraph";
 import { AuthoredValue, AuthoredNode, NodeSpecFlag } from "./spec/AuthoredGraph";
-import { getTypeGroupMembers, hasNodeSpecFlag, interactivityNodeSpecs, resolveOutputSocketType, resolveTypeGroupType, standardTypes } from "./spec/nodes";
+import { getNodeSpecByOp, getTypeGroupMembers, hasNodeSpecFlag, resolveOutputSocketType, resolveTypeGroupType, standardTypes } from "./spec/nodes";
 import { InteractivityGraphContext } from "../InteractivityGraphContext";
 import { computeConfigDrivenSockets, mergeFlowSockets, mergeValueSockets } from "./socketReconciler";
 import { PointerConfigField } from "./PointerConfigField";
@@ -20,10 +20,66 @@ import { InterpolationCurveField, ControlPoint } from "./InterpolationCurveField
 import { CustomEventSendMonitor, CustomEventReceiveTrigger, PointerEventMonitor } from "./CustomEventControls";
 import "../css/flowNodes.css";
 
+// Below this canvas zoom the node renders as a lightweight level-of-detail placeholder (header +
+// bare socket handles only). Large graphs (thousands of nodes) can't mount every full node — with
+// its socket controls, tooltips and O(n) graph scans — at once without exhausting the tab's memory;
+// when zoomed out to an overview you can't read those details anyway, so we skip building them.
+const LOD_ZOOM_THRESHOLD = 0.4;
+
 // a setState-style updater: either the next value directly, or a function of the previous value
 type Updater<T> = T | ((prev: T) => T);
 const applyUpdate = <T,>(next: Updater<T>, prev: T): T =>
     (typeof next === "function" ? (next as (p: T) => T)(prev) : next);
+
+const isSameScalar = (a: unknown, b: unknown): boolean =>
+    a === b || (typeof a === "number" && typeof b === "number" && Number.isNaN(a) && Number.isNaN(b));
+
+const areArraysEqual = (a: unknown[] | undefined, b: unknown[] | undefined): boolean => {
+    if (a === b) { return true; }
+    if (!a || !b) { return false; }
+    if (a.length !== b.length) { return false; }
+    for (let i = 0; i < a.length; i++) {
+        if (!isSameScalar(a[i], b[i])) { return false; }
+    }
+    return true;
+};
+
+const areAuthoredValuesEqual = (a: AuthoredValue | undefined, b: AuthoredValue | undefined): boolean => {
+    if (a === b) { return true; }
+    if (!a || !b) { return false; }
+    return (
+        a.node === b.node &&
+        a.socket === b.socket &&
+        a.type === b.type &&
+        a.typeGroup === b.typeGroup &&
+        a.description === b.description &&
+        areArraysEqual(a.typeOptions, b.typeOptions) &&
+        areArraysEqual(a.value, b.value)
+    );
+};
+
+const areFlowEntriesEqual = (a: IInteractivityFlow | undefined, b: IInteractivityFlow | undefined): boolean => {
+    if (a === b) { return true; }
+    if (!a || !b) { return false; }
+    return a.node === b.node && a.socket === b.socket;
+};
+
+const areRecordEntriesEqual = <T,>(
+    a: Record<string, T>,
+    b: Record<string, T>,
+    compare: (left: T | undefined, right: T | undefined) => boolean,
+): boolean => {
+    if (a === b) { return true; }
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) { return false; }
+    for (const key of aKeys) {
+        if (!(key in b) || !compare(a[key], b[key])) {
+            return false;
+        }
+    }
+    return true;
+};
 
 const refSelectButtonStyle: CSSProperties = {
     height: 30,
@@ -106,9 +162,12 @@ const getComponentTitle = (layout: { rows: number; cols: number }, row: number, 
  */
 
 export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
-    const { graph, gltfObjectModel, diagnostics, reportNodeWarnings, markGraphDirty } = useContext(InteractivityGraphContext);
+    const { graph, nodeByUid, nodeIndexByUid, gltfObjectModel, diagnostics, reportNodeWarnings, markGraphDirty } = useContext(InteractivityGraphContext);
     const updateNodeInternals = useUpdateNodeInternals();
     const { deleteElements } = useReactFlow();
+    // Select a boolean (not the raw zoom) so a node only re-renders when it crosses the LOD
+    // threshold, not on every wheel tick while panning/zooming within the same detail level.
+    const isLod = useStore((s) => s.transform[2] < LOD_ZOOM_THRESHOLD);
     const uid = props.data.uid;
     const [node, setNode] = useState<AuthoredNode | null>(null);
     // which ref input socket currently has the object picker open (null = closed)
@@ -126,6 +185,10 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     const inputValues = node?.values?.input ?? {};
     const outputValues = node?.values?.output ?? {};
     const configuration = node?.configuration ?? {};
+    const inputFlowSocketSignature = useMemo(() => Object.keys(inputFlows).sort().join(","), [inputFlows]);
+    const outputFlowSocketSignature = useMemo(() => Object.keys(outputFlows).sort().join(","), [outputFlows]);
+    const handleSignature = `${uid}|in:${inputFlowSocketSignature}|out:${outputFlowSocketSignature}`;
+    const lastHandleSignatureRef = useRef<string>("");
 
     // The config-driven socket reconciler (evaluateConfigurationWhichChangeSockets) runs once
     // automatically on every node mount/resolve — including right after a graph load — and
@@ -190,9 +253,9 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     };
 
     useEffect(() => {
-        const node: AuthoredNode = graph.nodes.find(node => node.uid === uid)!;
+        const node: AuthoredNode = nodeByUid.get(uid)!;
         setNode(node);
-    }, [graph, uid]);
+    }, [nodeByUid, uid]);
 
     // node just resolved/changed: run the reconciler once so configuration-driven sockets
     // (flow/switch cases, variable/set variables, ...) are materialised into the model. Reads come
@@ -215,8 +278,19 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     // handle geometry. Refresh it so edges retargeted to the new socket id re-attach instead of
     // detaching (see the "Couldn't create edge for source handle id" note in AuthoringComponent).
     useEffect(() => {
-        updateNodeInternals(uid);
-    }, [uid, updateNodeInternals, Object.keys(inputFlows).join(","), Object.keys(outputFlows).join(",")]);
+        if (lastHandleSignatureRef.current === handleSignature) { return; }
+        lastHandleSignatureRef.current = handleSignature;
+        const rafId = window.requestAnimationFrame(() => updateNodeInternals(uid));
+        return () => window.cancelAnimationFrame(rafId);
+    }, [handleSignature, uid, updateNodeInternals]);
+
+    // The LOD placeholder lays its handles out differently from the full node, so on a transition
+    // between the two reactflow's cached handle geometry is stale — refresh it so edges reattach to
+    // the handles' new positions instead of dangling at the old ones.
+    useEffect(() => {
+        const rafId = window.requestAnimationFrame(() => updateNodeInternals(uid));
+        return () => window.cancelAnimationFrame(rafId);
+    }, [isLod, uid, updateNodeInternals]);
 
     const onChangeParameter = useCallback((evt: { target: { value: any; }; }) => {
         const socketId = (evt.target as HTMLInputElement).id.replace("in-", "");
@@ -384,7 +458,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
         inputFlows: Record<string, IInteractivityFlow>,
         outputFlows: Record<string, IInteractivityFlow>) => {
         const nodeType = node?.op;
-        const nodeSpec: AuthoredNode | undefined = interactivityNodeSpecs.find(node => node.op === nodeType);
+        const nodeSpec: AuthoredNode | undefined = getNodeSpecByOp(nodeType);
 
         // ops with a fixed (non-configuration-driven) socket set fully rely on the spec/config-key
         // lists below to decide what still exists; ops carrying this flag instead own their current
@@ -443,10 +517,18 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
             outputFlowsToSet = { ...outputFlowsToSet, ...outputFlows };
         }
 
-        setOutputFlows(outputFlowsToSet);
-        setInputFlows(inputFlowsToSet);
-        setInputValues(inputValuesToSet);
-        setOutputValues(outputValuesToSet);
+        if (!areRecordEntriesEqual(outputFlows, outputFlowsToSet, areFlowEntriesEqual)) {
+            setOutputFlows(outputFlowsToSet);
+        }
+        if (!areRecordEntriesEqual(inputFlows, inputFlowsToSet, areFlowEntriesEqual)) {
+            setInputFlows(inputFlowsToSet);
+        }
+        if (!areRecordEntriesEqual(inputValues, inputValuesToSet, areAuthoredValuesEqual)) {
+            setInputValues(inputValuesToSet);
+        }
+        if (!areRecordEntriesEqual(outputValues, outputValuesToSet, areAuthoredValuesEqual)) {
+            setOutputValues(outputValuesToSet);
+        }
     }, [inputValues, outputValues, inputFlows, outputFlows, node, configuration, graph.variables, props.data.events, props.data.isNoOp])
 
     const stringToListOfNumbers = (inputString: string) => {
@@ -478,7 +560,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
 
     // immutable spec for this node — the source of truth for typeGroup membership (a wired socket's
     // live object loses its typeGroup tag when overwritten by the connection link)
-    const nodeSpec = interactivityNodeSpecs.find(n => n.op === node?.op);
+    const nodeSpec = getNodeSpecByOp(node?.op);
 
     // Resolve the concrete type shared by every socket tagged with `group` on this node instance.
     // Delegates to the shared resolver, fed this node's freshest values (local state), so the
@@ -530,7 +612,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     const getOwnSocketType = (socket: string, value: AuthoredValue): number | undefined => {
         const link = node?.values?.input?.[socket] ?? value;
         if (link?.node !== undefined) {
-            const sourceNode = graph.nodes.find(n => n.uid === link.node);
+            const sourceNode = nodeByUid.get(String(link.node));
             // Resolve the source's output the same way its outgoing wire is colored
             // (resolveOutputSocketType in getAuthorGraph) — group-aware — instead of reading the raw
             // stored `.type`. A grouped source (e.g. a math node whose group resolved to float via a
@@ -594,7 +676,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     const resolveSocketType = (socket: string, value: AuthoredValue): number | undefined => {
         const link = node?.values?.input?.[socket] ?? value;
         if (link?.node !== undefined) {
-            const sourceNode = graph.nodes.find(n => n.uid === link.node);
+            const sourceNode = nodeByUid.get(String(link.node));
             // group-aware resolution of the source output (matches the wire color) — see getOwnSocketType
             const sourceType = resolveOutputSocketType(sourceNode, link.socket!, graph.nodes);
             if (sourceType !== undefined) {
@@ -709,15 +791,15 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     };
 
     // this node's position in the graph's node list — the index used by KHR_interactivity
-    // node references (e.g. configuration.nodeIndex) elsewhere in the graph
-    const nodeIndex = graph.nodes.findIndex((n) => n.uid === uid);
+    // node references (e.g. configuration.nodeIndex) elsewhere in the graph. O(1) via the shared
+    // uid->index map (rebuilt only when the node set changes) instead of an O(n) scan per render.
+    const nodeIndex = nodeIndexByUid.get(uid) ?? -1;
 
     // NodeIndex that a given uid resolves to, for annotating a wired socket's tooltip row with
     // what it's connected to.
     const nodeIndexForUid = (targetUid: string | number | undefined): number | undefined => {
         if (targetUid === undefined) { return undefined; }
-        const idx = graph.nodes.findIndex((n) => n.uid === targetUid);
-        return idx >= 0 ? idx : undefined;
+        return nodeIndexByUid.get(String(targetUid));
     };
 
     // reverse-lookup: every node whose flows.output points at (this node's uid, socket) — i.e.
@@ -745,8 +827,11 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
 
     // this node instance's own live socket warnings (missing values, type mismatches, type-group
     // conflicts) - recomputed every render as the user edits, unlike specDiagnosticLines which are
-    // fixed at load time
-    const liveWarningLines = Object.entries(inputValues)
+    // fixed at load time. Each socket's type resolution scans graph.nodes (O(n)), so skip it in LOD
+    // mode: at overview zoom you're not editing, and running it for every node of a huge graph at
+    // once is the O(n^2) that makes the overview unusable. Nodes report their live warnings when
+    // zoomed in to full detail (which unmounts the placeholder and re-runs this).
+    const liveWarningLines = isLod ? [] : Object.entries(inputValues)
         .map(([socket, value]) => {
             const resolvedType = resolveSocketType(socket, value);
             return getInputTypeMismatch(socket, value, resolvedType) ?? getGroupTypeConflict(socket, value) ?? getMissingValueWarning(socket, value);
@@ -774,7 +859,11 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
         return () => reportNodeWarnings(uid, nodeIndex, node?.op, []);
     }, [uid]);
 
-    const headerTooltipSections: NodeTooltipSections = {
+    // Building the flow/value sections walks graph.nodes for reverse references (findFlowSourceIndices
+    // / findValueConsumerIndices scan every node). The header tooltip is hover-only, so this is a
+    // function called lazily from the OverlayTrigger's render-prop overlay when the tooltip actually
+    // opens — not eagerly on every render of every node (which was pure waste for un-hovered nodes).
+    const buildHeaderTooltipSections = (): NodeTooltipSections => ({
         nodeIndex,
         description: node?.description,
         warnings: typeMismatchLines,
@@ -795,7 +884,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
             description: value.description,
             connectedNodeIndices: findValueConsumerIndices(socket),
         })),
-    };
+    });
 
     const headerContent = (
         <div className={"flow-node-header"} style={{ background: getNodeCategoryColor(node?.op || "") }}>
@@ -816,6 +905,52 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
         </div>
     );
 
+    // Level-of-detail placeholder: at overview zoom render just the header and the bare socket
+    // handles (no OverlayTrigger/popper, no per-socket controls, no type resolution). This keeps the
+    // DOM/fiber weight and per-render cost of a huge graph bounded so it can be viewed as a whole,
+    // while edges still attach because every handle id is preserved. Zooming in past the threshold
+    // swaps the full node back in.
+    if (isLod) {
+        return (
+            <div className={`flow-node flow-node--lod${typeMismatchLines.length > 0 ? " flow-node--warning" : ""}`}>
+                {headerContent}
+                <div className={"flow-node-body flow-node-body--lod"}>
+                    <div className={"flow-node-row"}>
+                        <div>
+                            {Object.keys(inputFlows).map((socket) => (
+                                <div key={`if-${socket}`} className={"flow-node-lod-socket"}>
+                                    <Handle type="target" position={Position.Left} id={socket} style={handleStyle(FLOW_COLOR, "left")} />
+                                </div>
+                            ))}
+                            {Object.entries(inputValues).map(([socket, value]) => (
+                                <div key={`iv-${socket}`} className={"flow-node-lod-socket"}>
+                                    <Handle type="target" position={Position.Left} id={socket} style={handleStyle(getColorForTypeIndex(value.type), "left")} />
+                                </div>
+                            ))}
+                            <RenderIf shouldShow={props.data.isNoOp === true}>
+                                <div className={"flow-node-lod-socket"}>
+                                    <Handle type="target" position={Position.Left} id={"in"} style={handleStyle(FLOW_COLOR, "left")} />
+                                </div>
+                            </RenderIf>
+                        </div>
+                        <div className={"flow-node-outputs"}>
+                            {Object.keys(outputFlows).map((socket) => (
+                                <div key={`of-${socket}`} className={"flow-node-lod-socket"}>
+                                    <Handle type="source" position={Position.Right} id={socket} style={handleStyle(FLOW_COLOR, "right")} />
+                                </div>
+                            ))}
+                            {Object.entries(outputValues).map(([socket, value]) => (
+                                <div key={`ov-${socket}`} className={"flow-node-lod-socket"}>
+                                    <Handle type="source" position={Position.Right} id={socket} style={handleStyle(getColorForTypeIndex(value.type), "right")} />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={`flow-node${isPointerNode ? " flow-node--pointer" : ""}${typeMismatchLines.length > 0 ? " flow-node--warning" : ""}`}>
             {/* while the node is being dragged, skip OverlayTrigger entirely so the tooltip can't
@@ -825,11 +960,13 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                 <OverlayTrigger
                     placement="bottom"
                     delay={{ show: 300, hide: 0 }}
-                    overlay={
-                        <Tooltip id={`node-header-tooltip-${uid}`} className="node-info-tooltip">
-                            <NodeInfoTooltip sections={headerTooltipSections} />
+                    // render-prop overlay: react-bootstrap only calls this when the tooltip opens, so
+                    // the expensive reverse-reference scan runs on hover instead of every render
+                    overlay={(overlayProps) => (
+                        <Tooltip {...overlayProps} id={`node-header-tooltip-${uid}`} className="node-info-tooltip">
+                            <NodeInfoTooltip sections={buildHeaderTooltipSections()} />
                         </Tooltip>
-                    }
+                    )}
                 >
                     {headerContent}
                 </OverlayTrigger>
