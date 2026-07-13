@@ -4,6 +4,7 @@ import {EngineType} from "./components/engineViews/EngineType";
 import {RenderIf} from "./components/RenderIf";
 import {LoggingEngineComponent} from "./components/engineViews/LoggingEngineComponent";
 import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComponent";
+import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponent";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
 import { SampleSidebar } from './components/SampleSidebar';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
@@ -26,8 +27,24 @@ const viewModeFromString = (value: string | null): ViewMode | undefined => {
   }
 };
 
+const engineTypeFromString = (value: string | null): EngineType | undefined => {
+  switch (value?.toLowerCase()) {
+    case 'logging': return EngineType.LOGGING;
+    case 'babylon': return EngineType.BABYLON;
+    case 'three': return EngineType.THREE;
+    default: return undefined;
+  }
+};
+
+const getInitialEngineType = (): EngineType => {
+  const engineParam = new URLSearchParams(window.location.search).get('engine');
+  return engineTypeFromString(engineParam)
+    ?? engineTypeFromString(localStorage.getItem(ENGINE_TYPE_STORAGE_KEY))
+    ?? EngineType.BABYLON;
+};
+
 export const App = () => {
-  const [engineType, setEngineType] = useState<EngineType>(EngineType.BABYLON);
+  const [engineType, setEngineType] = useState<EngineType>(getInitialEngineType);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   // which pane(s) of the workspace are shown — hiding a pane leaves it mounted (see
   // app-split__pane--hidden) so switching back doesn't pay for rebuilding the canvas or graph
@@ -79,6 +96,9 @@ export const App = () => {
           break;
         case 'babylon':
           setEngineType(EngineType.BABYLON);
+          break;
+        case 'three':
+          setEngineType(EngineType.THREE);
           break;
         default:
           // Load from localStorage if URL param is invalid
@@ -139,6 +159,9 @@ export const App = () => {
             break;
           case 'babylon':
             setEngineType(EngineType.BABYLON);
+            break;
+          case 'three':
+            setEngineType(EngineType.THREE);
             break;
         }
       }
@@ -219,6 +242,9 @@ export const App = () => {
                 <RenderIf shouldShow={engineType === EngineType.BABYLON}>
                     <BabylonEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
+                <RenderIf shouldShow={engineType === EngineType.THREE}>
+                    <ThreeEngineComponent modelUrl={modelUrl} />
+                </RenderIf>
             </div>
             <RenderIf shouldShow={viewMode === "both"}>
                 <div
@@ -260,6 +286,7 @@ interface EngineSelectorProps {
 // (and so a tab is still an <li>, which the e2e spec clicks).
 const ENGINE_TABS: ReadonlyArray<{ engine: EngineType; label: string }> = [
     { engine: EngineType.BABYLON, label: "Babylon Engine" },
+    { engine: EngineType.THREE, label: "Three.js" },
     { engine: EngineType.LOGGING, label: "Logging Engine" },
 ];
 
