@@ -7,7 +7,9 @@ const CATEGORY_ORDER = [
     "math",
     "flow",
     "event",
+    "animation",
     "InterGlb",
+    "Models",
     "Overview",
     "extras",
     "prerequisites",
@@ -176,7 +178,20 @@ function collectFailures(results) {
         if (path.basename(testResult.testFilePath) === "validation.asset.ts") {
             continue;
         }
-        for (const assertion of testResult.testResults ?? []) {
+        const assertions = testResult.testResults ?? [];
+        if (assertions.length === 0 && testResult.failureMessage) {
+            const engine = getEngine(testResult.testFilePath, []);
+            const asset = `${path.basename(testResult.testFilePath)} suite`;
+            byAsset.set(`${engine}\0${asset}`, {
+                engine,
+                asset,
+                failed: 1,
+                total: 1,
+                reason: cleanFailureMessage(testResult.failureMessage),
+                details: [],
+            });
+        }
+        for (const assertion of assertions) {
             if (assertion.status !== "passed" && assertion.status !== "failed") {
                 continue;
             }
@@ -238,6 +253,9 @@ function getCategory(testFilePath, assertion) {
     }
     if (file.startsWith("interglb")) {
         return "InterGlb";
+    }
+    if (file === "models.asset.ts") {
+        return "Models";
     }
     if (file === "overview.asset.ts") {
         return "Overview";
@@ -438,7 +456,7 @@ function collectCoverageScope(results) {
             scope.singleFileAssets = true;
         } else if (file === "overview.asset.ts") {
             scope.overview = true;
-        } else if (file === "interglb.asset.ts" || file === "interglb.babylon.asset.ts") {
+        } else if (file === "interglb.asset.ts" || file === "interglb.babylon.asset.ts" || file === "interglb.three.asset.ts") {
             scope.interGlb = true;
         }
     }

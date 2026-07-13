@@ -54,7 +54,7 @@ const KHR = "extensions/2.0/Khronos";
 
 export class GlTFObjectModelDecorator extends ADecorator {
     protected objectModel: GlTFObjectModel;
-    private pointerBindings = new Map<string, PointerBinding>();
+    protected pointerBindings = new Map<string, PointerBinding>();
     private activeAnimations = new Map<number, { timeout: ReturnType<typeof setTimeout> | null; startTime: number; endTime: number; speed: number; startedAt: number; token: number }>();
     private animationToken = 0;
 
@@ -188,12 +188,12 @@ export class GlTFObjectModelDecorator extends ADecorator {
         this.behaveEngine.clearPointerInterpolation(path);
     }
 
-    private pointer(path: string, typeName: string, get: PointerGetter, set: PointerSetter = ignoreSet, readOnly = false): void {
+    protected pointer(path: string, typeName: string, get: PointerGetter, set: PointerSetter = ignoreSet, readOnly = false): void {
         this.pointerBindings.set(path, { get, set, typeName, readOnly });
         this.registerJsonPointer(path, () => this.getPathValue(path), (_path, value) => this.setPathValue(path, value), typeName, readOnly);
     }
 
-    private scalarPointer(path: string, typeName: string, get: PointerGetter, set: PointerSetter = ignoreSet, readOnly = false): void {
+    protected scalarPointer(path: string, typeName: string, get: PointerGetter, set: PointerSetter = ignoreSet, readOnly = false): void {
         this.pointer(path, typeName, () => [get()], (value) => set(scalar(value)), readOnly);
     }
 

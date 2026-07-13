@@ -4,6 +4,7 @@ import {EngineType} from "./components/engineViews/EngineType";
 import {RenderIf} from "./components/RenderIf";
 import {LoggingEngineComponent} from "./components/engineViews/LoggingEngineComponent";
 import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComponent";
+import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponent";
 import {Tab, Tabs} from "react-bootstrap";
 import {Spacer} from "./components/Spacer";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
@@ -13,8 +14,24 @@ import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 // Storage key for persisting the engine type
 const ENGINE_TYPE_STORAGE_KEY = 'interactivity-graph-engine-type';
 
+const engineTypeFromString = (value: string | null): EngineType | undefined => {
+  switch (value?.toLowerCase()) {
+    case 'logging': return EngineType.LOGGING;
+    case 'babylon': return EngineType.BABYLON;
+    case 'three': return EngineType.THREE;
+    default: return undefined;
+  }
+};
+
+const getInitialEngineType = (): EngineType => {
+  const engineParam = new URLSearchParams(window.location.search).get('engine');
+  return engineTypeFromString(engineParam)
+    ?? engineTypeFromString(localStorage.getItem(ENGINE_TYPE_STORAGE_KEY))
+    ?? EngineType.BABYLON;
+};
+
 export const App = () => {
-  const [engineType, setEngineType] = useState<EngineType>(EngineType.BABYLON);
+  const [engineType, setEngineType] = useState<EngineType>(getInitialEngineType);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   // fraction of the split row's width given to the left (engine) panel; the divider drags this
   const [splitRatio, setSplitRatio] = useState(0.5);
@@ -63,6 +80,9 @@ export const App = () => {
         case 'babylon':
           setEngineType(EngineType.BABYLON);
           break;
+        case 'three':
+          setEngineType(EngineType.THREE);
+          break;
         default:
           // Load from localStorage if URL param is invalid
           const storedEngineType = localStorage.getItem(ENGINE_TYPE_STORAGE_KEY);
@@ -105,6 +125,9 @@ export const App = () => {
             break;
           case 'babylon':
             setEngineType(EngineType.BABYLON);
+            break;
+          case 'three':
+            setEngineType(EngineType.THREE);
             break;
         }
       }
@@ -180,6 +203,9 @@ export const App = () => {
                 <RenderIf shouldShow={engineType === EngineType.BABYLON}>
                     <BabylonEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
+                <RenderIf shouldShow={engineType === EngineType.THREE}>
+                    <ThreeEngineComponent modelUrl={modelUrl} />
+                </RenderIf>
             </div>
             <div
                 onMouseDown={startSplitDrag}
@@ -224,6 +250,8 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                 return '1';
             case EngineType.BABYLON:
                 return '2';
+            case EngineType.THREE:
+                return '3';
             default:
                 return '2'; // Default to Babylon
         }
@@ -246,6 +274,9 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                 case '2':
                     engine = EngineType.BABYLON;
                     break;
+                case '3':
+                    engine = EngineType.THREE;
+                    break;
                 default:
                     throw Error("Invalid Selection")
             }
@@ -265,6 +296,7 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                     onSelect={handleEngineChange}
                 >
                     <Tab title={"Babylon Engine"} eventKey={2}/>
+                    <Tab title={"Three Engine"} eventKey={3}/>
                     <Tab title={"Logging Engine (for development)"} eventKey={1}/>
                 </Tabs>
             </div>
