@@ -23,7 +23,7 @@ const args = parseMatrixArgs(process.argv.slice(2));
 const sharedCacheRoot = getDefaultCacheRoot({ cacheRoot: args.cacheRoot, cwd: packageRoot });
 const threePagesRoot = path.join(packageRoot, ".cache/three-matrix-pages");
 const needlePagesRoot = path.join(packageRoot, ".cache/needle-matrix-pages");
-const needleCacheRoot = path.join(sharedCacheRoot, "needle-engine-versions");
+const needleCacheRoot = path.join(sharedCacheRoot, "needle-engine-peer-isolated-versions");
 const fixtureUrl = rawFsUrl(path.join(packageRoot, "examples/fixture/interactive.gltf"));
 const packageImportMap = createPackageImportMap();
 const threeVersions = readVersions("THREE_MATRIX_VERSIONS") ?? args.versions;
@@ -63,33 +63,28 @@ const threeMatrix = await prepareThreeMatrix({
   },
 });
 
-await cacheNeedleEngineVersions({
-  cacheRoot: needleCacheRoot,
-  versions: needleVersions,
-  runtimeShapes: ["dist"],
-  refresh: args.refresh,
-  cwd: packageRoot,
-});
-const needleRuntimes = await createCachedNeedleEngineRuntimes({
-  cacheRoot: needleCacheRoot,
-  versions: needleVersions,
-  runtimeShapes: ["dist"],
-});
-const needleFiveVersions = needleVersions.filter(version => version.startsWith("5."));
-if (needleFiveVersions.length) {
+const previousLegacyPeerDeps = process.env.npm_config_legacy_peer_deps;
+process.env.npm_config_legacy_peer_deps = "true";
+try {
+  // Keep each Engine release's declared Three alias from being displaced by
+  // peer auto-installation when the browser import map is generated.
   await cacheNeedleEngineVersions({
     cacheRoot: needleCacheRoot,
-    versions: needleFiveVersions,
-    runtimeShapes: ["module"],
+    versions: needleVersions,
+    runtimeShapes: ["dist", "module"],
     refresh: args.refresh,
     cwd: packageRoot,
   });
-  needleRuntimes.push(...await createCachedNeedleEngineRuntimes({
-    cacheRoot: needleCacheRoot,
-    versions: needleFiveVersions,
-    runtimeShapes: ["module"],
-  }));
 }
+finally {
+  if (previousLegacyPeerDeps === undefined) delete process.env.npm_config_legacy_peer_deps;
+  else process.env.npm_config_legacy_peer_deps = previousLegacyPeerDeps;
+}
+const needleRuntimes = await createCachedNeedleEngineRuntimes({
+  cacheRoot: needleCacheRoot,
+  versions: needleVersions,
+  runtimeShapes: ["dist", "module"],
+});
 const needleManifest = await writeMatrixPages({
   pagesRoot: needlePagesRoot,
   clean: true,

@@ -31,6 +31,7 @@ test("supports the Needle Engine runtime shapes", async ({ context }) => {
     expect(manifest.pages.some(entry => entry.version.startsWith("5.") && entry.runtimeShape === "dist")).toBe(true);
     expect(manifest.pages.some(entry => entry.version.startsWith("5.") && entry.runtimeShape === "module")).toBe(true);
     expect(manifest.pages.some(entry => entry.version.startsWith("6.") && entry.runtimeShape === "dist")).toBe(true);
+    expect(manifest.pages.some(entry => entry.version.startsWith("6.") && entry.runtimeShape === "module")).toBe(true);
   }
   const results = await runPages(context, manifest.pages);
 
