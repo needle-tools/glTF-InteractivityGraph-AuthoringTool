@@ -1,0 +1,74 @@
+{
+  "name": "@needle-tools/gltf-interactivity",
+  "version": "0.1.0",
+  "description": "KHR_interactivity runtime and GLTFLoader plugin for Three.js and Needle Engine",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/types/packages/gltf-interactivity/src/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./needle": {
+      "types": "./dist/types/packages/gltf-interactivity/src/needle.d.ts",
+      "import": "./dist/needle.js"
+    }
+  },
+  "types": "./dist/types/packages/gltf-interactivity/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && rollup -c && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build",
+    "pack:check": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@needle-tools/engine": ">=6.0.0-alpha",
+    "three": ">=0.174.0 || >=0.185.2-alpha.0"
+  },
+  "peerDependenciesMeta": {
+    "@needle-tools/engine": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@needle-tools/three-animation-pointer": "^1.1.2",
+    "gl-matrix": "^3.4.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.22.17",
+    "@babel/preset-typescript": "^7.23.0",
+    "@needle-tools/engine": "6.0.0-alpha",
+    "@rollup/plugin-babel": "^5.3.1",
+    "@rollup/plugin-node-resolve": "^11.2.1",
+    "rollup": "^2.79.1",
+    "three": "^0.174.0",
+    "typescript": "^4.9.5"
+  },
+  "keywords": [
+    "gltf",
+    "glb",
+    "KHR_interactivity",
+    "threejs",
+    "needle-engine"
+  ],
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/needle-tools/glTF-InteractivityGraph-AuthoringTool.git",
+    "directory": "packages/gltf-interactivity"
+  },
+  "bugs": {
+    "url": "https://github.com/needle-tools/glTF-InteractivityGraph-AuthoringTool/issues"
+  }
+}

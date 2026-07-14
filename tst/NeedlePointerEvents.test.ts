@@ -1,6 +1,6 @@
 import { Group, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from "three";
-import { attachNeedlePointerEvents, type NeedleContext } from "../src/components/engineViews/needlePointerEvents";
-import type { ThreeLoadedModel } from "../src/components/engineViews/threeLoadedModel";
+import { attachNeedlePointerEvents, type NeedleContext } from "../src/integrations/NeedlePointerEvents";
+import type { ThreeLoadedModel } from "../src/integrations/ThreeLoadedModel";
 import type { ThreeDecorator } from "../src/decorators/ThreeDecorator";
 import { jest } from "@jest/globals";
 

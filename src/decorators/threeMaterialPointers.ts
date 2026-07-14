@@ -6,7 +6,7 @@ import {
     MeshStandardMaterial,
     Texture,
 } from "three";
-import type { ThreeLoadedModel } from "../components/engineViews/threeLoadedModel";
+import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import { glTFSchemaMetadata } from "../objectModel/generated/glTFSchemaMetadata";
 import type { ThreePointerBinder } from "./threePointerTypes";
 

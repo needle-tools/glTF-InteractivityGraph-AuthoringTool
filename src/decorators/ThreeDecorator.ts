@@ -13,7 +13,7 @@ import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGrap
 import { OnHoverIn } from "../BasicBehaveEngine/nodes/experimental/OnHoverIn";
 import { OnHoverOut } from "../BasicBehaveEngine/nodes/experimental/OnHoverOut";
 import { OnSelect } from "../BasicBehaveEngine/nodes/experimental/OnSelect";
-import { ThreeLoadedModel } from "../components/engineViews/threeLoadedModel";
+import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import { registerThreeMaterialPointers } from "./threeMaterialPointers";
 import { registerThreeActiveCameraPointers, registerThreeScenePointers } from "./threeScenePointers";
 import { registerThreeStructuralPointers } from "./threeStructuralPointers";
@@ -45,6 +45,7 @@ export class ThreeDecorator extends ADecorator {
     private domElement: HTMLElement | null = null;
     private animationTimer: ReturnType<typeof setInterval> | null = null;
     private lastAnimationTick = 0;
+    private manualAnimationUpdates = false;
 
     constructor(behaveEngine: IBehaveEngine, model: ThreeLoadedModel) {
         super(behaveEngine);
@@ -58,6 +59,7 @@ export class ThreeDecorator extends ADecorator {
     }
 
     setCamera(camera: Camera): void {
+        if (this.camera === camera) return;
         this.camera = camera;
         registerThreeActiveCameraPointers(camera, this.bindPointer);
     }
@@ -97,6 +99,21 @@ export class ThreeDecorator extends ADecorator {
         domElement.addEventListener("pointermove", this.handlePointerMove);
         domElement.addEventListener("pointerleave", this.handlePointerLeave);
         domElement.addEventListener("click", this.handleClick);
+    }
+
+    setManualAnimationUpdates(enabled: boolean): void {
+        if (this.manualAnimationUpdates === enabled) return;
+        this.manualAnimationUpdates = enabled;
+        if (enabled) {
+            this.stopAnimationTimer();
+        } else if (this.threeAnimations.size > 0) {
+            this.startAnimationTimer();
+        }
+    }
+
+    updateAnimations(deltaSeconds: number): void {
+        if (!this.manualAnimationUpdates) return;
+        this.advanceAnimations(Math.max(0, deltaSeconds));
     }
 
     override dispose(): void {
@@ -197,7 +214,7 @@ export class ThreeDecorator extends ADecorator {
     };
 
     private startAnimationTimer(): void {
-        if (this.animationTimer !== null) {
+        if (this.manualAnimationUpdates || this.animationTimer !== null) {
             return;
         }
         this.lastAnimationTick = performance.now();
@@ -215,6 +232,10 @@ export class ThreeDecorator extends ADecorator {
         const now = performance.now();
         const delta = Math.max(0, (now - this.lastAnimationTick) / 1000);
         this.lastAnimationTick = now;
+        this.advanceAnimations(delta);
+    }
+
+    private advanceAnimations(delta: number): void {
         this.model.mixer.update(delta);
 
         for (const [animationIndex, active] of [...this.threeAnimations]) {
