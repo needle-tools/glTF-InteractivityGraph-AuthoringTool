@@ -26,15 +26,7 @@ function readNumbers(decorator: BabylonDecorator | ThreeDecorator, path: string)
 async function verifyModelBehavior(
     name: string,
     decorator: BabylonDecorator | ThreeDecorator,
-    initialPhysicsPosition?: number[],
 ): Promise<void> {
-    if (name === "PhysicsMath") {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        decorator.executeEventQueueTick();
-        const nextPosition = readNumbers(decorator, PHYSICS_NODE_PATH);
-        expect(nextPosition[1]).toBeLessThan(initialPhysicsPosition![1] - 0.05);
-    }
-
     if (name === "ConstructionSite") {
         decorator.select(6, 0, undefined, undefined);
         decorator.executeEventQueueTick();
@@ -45,6 +37,42 @@ async function verifyModelBehavior(
                 expect.closeTo(0, 5),
                 expect.closeTo(1, 5),
             ]),
+        );
+    }
+}
+
+async function runModelGraph(
+    name: string,
+    decorator: BabylonDecorator | ThreeDecorator,
+    graph: any,
+): Promise<void> {
+    if (name !== "PhysicsMath") {
+        await runGraphAndWait(decorator, graph);
+        return;
+    }
+
+    const initialPosition = readNumbers(decorator, PHYSICS_NODE_PATH);
+    decorator.loadBehaveGraph(graph);
+    const positions: number[][] = [];
+    for (let index = 0; index < 18; index++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        decorator.executeEventQueueTick();
+        positions.push(readNumbers(decorator, PHYSICS_NODE_PATH));
+    }
+    decorator.pauseEventQueue();
+    decorator.clearCustomEventListeners();
+
+    const heights = positions.map((position) => position[1]);
+    const minimum = Math.min(...heights);
+    const minimumIndex = heights.indexOf(minimum);
+    const reboundHeight = Math.max(...heights.slice(minimumIndex + 1));
+    const lateralDeflection = Math.max(...positions.map((position) => Math.hypot(
+        position[0] - initialPosition[0],
+        position[2] - initialPosition[2],
+    )));
+    if (reboundHeight <= minimum + 0.2 || lateralDeflection <= 0.1) {
+        throw new Error(
+            `PhysicsMath did not produce a box collision response: rebound=${(reboundHeight - minimum).toFixed(3)}, lateral deflection=${lateralDeflection.toFixed(3)}`,
         );
     }
 }
@@ -62,11 +90,8 @@ describe("KHR_interactivity showcase models - Babylon engine", () => {
             const engine = new BasicBehaveEngine(60, new TestEventBus());
             const world = await loadBabylonWorldFromGlb(assetCase.glbPath, scene);
             decorator = new BabylonDecorator(engine, world, scene);
-            const initialPhysicsPosition = assetCase.entry.name === "PhysicsMath"
-                ? readNumbers(decorator, PHYSICS_NODE_PATH)
-                : undefined;
-            await runGraphAndWait(decorator, assetCase.graph);
-            await verifyModelBehavior(assetCase.entry.name, decorator, initialPhysicsPosition);
+            await runModelGraph(assetCase.entry.name, decorator, assetCase.graph);
+            await verifyModelBehavior(assetCase.entry.name, decorator);
         } finally {
             decorator?.dispose();
             scene.dispose();
@@ -84,11 +109,8 @@ describe("KHR_interactivity showcase models - Three engine", () => {
         const model = await loadThreeWorldFromGlb(assetCase.glbPath);
         const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new TestEventBus()), model);
         try {
-            const initialPhysicsPosition = assetCase.entry.name === "PhysicsMath"
-                ? readNumbers(decorator, PHYSICS_NODE_PATH)
-                : undefined;
-            await runGraphAndWait(decorator, assetCase.graph);
-            await verifyModelBehavior(assetCase.entry.name, decorator, initialPhysicsPosition);
+            await runModelGraph(assetCase.entry.name, decorator, assetCase.graph);
+            await verifyModelBehavior(assetCase.entry.name, decorator);
         } finally {
             decorator.dispose();
             disposeThreeLoadedModel(model);
