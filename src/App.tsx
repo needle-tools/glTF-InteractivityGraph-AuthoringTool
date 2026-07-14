@@ -5,6 +5,7 @@ import {RenderIf} from "./components/RenderIf";
 import {LoggingEngineComponent} from "./components/engineViews/LoggingEngineComponent";
 import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComponent";
 import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponent";
+import {NeedleEngineComponent} from "./components/engineViews/NeedleEngineComponent";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
 import { SampleSidebar } from './components/SampleSidebar';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
@@ -32,6 +33,7 @@ const engineTypeFromString = (value: string | null): EngineType | undefined => {
     case 'logging': return EngineType.LOGGING;
     case 'babylon': return EngineType.BABYLON;
     case 'three': return EngineType.THREE;
+    case 'needle': return EngineType.NEEDLE;
     default: return undefined;
   }
 };
@@ -100,6 +102,9 @@ export const App = () => {
         case 'three':
           setEngineType(EngineType.THREE);
           break;
+        case 'needle':
+          setEngineType(EngineType.NEEDLE);
+          break;
         default:
           // Load from localStorage if URL param is invalid
           const storedEngineType = localStorage.getItem(ENGINE_TYPE_STORAGE_KEY);
@@ -162,6 +167,9 @@ export const App = () => {
             break;
           case 'three':
             setEngineType(EngineType.THREE);
+            break;
+          case 'needle':
+            setEngineType(EngineType.NEEDLE);
             break;
         }
       }
@@ -245,6 +253,9 @@ export const App = () => {
                 <RenderIf shouldShow={engineType === EngineType.THREE}>
                     <ThreeEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
+                <RenderIf shouldShow={engineType === EngineType.NEEDLE}>
+                    <NeedleEngineComponent modelUrl={modelUrl} />
+                </RenderIf>
             </div>
             <RenderIf shouldShow={viewMode === "both"}>
                 <div
@@ -287,6 +298,7 @@ interface EngineSelectorProps {
 const ENGINE_TABS: ReadonlyArray<{ engine: EngineType; label: string }> = [
     { engine: EngineType.BABYLON, label: "Babylon Engine" },
     { engine: EngineType.THREE, label: "Three.js" },
+    { engine: EngineType.NEEDLE, label: "Needle Engine" },
     { engine: EngineType.LOGGING, label: "Logging Engine" },
 ];
 
