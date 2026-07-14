@@ -10,9 +10,9 @@ export class EventStopPropagation extends BehaveEngineNode {
     }
 
     processNode(flowSocket?: string) {
-        const {_stopImmediate, event} = this.evaluateAllValues(Object.keys(this.REQUIRED_VALUES));
-        
-        this.graphEngine.propagationCancelled.add(event);
+        const {stopImmediate, event} = this.evaluateAllValues(Object.keys(this.REQUIRED_VALUES));
+
+        this.graphEngine.stopEventPropagation(event, stopImmediate);
 
         super.processNode(flowSocket);
     }

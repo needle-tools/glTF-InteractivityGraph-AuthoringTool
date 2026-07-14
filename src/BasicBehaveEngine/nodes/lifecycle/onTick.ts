@@ -1,6 +1,7 @@
 import {BehaveEngineNode, IBehaviourNodeProps} from "../../BehaveEngineNode";
 
 export class OnTickNode extends BehaveEngineNode {
+    private readonly eventRef = "/extensions/KHR_interactivity/events/1";
     _startTime = NaN;
     _lastTickTime = NaN;
     _floatTypeIndex = -1;
@@ -10,12 +11,22 @@ export class OnTickNode extends BehaveEngineNode {
         this.name = "OnTick";
         this._floatTypeIndex = this.getTypeIndex('float');
         this._refTypeIndex = this.getTypeIndex('ref');
-        this.outValues.event = { value: [`/extensions/KHR_interactivity/events/${this.events.length + 1}`], type: this._refTypeIndex };
+        this.outValues.event = { value: [null], type: this._refTypeIndex };
         this.outValues.timeSinceStart = { value: [NaN], type: this._floatTypeIndex };
         this.outValues.timeSinceLastTick = { value: [NaN], type: this._floatTypeIndex };
     }
 
+    prepareEvent(): void {
+        this.outValues.event.value = [this.eventRef];
+        this.graphEngine.registerEventReference(this.eventRef);
+    }
+
     override processNode(flowSocket?: string) {
+        if (this.graphEngine.isEventImmediatePropagationCancelled(this.eventRef)) {
+            return;
+        }
+
+        this.prepareEvent();
         this.graphEngine.processNodeStarted(this);
         const tickTime = this.graphEngine.lastTickTime / 1000;
         if (isNaN(this._startTime)) {

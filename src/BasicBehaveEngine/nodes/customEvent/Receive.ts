@@ -38,12 +38,12 @@ export class Receive extends BehaveEngineNode {
                 type: value.type,
             }
         });
-        defaultValues.event = this._eventRefOutput;
+        defaultValues.event = { value: [null], type: this.getTypeIndex('ref') };
         this._defaultValues = defaultValues;
         this.outValues = JSON.parse(JSON.stringify(defaultValues));
 
         this.graphEngine.addCustomEventListener(`KHR_INTERACTIVITY:${customEventDesc.id}`, (e: any) => {
-            if (this.graphEngine.isEventPropagationCancelled(this._eventRefOutput.value[0])) {
+            if (this.graphEngine.isEventImmediatePropagationCancelled(this._eventRefOutput.value[0])) {
                 return;
             }
 
@@ -63,6 +63,8 @@ export class Receive extends BehaveEngineNode {
                     type: typeIndex
                 }
             });
+            this.outValues.event = this._eventRefOutput;
+            this.graphEngine.registerEventReference(this._eventRefOutput.value[0]);
             super.processNode();
         })
     }

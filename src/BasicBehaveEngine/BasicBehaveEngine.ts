@@ -304,7 +304,9 @@ export class BasicBehaveEngine implements IBehaveEngine {
     public selectNodes: Array<OnSelect>;
     public lastHoveredNodeIndices: Map<number, number | undefined>;
     public rigidBodyTriggerNodeIndices: Map<number, IRigidBodyTriggerInformation>;
-    public propagationCancelled: Set<string>;
+    private eventReferences: Set<string>;
+    private immediatePropagationCancelled: Set<string>;
+    private transitivePropagationCancelled: Set<string>;
 
     constructor(fps: number, eventBus: IEventBus) {
         this.registry = new Map<string, any>();
@@ -328,7 +330,9 @@ export class BasicBehaveEngine implements IBehaveEngine {
         this.selectableNodesIndices = new Map<number, (selectedNodeRef: any, controllerIndex: number, selectionPoint: [number, number, number] | undefined, selectionRayOrigin: [number, number, number] | undefined) => void>();
         this.selectNodes = [];
         this.rigidBodyTriggerNodeIndices = new Map<number, IRigidBodyTriggerInformation>();
-        this.propagationCancelled = new Set<string>();
+        this.eventReferences = new Set<string>();
+        this.immediatePropagationCancelled = new Set<string>();
+        this.transitivePropagationCancelled = new Set<string>();
 
         this.registerKnownBehaviorNodes();
     }
@@ -397,10 +401,6 @@ export class BasicBehaveEngine implements IBehaveEngine {
 
     public select(selectedNodeIndex: number, controllerIndex: number, selectionPoint: [number, number, number] | undefined, selectionRayOrigin: [number, number, number] | undefined) {
         for (let nodeIndex = selectedNodeIndex;;) {
-            // if (this.propagationCancelled.has("")) {
-            //     break;
-            // }
-
             const callback = this.selectableNodesIndices.get(nodeIndex);
             if (callback !== undefined) {
                 callback(`/nodes/${selectedNodeIndex}`, controllerIndex, selectionPoint, selectionRayOrigin);
@@ -587,20 +587,24 @@ export class BasicBehaveEngine implements IBehaveEngine {
 
     private registerGraphEventPointers = (): void => {
         const eventCountWithLifecycleEvents = (this.events?.length ?? 0) + 2;
-        this.registerJsonPointer(
-            `/extensions/KHR_interactivity/events/${eventCountWithLifecycleEvents}`,
-            (path) => [path],
-            () => undefined,
-            "ref",
-            true
-        );
+        for (let eventIndex = 0; eventIndex < eventCountWithLifecycleEvents; eventIndex++) {
+            this.registerJsonPointer(
+                `/extensions/KHR_interactivity/events/${eventIndex}`,
+                (path) => [path],
+                () => undefined,
+                "ref",
+                true
+            );
+        }
     }
 
     public loadBehaveGraph = (behaveGraph: any, runGraph = true) => {
         this.hoverableNodesIndices.clear();
         this.selectableNodesIndices.clear();
         this.lastHoveredNodeIndices.clear();
-        this.propagationCancelled.clear();
+        this.eventReferences.clear();
+        this.immediatePropagationCancelled.clear();
+        this.transitivePropagationCancelled.clear();
         this._pauseDuration = 0;
         this._pauseTickTime = NaN;
         try {
@@ -670,7 +674,10 @@ export class BasicBehaveEngine implements IBehaveEngine {
             .map((node, idx) => behaveGraph.declarations[node.declaration].op=== "event/onStart" ? idx : -1)
             .filter(idx => idx !== -1);
 
-        for (const startNodeIndex of onStartIndices) {         
+        for (const startNodeIndex of onStartIndices) {
+            (this.idToBehaviourNodeMap.get(startNodeIndex) as OnStartNode).prepareEvent();
+        }
+        for (const startNodeIndex of onStartIndices) {
             const startFlow: IInteractivityFlow = {node: startNodeIndex, socket: "start"}
             this.addEventToWorkQueue(startFlow);
         }
@@ -836,7 +843,8 @@ export class BasicBehaveEngine implements IBehaveEngine {
             this._pauseTickTime = NaN;
         }
 
-        this.propagationCancelled.clear();
+        this.immediatePropagationCancelled.clear();
+        this.transitivePropagationCancelled.clear();
         const eventQueueCopy = [...this.eventBus.getEventList()];
         this.eventBus.clearEventList();
         while (eventQueueCopy.length > 0) {
@@ -855,6 +863,11 @@ export class BasicBehaveEngine implements IBehaveEngine {
         }
         for (const interpolation of Object.values(this.eventBus.getPointerInterpolationCallbacks())) {
             interpolation.action();
+        }
+
+        // All handlers for one event occurrence expose the same ref before the first handler runs.
+        for (const onTickNodeIndex of this.onTickNodeIndices) {
+            (this.idToBehaviourNodeMap.get(onTickNodeIndex) as OnTickNode).prepareEvent();
         }
 
         // process onTick nodes
@@ -893,7 +906,26 @@ export class BasicBehaveEngine implements IBehaveEngine {
         this.eventBus.clearVariableInterpolation(variable);
     }
 
-    isEventPropagationCancelled(event: string): boolean {
-        return this.propagationCancelled.has(event);
+    registerEventReference(event: string): void {
+        this.eventReferences.add(event);
+    }
+
+    stopEventPropagation(event: string, stopImmediate: boolean): void {
+        if (!this.eventReferences.has(event)) {
+            return;
+        }
+
+        this.transitivePropagationCancelled.add(event);
+        if (stopImmediate) {
+            this.immediatePropagationCancelled.add(event);
+        }
+    }
+
+    isEventImmediatePropagationCancelled(event: string): boolean {
+        return this.immediatePropagationCancelled.has(event);
+    }
+
+    isEventTransitivePropagationCancelled(event: string): boolean {
+        return this.transitivePropagationCancelled.has(event);
     }
 }

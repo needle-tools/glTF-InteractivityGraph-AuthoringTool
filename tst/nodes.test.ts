@@ -124,6 +124,7 @@ import { QuatAngleBetween } from '../src/BasicBehaveEngine/nodes/math/quaternion
 import { QuatFromUpForward } from '../src/BasicBehaveEngine/nodes/math/quaternion/QuatFromUpForward';
 import { QuatSlerp } from '../src/BasicBehaveEngine/nodes/math/quaternion/QuatSlerp';
 import { RefEquality } from '../src/BasicBehaveEngine/nodes/ref/RefEquality';
+import { EventStopPropagation } from '../src/BasicBehaveEngine/nodes/event/StopPropagation';
 import * as glMatrix from 'gl-matrix';
 
 describe('nodes', () => {
@@ -205,6 +206,40 @@ describe('nodes', () => {
 
         await send.processNode();
         expect(argCapture).toHaveBeenCalledWith('KHR_INTERACTIVITY:testCustomEvent');
+    });
+
+    it('event/stopPropagation distinguishes immediate and transitive cancellation', () => {
+        const refType = standardTypes.findIndex((type) => type.signature === 'ref');
+        const execute = (event: string, stopImmediate: boolean) => {
+            const node = new EventStopPropagation({
+                ...defaultProps,
+                values: {
+                    stopImmediate: { value: [stopImmediate], type: 0 },
+                    event: { value: [event], type: refType },
+                },
+                flows: {out: { node: 0, socket: 'in' }},
+            });
+            node.processFlow = jest.fn();
+            node.processNode();
+            expect(node.processFlow).toHaveBeenCalledWith({ node: 0, socket: 'in' });
+        };
+
+        const nonImmediateEvent = '/extensions/KHR_interactivity/events/2';
+        graphEngine.registerEventReference(nonImmediateEvent);
+        execute(nonImmediateEvent, false);
+        expect(graphEngine.isEventTransitivePropagationCancelled(nonImmediateEvent)).toBe(true);
+        expect(graphEngine.isEventImmediatePropagationCancelled(nonImmediateEvent)).toBe(false);
+
+        const immediateEvent = '/extensions/KHR_interactivity/events/3';
+        graphEngine.registerEventReference(immediateEvent);
+        execute(immediateEvent, true);
+        expect(graphEngine.isEventTransitivePropagationCancelled(immediateEvent)).toBe(true);
+        expect(graphEngine.isEventImmediatePropagationCancelled(immediateEvent)).toBe(true);
+
+        const invalidEvent = '/extensions/KHR_interactivity/events/99';
+        execute(invalidEvent, true);
+        expect(graphEngine.isEventTransitivePropagationCancelled(invalidEvent)).toBe(false);
+        expect(graphEngine.isEventImmediatePropagationCancelled(invalidEvent)).toBe(false);
     });
 
     it('flow/branch', async () => {
