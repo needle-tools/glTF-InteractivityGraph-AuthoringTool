@@ -106,8 +106,13 @@ getInteractivityRuntime(gltf)?.start(authoredGraph);
 From this package directory:
 
 ```sh
+npm install
+npx playwright install chromium
 npm run build
 npm run pack:check
+npm run test:matrix
 ```
 
 The consumer projects in `examples/three` and `examples/needle` load the same interactive fixture through the public package entry points. Build the package before installing or running either local example.
+
+`test:matrix` uses `@needle-tools/three-test-matrix` to test the built package in Chromium against every supported Three.js minor from r174 through the current npm release. It also tests the Needle Engine 6 distribution runtime. Set `THREE_MATRIX_VERSIONS` or `NEEDLE_MATRIX_VERSIONS` to comma-separated exact versions to narrow a local run.
