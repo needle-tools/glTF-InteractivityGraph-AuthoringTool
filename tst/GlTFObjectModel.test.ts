@@ -38,6 +38,21 @@ describe("GlTFObjectModelDecorator", () => {
         expect(decorator.getPathValue("/materials/0/alphaCutoff")).toEqual([0.25]);
     });
 
+    it("applies node morph pointers only when the node instantiates a mesh", () => {
+        const decorator = createDecorator({
+            nodes: [{}, { mesh: 0 }, { mesh: 1 }],
+            meshes: [
+                { primitives: [{}] },
+                { primitives: [{ targets: [{}, {}] }] },
+            ],
+        });
+
+        expect(decorator.isValidJsonPtr("/nodes/0/weights.length")).toBe(false);
+        expect(decorator.getPathValue("/nodes/1/weights.length")).toEqual([0]);
+        expect(decorator.getPathValue("/nodes/2/weights.length")).toEqual([2]);
+        expect(decorator.getPathValue("/nodes/2/weights/0")).toEqual([0]);
+    });
+
     it("exposes exact animation object refs without normalizing object model paths", () => {
         const decorator = createDecorator({
             animations: [{ channels: [], samplers: [] }],

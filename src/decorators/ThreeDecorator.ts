@@ -2,19 +2,22 @@ import {
     AnimationAction,
     Camera,
     Intersection,
-    Mesh,
-    MeshStandardMaterial,
     Object3D,
     Raycaster,
-    Texture,
     Vector2,
 } from "three";
+import { ADecorator } from "../BasicBehaveEngine/ADecorator";
+import { BehaveEngineNode } from "../BasicBehaveEngine/BehaveEngineNode";
 import { IBehaveEngine } from "../BasicBehaveEngine/IBehaveEngine";
+import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGraph";
 import { OnHoverIn } from "../BasicBehaveEngine/nodes/experimental/OnHoverIn";
 import { OnHoverOut } from "../BasicBehaveEngine/nodes/experimental/OnHoverOut";
 import { OnSelect } from "../BasicBehaveEngine/nodes/experimental/OnSelect";
-import { createGlTFObjectModelFromGltf, GlTFObjectModelDecorator } from "../objectModel/glTFObjectModel";
 import { ThreeLoadedModel } from "../components/engineViews/threeLoadedModel";
+import { registerThreeMaterialPointers } from "./threeMaterialPointers";
+import { registerThreeActiveCameraPointers, registerThreeScenePointers } from "./threeScenePointers";
+import { registerThreeStructuralPointers } from "./threeStructuralPointers";
+import type { ThreePointerBinder } from "./threePointerTypes";
 
 interface ActiveAnimation {
     action: AnimationAction;
@@ -24,19 +27,17 @@ interface ActiveAnimation {
     virtualTime: number;
 }
 
-type ThreePbrMaterial = MeshStandardMaterial & {
-    clearcoat?: number;
-    ior?: number;
-    sheen?: number;
-    sheenColor?: { r: number; g: number; b: number; setRGB(r: number, g: number, b: number): void };
-    thickness?: number;
-    transmission?: number;
-};
+interface PointerBinding {
+    get: () => unknown;
+    set?: (value: unknown) => void;
+    typeName: string;
+    readOnly: boolean;
+}
 
-type ThreeScalarMaterialProperty = "alphaTest" | "clearcoat" | "emissiveIntensity" | "ior" | "metalness" | "roughness" | "thickness" | "transmission";
-
-export class ThreeDecorator extends GlTFObjectModelDecorator {
+export class ThreeDecorator extends ADecorator {
     private readonly model: ThreeLoadedModel;
+    private readonly pointerBindings = new Map<string, PointerBinding>();
+    private readonly eventPointerPaths = new Set<string>();
     private readonly raycaster = new Raycaster();
     private readonly pointerNdc = new Vector2();
     private readonly threeAnimations = new Map<number, ActiveAnimation>();
@@ -46,13 +47,11 @@ export class ThreeDecorator extends GlTFObjectModelDecorator {
     private lastAnimationTick = 0;
 
     constructor(behaveEngine: IBehaveEngine, model: ThreeLoadedModel) {
-        super(behaveEngine, createGlTFObjectModelFromGltf(model.gltf));
+        super(behaveEngine);
         this.model = model;
-        this.startAnimation = this.startThreeAnimation;
-        this.stopAnimation = this.stopThreeAnimation;
-        this.stopAnimationAt = this.stopThreeAnimationAt;
+        this.bridgePointerHooks();
         this.bridgeEngineHooks();
-        this.registerLivePointers();
+        this.registerKnownPointers();
         this.registerBehaveEngineNode("event/onSelect", OnSelect);
         this.registerBehaveEngineNode("event/onHoverIn", OnHoverIn);
         this.registerBehaveEngineNode("event/onHoverOut", OnHoverOut);
@@ -60,12 +59,36 @@ export class ThreeDecorator extends GlTFObjectModelDecorator {
 
     setCamera(camera: Camera): void {
         this.camera = camera;
-        this.pointer("/extensions/KHR_interactivity/activeCamera/position", "float3", () => camera.position.toArray(), (value) => {
-            camera.position.fromArray(asArray(value));
-        });
-        this.pointer("/extensions/KHR_interactivity/activeCamera/rotation", "float4", () => camera.quaternion.toArray(), (value) => {
-            camera.quaternion.fromArray(asArray(value));
-        });
+        registerThreeActiveCameraPointers(camera, this.bindPointer);
+    }
+
+    processNodeStarted = (_node: BehaveEngineNode): void => undefined;
+    processAddingNodeToQueue = (_flow: IInteractivityFlow): void => undefined;
+    processExecutingNextNode = (_flow: IInteractivityFlow): void => undefined;
+    getWorld = (): ThreeLoadedModel => this.model;
+    getParentNodeIndex = (nodeIndex: number): number | undefined => {
+        const parentIndex = this.model.gltf.nodes?.findIndex((node) => node.children?.includes(nodeIndex)) ?? -1;
+        return parentIndex === -1 ? undefined : parentIndex;
+    };
+    startAnimation = (animationIndex: number, startTime: number, endTime: number, speed: number, callback: () => void): void => {
+        this.startThreeAnimation(animationIndex, startTime, endTime, speed, callback);
+    };
+    stopAnimation = (animationIndex: number): void => this.stopThreeAnimation(animationIndex);
+    stopAnimationAt = (animationIndex: number, stopTime: number, callback: () => void): void => this.stopThreeAnimationAt(animationIndex, stopTime, callback);
+
+    registerKnownPointers = (): void => {
+        registerThreeStructuralPointers(this.model, this.bindPointer);
+        registerThreeScenePointers(this.model, this.bindPointer);
+        registerThreeMaterialPointers(this.model, this.bindPointer);
+        this.registerAnimationPointers();
+        this.registerEventPointers(this.model.gltf.extensions?.KHR_interactivity?.graphs?.[
+            this.model.gltf.extensions?.KHR_interactivity?.graph ?? 0
+        ]);
+    };
+
+    override loadBehaveGraph(behaveGraph: any, runGraph = true): void {
+        this.registerEventPointers(behaveGraph);
+        super.loadBehaveGraph(behaveGraph, runGraph);
     }
 
     attachPointerEvents(domElement: HTMLElement): void {
@@ -83,146 +106,53 @@ export class ThreeDecorator extends GlTFObjectModelDecorator {
         super.dispose();
     }
 
-    private registerLivePointers(): void {
-        this.model.nodes.forEach((node, nodeIndex) => {
-            if (!node) {
-                return;
-            }
-            this.bindIfValid(`/nodes/${nodeIndex}/translation`, "float3", () => node.position.toArray(), (value) => {
-                node.position.fromArray(asArray(value));
-                node.updateMatrix();
-            });
-            this.bindIfValid(`/nodes/${nodeIndex}/rotation`, "float4", () => node.quaternion.toArray(), (value) => {
-                node.quaternion.fromArray(asArray(value));
-                node.updateMatrix();
-            });
-            this.bindIfValid(`/nodes/${nodeIndex}/scale`, "float3", () => node.scale.toArray(), (value) => {
-                node.scale.fromArray(asArray(value));
-                node.updateMatrix();
-            });
-            this.bindIfValid(`/nodes/${nodeIndex}/matrix`, "float4x4", () => {
-                node.updateMatrix();
-                return node.matrix.toArray();
-            }, undefined, true);
-            this.bindIfValid(`/nodes/${nodeIndex}/globalMatrix`, "float4x4", () => {
-                node.updateWorldMatrix(true, false);
-                return node.matrixWorld.toArray();
-            }, undefined, true);
-
-            const morphMeshes = findMorphMeshes(node);
-            const weights = morphMeshes[0]?.morphTargetInfluences;
-            if (weights) {
-                this.bindIfValid(`/nodes/${nodeIndex}/weights`, "float[]", () => [...weights], (value) => {
-                    const next = asArray(value);
-                    morphMeshes.forEach((mesh) => mesh.morphTargetInfluences?.splice(0, next.length, ...next));
-                });
-                weights.forEach((_weight, weightIndex) => {
-                    this.bindIfValid(`/nodes/${nodeIndex}/weights/${weightIndex}`, "float", () => [weights[weightIndex]], (value) => {
-                        const next = scalar(value);
-                        morphMeshes.forEach((mesh) => {
-                            if (mesh.morphTargetInfluences) {
-                                mesh.morphTargetInfluences[weightIndex] = next;
-                            }
-                        });
-                    });
-                });
-            }
-
-            this.bindIfValid(`/nodes/${nodeIndex}/extensions/KHR_node_visibility/visible`, "bool", () => [node.visible], (value) => {
-                node.visible = Boolean(scalar(value));
-            });
-            this.bindIfValid(`/nodes/${nodeIndex}/extensions/KHR_node_selectability/selectable`, "bool", () => [node.userData.selectable !== false], (value) => {
-                node.userData.selectable = Boolean(scalar(value));
-            });
-            this.bindIfValid(`/nodes/${nodeIndex}/extensions/KHR_node_hoverability/hoverable`, "bool", () => [node.userData.hoverable !== false], (value) => {
-                node.userData.hoverable = Boolean(scalar(value));
-            });
-        });
-
-        this.model.materialInstances.forEach((materials, materialIndex) => {
-            const pbrMaterials = materials.filter((material): material is ThreePbrMaterial => material instanceof MeshStandardMaterial);
-            if (pbrMaterials.length === 0) {
-                return;
-            }
-            const first = pbrMaterials[0];
-            this.bindIfValid(`/materials/${materialIndex}/pbrMetallicRoughness/baseColorFactor`, "float4", () => [first.color.r, first.color.g, first.color.b, first.opacity], (value) => {
-                const next = asArray(value);
-                pbrMaterials.forEach((material) => {
-                    material.color.setRGB(next[0], next[1], next[2]);
-                    material.opacity = next[3];
-                    material.transparent = next[3] < 1;
-                    material.needsUpdate = true;
-                });
-            });
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "pbrMetallicRoughness/roughnessFactor", "roughness");
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "pbrMetallicRoughness/metallicFactor", "metalness");
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "alphaCutoff", "alphaTest");
-            this.bindIfValid(`/materials/${materialIndex}/emissiveFactor`, "float3", () => first.emissive.toArray(), (value) => {
-                const next = asArray(value);
-                pbrMaterials.forEach((material) => material.emissive.setRGB(next[0], next[1], next[2]));
-            });
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "extensions/KHR_materials_emissive_strength/emissiveStrength", "emissiveIntensity");
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "extensions/KHR_materials_transmission/transmissionFactor", "transmission");
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "extensions/KHR_materials_clearcoat/clearcoatFactor", "clearcoat");
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "extensions/KHR_materials_ior/ior", "ior");
-            this.bindMaterialScalar(materialIndex, pbrMaterials, "extensions/KHR_materials_volume/thicknessFactor", "thickness");
-            this.bindTextureTransform(materialIndex, pbrMaterials, "pbrMetallicRoughness/baseColorTexture", (material) => material.map);
-            this.bindTextureTransform(materialIndex, pbrMaterials, "pbrMetallicRoughness/metallicRoughnessTexture", (material) => material.metalnessMap ?? material.roughnessMap);
-            this.bindTextureTransform(materialIndex, pbrMaterials, "normalTexture", (material) => material.normalMap);
-            this.bindTextureTransform(materialIndex, pbrMaterials, "occlusionTexture", (material) => material.aoMap);
-            this.bindTextureTransform(materialIndex, pbrMaterials, "emissiveTexture", (material) => material.emissiveMap);
-        });
-
+    private registerAnimationPointers(): void {
         this.model.animations.forEach((clip, animationIndex) => {
-            this.scalarPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/playhead`, "float", () => this.animationPlayhead(animationIndex), undefined, true);
-            this.scalarPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/virtualPlayhead`, "float", () => this.threeAnimations.get(animationIndex)?.virtualTime ?? this.animationPlayhead(animationIndex));
-            this.scalarPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/minTime`, "float", () => 0, undefined, true);
-            this.scalarPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/maxTime`, "float", () => clip.duration, undefined, true);
-            this.scalarPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/isPlaying`, "bool", () => this.threeAnimations.has(animationIndex), undefined, true);
+            this.bindPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/playhead`, "float", () => [this.animationPlayhead(animationIndex)], undefined, true);
+            this.bindPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/virtualPlayhead`, "float", () => [this.threeAnimations.get(animationIndex)?.virtualTime ?? this.animationPlayhead(animationIndex)], undefined, true);
+            this.bindPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/minTime`, "float", () => [animationMinTime(clip)], undefined, true);
+            this.bindPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/maxTime`, "float", () => [clip.duration], undefined, true);
+            this.bindPointer(`/animations/${animationIndex}/extensions/KHR_interactivity/isPlaying`, "bool", () => [this.threeAnimations.has(animationIndex)], undefined, true);
         });
     }
 
-    private bindIfValid(
-        path: string,
-        typeName: string,
-        get: () => unknown,
-        set: ((value: unknown) => void) | undefined,
-        readOnly = false,
-    ): void {
-        if (this.isValidJsonPtr(path)) {
-            this.pointer(path, typeName, get, set, readOnly);
+    private registerEventPointers(graph: any): void {
+        this.eventPointerPaths.forEach((path) => this.pointerBindings.delete(path));
+        this.eventPointerPaths.clear();
+        const count = (graph?.events?.length ?? 0) + 2;
+        for (let index = 0; index < count; index++) {
+            const path = `/extensions/KHR_interactivity/events/${index}`;
+            this.bindPointer(path, "ref", () => [path], undefined, true);
+            this.eventPointerPaths.add(path);
         }
     }
 
-    private bindMaterialScalar(
-        materialIndex: number,
-        materials: ThreePbrMaterial[],
-        pointerPath: string,
-        property: ThreeScalarMaterialProperty,
-    ): void {
-        const path = `/materials/${materialIndex}/${pointerPath}`;
-        this.bindIfValid(path, "float", () => [Number(materials[0][property])], (value) => {
-            materials.forEach((material) => {
-                material[property] = scalar(value);
-                material.needsUpdate = true;
-            });
-        });
+    private bindPointer: ThreePointerBinder = (path, typeName, get, set, readOnly = false): void => {
+        this.pointerBindings.set(path, { get, set, typeName, readOnly });
+    };
+
+    private bridgePointerHooks(): void {
+        this.behaveEngine.isValidJsonPtr = this.isValidJsonPtrExact;
+        this.behaveEngine.isReadOnly = this.isReadOnlyExact;
+        this.behaveEngine.getPathValue = this.getPathValueExact;
+        this.behaveEngine.getPathtypeName = this.getPathTypeNameExact;
+        this.behaveEngine.setPathValue = this.setPathValueExact;
+        this.behaveEngine.getRegisteredJsonPointers = () => [...this.pointerBindings.keys()].sort();
+        this.behaveEngine.resolveRef = this.resolveRef;
     }
 
-    private bindTextureTransform(
-        materialIndex: number,
-        materials: ThreePbrMaterial[],
-        texturePath: string,
-        selectTexture: (material: ThreePbrMaterial) => Texture | null,
-    ): void {
-        const textures = materials.map(selectTexture).filter((texture): texture is Texture => texture !== null);
-        if (textures.length === 0) {
-            return;
-        }
-        const prefix = `/materials/${materialIndex}/${texturePath}/extensions/KHR_texture_transform`;
-        this.bindIfValid(`${prefix}/offset`, "float2", () => textures[0].offset.toArray(), (value) => textures.forEach((texture) => texture.offset.fromArray(asArray(value))));
-        this.bindIfValid(`${prefix}/scale`, "float2", () => textures[0].repeat.toArray(), (value) => textures.forEach((texture) => texture.repeat.fromArray(asArray(value))));
-        this.bindIfValid(`${prefix}/rotation`, "float", () => [textures[0].rotation], (value) => textures.forEach((texture) => texture.rotation = scalar(value)));
+    private isValidJsonPtrExact = (path: string): boolean => this.pointerBindings.has(path) || this.isActiveDelayRef(path);
+    private isReadOnlyExact = (path: string): boolean => this.pointerBindings.get(path)?.readOnly ?? this.isActiveDelayRef(path);
+    private getPathValueExact = (path: string): unknown => this.pointerBindings.get(path)?.get() ?? (this.isActiveDelayRef(path) ? [path] : undefined);
+    private getPathTypeNameExact = (path: string): string | undefined => this.pointerBindings.get(path)?.typeName ?? (this.isActiveDelayRef(path) ? "ref" : undefined);
+    private setPathValueExact = (path: string, value: unknown): void => {
+        const binding = this.pointerBindings.get(path);
+        if (binding && !binding.readOnly) binding.set?.(value);
+    };
+
+    private isActiveDelayRef(path: string): boolean {
+        const match = path.match(/^\/extensions\/KHR_interactivity\/delays\/(\d+)$/);
+        return match !== null && (this.behaveEngine as any).getScheduledDelay?.(Number(match[1])) !== undefined;
     }
 
     private startThreeAnimation = (animationIndex: number, startTime: number, endTime: number, speed: number, callback: () => void): void => {
@@ -357,16 +287,6 @@ export class ThreeDecorator extends GlTFObjectModelDecorator {
     }
 }
 
-function findMorphMeshes(node: Object3D): Mesh[] {
-    const result: Mesh[] = [];
-    node.traverse((object) => {
-        if (object instanceof Mesh && object.morphTargetInfluences) {
-            result.push(object);
-        }
-    });
-    return result;
-}
-
 function findNodeIndex(object: Object3D): number | undefined {
     for (let current: Object3D | null = object; current; current = current.parent) {
         if (Number.isInteger(current.userData.gltfNodeIndex)) {
@@ -393,10 +313,6 @@ function clipTime(virtualTime: number, duration: number, finalFrame: boolean): n
     return finalFrame && virtualTime !== 0 && wrapped === 0 ? duration : wrapped;
 }
 
-function asArray(value: unknown): number[] {
-    return Array.isArray(value) ? value.map(Number) : [Number(value)];
-}
-
-function scalar(value: unknown): number {
-    return Number(Array.isArray(value) ? value[0] : value);
+function animationMinTime(clip: { tracks: Array<{ times: ArrayLike<number> }> }): number {
+    return clip.tracks.length === 0 ? 0 : Math.min(...clip.tracks.map((track) => track.times[0] ?? 0));
 }
