@@ -7,6 +7,7 @@ import { BabylonScene, loadBabylonWorldFromGlb, NullEngine } from "./babylonAsse
 import { loadModelAssetCases } from "./modelAssetHarness";
 import { runGraphAndWait, TestEventBus } from "./sampleAssetHarness";
 import { loadThreeWorldFromGlb } from "./threeAssetHarness";
+import { getInteractivityRuntime } from "../../src/integrations/InteractivityRuntime";
 
 jest.setTimeout(30_000);
 
@@ -132,8 +133,10 @@ describe("KHR_interactivity showcase models - Three engine", () => {
             throw assetCase.loadError ?? new Error(`${assetCase.entry.name} has no graph`);
         }
 
-        const model = await loadThreeWorldFromGlb(assetCase.glbPath);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new TestEventBus()), model);
+        const model = await loadThreeWorldFromGlb(assetCase.glbPath, new TestEventBus());
+        const runtime = getInteractivityRuntime(model);
+        if (!runtime) throw new Error("Three model has no interactivity runtime");
+        const decorator = runtime.decorator;
         try {
             if (assetCase.entry.name === "Ghost") {
                 expect(model.animations.length).toBeGreaterThan(0);
@@ -142,7 +145,7 @@ describe("KHR_interactivity showcase models - Three engine", () => {
             await runModelGraph(assetCase.entry.name, decorator, assetCase.graph);
             await verifyModelBehavior(assetCase.entry.name, decorator);
         } finally {
-            decorator.dispose();
+            runtime.dispose();
             disposeThreeLoadedModel(model);
         }
     });
