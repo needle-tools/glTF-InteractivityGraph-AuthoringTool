@@ -4,6 +4,7 @@ import { BabylonDecorator } from "../../src/decorators/BabylonDecorator";
 import { BabylonScene, loadBabylonWorldFromGlb, NullEngine } from "./babylonAssetHarness";
 import { ThreeDecorator } from "../../src/decorators/ThreeDecorator";
 import { disposeThreeLoadedModel } from "../../src/components/engineViews/threeLoadedModel";
+import { createGlTFObjectModelFromGltf, GlTFObjectModelDecorator } from "../../src/objectModel/glTFObjectModel";
 import { loadThreeWorldFromGlb } from "./threeAssetHarness";
 import {
     assertAssetSubTest,
@@ -20,7 +21,7 @@ const cases = loadAssetCases({ interGlb: "exclude" });
 
 describe("KHR_interactivity sample assets - Babylon engine", () => {
     if (cases.length === 0) {
-        it.skip("has no matching single-file assets", () => {});
+        it.skip("has no matching single-file assets", () => undefined);
         return;
     }
 
@@ -65,7 +66,7 @@ describe("KHR_interactivity sample assets - Babylon engine", () => {
 
 describe("KHR_interactivity sample assets - Three engine", () => {
     if (cases.length === 0) {
-        it.skip("has no matching single-file assets", () => {});
+        it.skip("has no matching single-file assets", () => undefined);
         return;
     }
 
@@ -86,6 +87,9 @@ describe("KHR_interactivity sample assets - Three engine", () => {
                 const engine = new BasicBehaveEngine(60, new TestEventBus());
                 model = await loadThreeWorldFromGlb(assetCase.glbPath);
                 decorator = new ThreeDecorator(engine, model);
+                if (assetCase.entry.name === "pointer/set_and_get") {
+                    assertThreePointerInventory(assetCase.gltf, decorator);
+                }
                 await runGraphAndWait(decorator, assetCase.graph);
                 variables = engine.variables;
             } catch (error) {
@@ -106,3 +110,24 @@ describe("KHR_interactivity sample assets - Three engine", () => {
         });
     });
 });
+
+function assertThreePointerInventory(gltf: any, decorator: ThreeDecorator): void {
+    const expected = new GlTFObjectModelDecorator(
+        new BasicBehaveEngine(60, new TestEventBus()),
+        createGlTFObjectModelFromGltf(gltf),
+    );
+    try {
+        const implemented = new Set(decorator.getRegisteredJsonPointers());
+        const expectedPointers = new Set(expected.getRegisteredJsonPointers());
+        const missing = [...expectedPointers].filter((pointer) => !implemented.has(pointer));
+        if (missing.length > 0) {
+            throw new Error(`Three does not directly implement ${missing.length} pointer(s):\n${missing.join("\n")}`);
+        }
+        const unexpected = [...implemented].filter((pointer) => !expectedPointers.has(pointer));
+        if (unexpected.length > 0) {
+            throw new Error(`Three incorrectly exposes ${unexpected.length} pointer(s):\n${unexpected.join("\n")}`);
+        }
+    } finally {
+        expected.dispose();
+    }
+}
