@@ -6,9 +6,9 @@ import { expect, test } from "@playwright/test";
 const testRoot = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testRoot, "../..");
 
-test("supports the Three.js release matrix", async ({ page }) => {
+test("supports the Three.js release matrix", async ({ context }) => {
   const manifest = await readManifest("three-matrix-pages");
-  const results = await runPages(page, manifest.pages);
+  const results = await runPages(context, manifest.pages);
 
   expect(results).toHaveLength(manifest.pages.length);
   for (const result of results) {
@@ -23,11 +23,16 @@ test("supports the Three.js release matrix", async ({ page }) => {
   }
 });
 
-test("supports the Needle Engine 6 distribution runtime", async ({ page }) => {
+test("supports the Needle Engine runtime shapes", async ({ context }) => {
   const manifest = await readManifest("needle-matrix-pages");
   expect(manifest.pages.length).toBeGreaterThan(0);
-  expect(manifest.pages.every(entry => entry.runtimeShape === "dist")).toBe(true);
-  const results = await runPages(page, manifest.pages);
+  expect(manifest.pages.every(entry => entry.runtimeShape === "dist" || entry.runtimeShape === "module")).toBe(true);
+  if (!process.env.NEEDLE_MATRIX_VERSIONS) {
+    expect(manifest.pages.some(entry => entry.version.startsWith("5.") && entry.runtimeShape === "dist")).toBe(true);
+    expect(manifest.pages.some(entry => entry.version.startsWith("5.") && entry.runtimeShape === "module")).toBe(true);
+    expect(manifest.pages.some(entry => entry.version.startsWith("6.") && entry.runtimeShape === "dist")).toBe(true);
+  }
+  const results = await runPages(context, manifest.pages);
 
   expect(results).toHaveLength(manifest.pages.length);
   for (const result of results) {
@@ -44,16 +49,13 @@ async function readManifest(name) {
   return JSON.parse(await readFile(path.join(packageRoot, ".cache", name, "manifest.json"), "utf8"));
 }
 
-async function runPages(page, pages) {
+async function runPages(context, pages) {
   const results = [];
   const failures = [];
 
   for (const matrixPage of pages) {
+    const page = await context.newPage();
     const diagnostics = [];
-    page.removeAllListeners("console");
-    page.removeAllListeners("pageerror");
-    page.removeAllListeners("requestfailed");
-    page.removeAllListeners("response");
     page.on("console", message => {
       if (message.type() === "error") diagnostics.push(`console: ${message.text()}`);
     });
@@ -78,6 +80,9 @@ async function runPages(page, pages) {
     }
     catch (error) {
       failures.push(`${matrixPage.id}: ${error instanceof Error ? error.stack || error.message : String(error)}\n${diagnostics.join("\n")}`);
+    }
+    finally {
+      await page.close();
     }
   }
 

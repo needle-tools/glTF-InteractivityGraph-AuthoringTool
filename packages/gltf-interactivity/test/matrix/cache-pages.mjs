@@ -12,6 +12,7 @@ import {
   parseMatrixArgs,
   prepareThreeMatrix,
   rawFsUrl,
+  resolveNpmPackageVersions,
   writeMatrixPages,
 } from "@needle-tools/three-test-matrix";
 
@@ -26,7 +27,14 @@ const needleCacheRoot = path.join(sharedCacheRoot, "needle-engine-versions");
 const fixtureUrl = rawFsUrl(path.join(packageRoot, "examples/fixture/interactive.gltf"));
 const packageImportMap = createPackageImportMap();
 const threeVersions = readVersions("THREE_MATRIX_VERSIONS") ?? args.versions;
-const needleVersions = readVersions("NEEDLE_MATRIX_VERSIONS") ?? ["6.0.0-alpha"];
+const needleVersions = readVersions("NEEDLE_MATRIX_VERSIONS") ?? [
+  ...resolveNpmPackageVersions({
+    packageName: "@needle-tools/engine",
+    versionRanges: ["5.x"],
+    cwd: packageRoot,
+  }),
+  "6.0.0-alpha",
+];
 
 const threeMatrix = await prepareThreeMatrix({
   cwd: packageRoot,
@@ -67,6 +75,21 @@ const needleRuntimes = await createCachedNeedleEngineRuntimes({
   versions: needleVersions,
   runtimeShapes: ["dist"],
 });
+const needleFiveVersions = needleVersions.filter(version => version.startsWith("5."));
+if (needleFiveVersions.length) {
+  await cacheNeedleEngineVersions({
+    cacheRoot: needleCacheRoot,
+    versions: needleFiveVersions,
+    runtimeShapes: ["module"],
+    refresh: args.refresh,
+    cwd: packageRoot,
+  });
+  needleRuntimes.push(...await createCachedNeedleEngineRuntimes({
+    cacheRoot: needleCacheRoot,
+    versions: needleFiveVersions,
+    runtimeShapes: ["module"],
+  }));
+}
 const needleManifest = await writeMatrixPages({
   pagesRoot: needlePagesRoot,
   clean: true,

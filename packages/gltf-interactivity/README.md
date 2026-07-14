@@ -1,6 +1,6 @@
 # @needle-tools/gltf-interactivity
 
-`KHR_interactivity` runtime integration for Three.js `GLTFLoader` and Needle Engine 6.
+`KHR_interactivity` runtime integration for Three.js `GLTFLoader` and Needle Engine.
 
 The package creates the interactivity runtime as part of glTF loading. A model starts when loading completes; no second parse, post-load graph reconstruction, or Play button is required.
 
@@ -51,7 +51,7 @@ runtime?.dispose();
 
 Disposing a runtime stops graph and animation updates and removes input listeners. Dispose the model's geometry, materials, and textures according to the owning application's normal Three.js lifecycle.
 
-## Needle Engine 6
+## Needle Engine
 
 Register the extension before assigning a source to `<needle-engine>` or otherwise starting a glTF load:
 
@@ -68,7 +68,7 @@ document.body.append(engine);
 
 Needle registration uses `addCustomExtensionPlugin` and installs the Three loader plugin in `onImport`. It uses Needle's existing `KHR_animation_pointer` registration, frame update, active camera, physics raycast, and context cleanup. It does not load or rebuild the model after Needle has finished.
 
-Needle Engine 6 currently uses its own Three.js distribution. Applications that also declare `three` should resolve it to the same package instance, for example:
+Needle Engine uses its own Three.js distribution. Applications that also declare `three` should resolve it to the same package instance, for example:
 
 ```json
 {
@@ -115,4 +115,4 @@ npm run test:matrix
 
 The consumer projects in `examples/three` and `examples/needle` load the same interactive fixture through the public package entry points. Build the package before installing or running either local example.
 
-`test:matrix` uses `@needle-tools/three-test-matrix` to test the built package in Chromium against every supported Three.js minor from r174 through the current npm release. It also tests the Needle Engine 6 distribution runtime. Set `THREE_MATRIX_VERSIONS` or `NEEDLE_MATRIX_VERSIONS` to comma-separated exact versions to narrow a local run.
+`test:matrix` uses `@needle-tools/three-test-matrix` to test the built package in Chromium against every supported Three.js minor from r174 through the current npm release. It also tests the latest stable Needle Engine 5.x through its distribution and package-module runtimes, plus the Needle Engine 6 distribution runtime. Set `THREE_MATRIX_VERSIONS` or `NEEDLE_MATRIX_VERSIONS` to comma-separated exact versions to narrow a local run.
