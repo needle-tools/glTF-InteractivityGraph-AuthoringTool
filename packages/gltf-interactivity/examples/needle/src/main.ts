@@ -22,7 +22,7 @@ registerNeedleInteractivity({
   },
 });
 
-await createSampleBrowser({
+void createSampleBrowser({
   engineName: "Needle Engine",
   defaultAssetId: "model:WhackAMole",
   loadAsset,
