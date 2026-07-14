@@ -71,7 +71,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 resizeRenderer();
-await browserReady;
+void browserReady;
 
 async function loadAsset(asset: SampleAsset): Promise<{ runtime?: BrowserRuntime }> {
   disposeCurrentAsset();
