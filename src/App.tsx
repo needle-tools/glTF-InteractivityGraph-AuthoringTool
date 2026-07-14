@@ -5,6 +5,7 @@ import {RenderIf} from "./components/RenderIf";
 import {LoggingEngineComponent} from "./components/engineViews/LoggingEngineComponent";
 import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComponent";
 import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponent";
+import {NeedleEngineComponent} from "./components/engineViews/NeedleEngineComponent";
 import {Tab, Tabs} from "react-bootstrap";
 import {Spacer} from "./components/Spacer";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
@@ -19,6 +20,7 @@ const engineTypeFromString = (value: string | null): EngineType | undefined => {
     case 'logging': return EngineType.LOGGING;
     case 'babylon': return EngineType.BABYLON;
     case 'three': return EngineType.THREE;
+    case 'needle': return EngineType.NEEDLE;
     default: return undefined;
   }
 };
@@ -83,6 +85,9 @@ export const App = () => {
         case 'three':
           setEngineType(EngineType.THREE);
           break;
+        case 'needle':
+          setEngineType(EngineType.NEEDLE);
+          break;
         default:
           // Load from localStorage if URL param is invalid
           const storedEngineType = localStorage.getItem(ENGINE_TYPE_STORAGE_KEY);
@@ -128,6 +133,9 @@ export const App = () => {
             break;
           case 'three':
             setEngineType(EngineType.THREE);
+            break;
+          case 'needle':
+            setEngineType(EngineType.NEEDLE);
             break;
         }
       }
@@ -206,6 +214,9 @@ export const App = () => {
                 <RenderIf shouldShow={engineType === EngineType.THREE}>
                     <ThreeEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
+                <RenderIf shouldShow={engineType === EngineType.NEEDLE}>
+                    <NeedleEngineComponent modelUrl={modelUrl} />
+                </RenderIf>
             </div>
             <div
                 onMouseDown={startSplitDrag}
@@ -252,6 +263,8 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                 return '2';
             case EngineType.THREE:
                 return '3';
+            case EngineType.NEEDLE:
+                return '4';
             default:
                 return '2'; // Default to Babylon
         }
@@ -277,6 +290,9 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                 case '3':
                     engine = EngineType.THREE;
                     break;
+                case '4':
+                    engine = EngineType.NEEDLE;
+                    break;
                 default:
                     throw Error("Invalid Selection")
             }
@@ -297,6 +313,7 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
                 >
                     <Tab title={"Babylon Engine"} eventKey={2}/>
                     <Tab title={"Three Engine"} eventKey={3}/>
+                    <Tab title={"Needle Engine"} eventKey={4}/>
                     <Tab title={"Logging Engine (for development)"} eventKey={1}/>
                 </Tabs>
             </div>

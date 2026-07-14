@@ -1,5 +1,6 @@
 import {
     Camera,
+    Light,
     MathUtils,
     Mesh,
     Object3D,
@@ -88,15 +89,15 @@ export function registerThreeActiveCameraPointers(camera: Camera, register: Thre
     register("/extensions/KHR_interactivity/activeCamera/position", "float3", () => camera.getWorldPosition(worldPosition).toArray(), undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/rotation", "float4", () => camera.getWorldQuaternion(worldRotation).toArray(), undefined, true);
 
-    register("/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio", "float", () => [camera instanceof PerspectiveCamera ? camera.aspect : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/perspective/yfov", "float", () => [camera instanceof PerspectiveCamera ? MathUtils.degToRad(camera.fov) : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/perspective/znear", "float", () => [camera instanceof PerspectiveCamera ? camera.near : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/perspective/zfar", "float", () => [camera instanceof PerspectiveCamera ? camera.far : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio", "float", () => [isPerspectiveCamera(camera) ? camera.aspect : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/perspective/yfov", "float", () => [isPerspectiveCamera(camera) ? MathUtils.degToRad(camera.fov) : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/perspective/znear", "float", () => [isPerspectiveCamera(camera) ? camera.near : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/perspective/zfar", "float", () => [isPerspectiveCamera(camera) ? camera.far : NaN], undefined, true);
 
-    register("/extensions/KHR_interactivity/activeCamera/orthographic/xmag", "float", () => [camera instanceof OrthographicCamera ? (camera.right - camera.left) / 2 : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/orthographic/ymag", "float", () => [camera instanceof OrthographicCamera ? (camera.top - camera.bottom) / 2 : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/orthographic/znear", "float", () => [camera instanceof OrthographicCamera ? camera.near : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/orthographic/zfar", "float", () => [camera instanceof OrthographicCamera ? camera.far : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/orthographic/xmag", "float", () => [isOrthographicCamera(camera) ? (camera.right - camera.left) / 2 : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/orthographic/ymag", "float", () => [isOrthographicCamera(camera) ? (camera.top - camera.bottom) / 2 : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/orthographic/znear", "float", () => [isOrthographicCamera(camera) ? camera.near : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/orthographic/zfar", "float", () => [isOrthographicCamera(camera) ? camera.far : NaN], undefined, true);
 }
 
 function registerMeshWeightPointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {
@@ -124,7 +125,7 @@ function registerMeshWeightPointers(model: ThreeLoadedModel, bind: ThreePointerB
 function registerCameraPointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {
     model.cameraInstances.forEach((instances, cameraIndex) => {
         const source = model.gltf.cameras?.[cameraIndex];
-        const perspective = instances.filter((camera): camera is PerspectiveCamera => camera instanceof PerspectiveCamera);
+        const perspective = instances.filter(isPerspectiveCamera);
         if (perspective.length > 0) {
             if (source?.perspective?.aspectRatio !== undefined) bindCameraScalar<PerspectiveCamera>(bind, `/cameras/${cameraIndex}/perspective/aspectRatio`, perspective, (camera) => camera.aspect, (camera, value) => camera.aspect = value);
             if (source?.perspective?.yfov !== undefined) bindCameraScalar<PerspectiveCamera>(bind, `/cameras/${cameraIndex}/perspective/yfov`, perspective, (camera) => MathUtils.degToRad(camera.fov), (camera, value) => camera.fov = MathUtils.radToDeg(value));
@@ -132,7 +133,7 @@ function registerCameraPointers(model: ThreeLoadedModel, bind: ThreePointerBinde
             if (source?.perspective?.zfar !== undefined) bindCameraScalar<PerspectiveCamera>(bind, `/cameras/${cameraIndex}/perspective/zfar`, perspective, (camera) => camera.far, (camera, value) => camera.far = value);
         }
 
-        const orthographic = instances.filter((camera): camera is OrthographicCamera => camera instanceof OrthographicCamera);
+        const orthographic = instances.filter(isOrthographicCamera);
         if (orthographic.length > 0) {
             if (source?.orthographic?.xmag !== undefined) bindCameraScalar<OrthographicCamera>(bind, `/cameras/${cameraIndex}/orthographic/xmag`, orthographic, (camera) => (camera.right - camera.left) / 2, (camera, value) => {
                 camera.left = -value;
@@ -162,14 +163,14 @@ function registerLightPointers(model: ThreeLoadedModel, bind: ThreePointerBinder
             instances.forEach((light) => light.intensity = intensity);
         });
 
-        const ranged = instances.filter((light): light is PointLight | SpotLight => light instanceof PointLight || light instanceof SpotLight);
+        const ranged = instances.filter((light): light is PointLight | SpotLight => isPointLight(light) || isSpotLight(light));
         let range = source?.range ?? Infinity;
         bind(`/extensions/KHR_lights_punctual/lights/${lightIndex}/range`, "float", () => [range], (value) => {
             range = scalar(value);
             ranged.forEach((light) => light.distance = Number.isFinite(range) ? range : 0);
         });
 
-        const spots = instances.filter((light): light is SpotLight => light instanceof SpotLight);
+        const spots = instances.filter(isSpotLight);
         if (source?.type === "spot") {
             let inner = source.spot?.innerConeAngle ?? 0;
             let outer = source.spot?.outerConeAngle ?? Math.PI / 4;
@@ -214,7 +215,7 @@ function findMorphMeshes(root: Object3D): Mesh[] {
         if (object !== root && Number.isInteger(object.userData.gltfNodeIndex)) {
             return;
         }
-        if (object instanceof Mesh && object.morphTargetInfluences) result.push(object);
+        if ((object as Mesh).isMesh && (object as Mesh).morphTargetInfluences) result.push(object as Mesh);
         object.children.forEach(visit);
     };
     visit(root);
@@ -227,4 +228,20 @@ function asArray(value: unknown): number[] {
 
 function scalar(value: unknown): number {
     return Number(Array.isArray(value) ? value[0] : value);
+}
+
+function isPerspectiveCamera(camera: Camera): camera is PerspectiveCamera {
+    return Boolean((camera as PerspectiveCamera).isPerspectiveCamera);
+}
+
+function isOrthographicCamera(camera: Camera): camera is OrthographicCamera {
+    return Boolean((camera as OrthographicCamera).isOrthographicCamera);
+}
+
+function isPointLight(light: Light): light is PointLight {
+    return Boolean((light as PointLight).isPointLight);
+}
+
+function isSpotLight(light: Light): light is SpotLight {
+    return Boolean((light as SpotLight).isSpotLight);
 }
