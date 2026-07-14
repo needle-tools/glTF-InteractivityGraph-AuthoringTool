@@ -1,4 +1,4 @@
-import type { ThreeLoadedModel } from "../components/engineViews/threeLoadedModel";
+import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import type { ThreePointerBinder } from "./threePointerTypes";
 
 export function registerThreeStructuralPointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {

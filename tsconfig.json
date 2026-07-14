@@ -15,6 +15,12 @@
     "noFallthroughCasesInSwitch": true,
     "module": "es6",
     "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@needle-tools/engine": [
+        "src/types/needle-engine-package"
+      ]
+    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,

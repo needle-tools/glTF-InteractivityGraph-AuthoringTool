@@ -11,7 +11,7 @@ import {
     SpotLight,
     Vector3,
 } from "three";
-import type { ThreeLoadedModel } from "../components/engineViews/threeLoadedModel";
+import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import type { ThreePointerBinder } from "./threePointerTypes";
 
 export function registerThreeScenePointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {
