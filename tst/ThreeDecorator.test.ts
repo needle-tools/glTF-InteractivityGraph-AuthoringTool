@@ -1,4 +1,4 @@
-import { BufferGeometry, Group, MathUtils, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera, Texture } from "three";
+import { AnimationClip, BufferGeometry, Group, MathUtils, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera, Texture } from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BasicBehaveEngine } from "../src/BasicBehaveEngine/BasicBehaveEngine";
 import { DOMEventBus } from "../src/BasicBehaveEngine/eventBuses/DOMEventBus";
@@ -117,7 +117,7 @@ describe("ThreeDecorator", () => {
         const result = {
             scene,
             scenes: [scene],
-            animations: [],
+            animations: [new AnimationClip("idle", 1, [])],
             cameras: [],
             parser: {
                 json: {
@@ -126,6 +126,7 @@ describe("ThreeDecorator", () => {
                     nodes: [{ children: [1], mesh: 0 }, {}, { mesh: 1 }, {}],
                     meshes: [{ primitives: [{ material: 0 }] }, { primitives: [{}] }],
                     materials: [{}],
+                    animations: [{}],
                 },
                 associations: new Map(),
             },
@@ -138,6 +139,8 @@ describe("ThreeDecorator", () => {
             expect(decorator.getPathValue("/nodes/0/children/0")).toEqual(["/nodes/1"]);
             expect(decorator.getPathValue("/nodes/0/mesh")).toEqual(["/meshes/0"]);
             expect(decorator.getPathValue("/meshes/0/primitives/0/material")).toEqual(["/materials/0"]);
+            expect(decorator.getPathValue("/animations/0")).toEqual(["/animations/0"]);
+            expect(decorator.isValidJsonPtr("/animations/0/")).toBe(false);
 
             expect(decorator.getPathValue("/nodes/2/weights.length")).toEqual([0]);
             expect(decorator.isValidJsonPtr("/nodes/3/weights.length")).toBe(false);
