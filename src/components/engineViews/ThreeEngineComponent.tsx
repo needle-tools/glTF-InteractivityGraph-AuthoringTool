@@ -13,17 +13,16 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { IInteractivityGraph } from "../../BasicBehaveEngine/types/InteractivityGraph";
-import { BasicBehaveEngine } from "../../BasicBehaveEngine/BasicBehaveEngine";
-import { DOMEventBus } from "../../BasicBehaveEngine/eventBuses/DOMEventBus";
 import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring/CustomEventControls";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { computeExtensionDiagnostics } from "../../diagnostics";
-import { ThreeDecorator } from "../../decorators/ThreeDecorator";
+import { registerGLTFInteractivity } from "../../integrations/GLTFInteractivityPlugin";
+import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { Spacer } from "../Spacer";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
-import { createThreeLoader, disposeThreeLoadedModel, loadThreeModelFromUrl, ThreeLoadedModel } from "./threeLoadedModel";
+import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
 import { downloadInteractivityGlb } from "./glbExport";
 
 type ModelSource = { kind: "url"; url: string } | { kind: "file"; file: File };
@@ -45,7 +44,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
     const cameraRef = useRef<PerspectiveCamera | null>(null);
     const controlsRef = useRef<OrbitControls | null>(null);
     const loadedModelRef = useRef<ThreeLoadedModel | null>(null);
-    const decoratorRef = useRef<ThreeDecorator | null>(null);
+    const runtimeRef = useRef<InteractivityRuntime | null>(null);
     const sourceRef = useRef<ModelSource | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const animationFrameRef = useRef<number | null>(null);
@@ -65,8 +64,8 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
     } = useContext(InteractivityGraphContext);
 
     const disposeLoadedModel = (): void => {
-        decoratorRef.current?.dispose();
-        decoratorRef.current = null;
+        runtimeRef.current?.dispose();
+        runtimeRef.current = null;
         if (loadedModelRef.current) {
             sceneRef.current?.remove(loadedModelRef.current.scene);
             disposeThreeLoadedModel(loadedModelRef.current);
@@ -102,7 +101,8 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         const scene = sceneRef.current;
         const camera = cameraRef.current;
         const canvas = canvasRef.current;
-        if (!scene || !camera || !canvas) {
+        const loader = loaderRef.current;
+        if (!scene || !camera || !canvas || !loader) {
             return;
         }
 
@@ -113,8 +113,12 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         let objectUrl: string | undefined;
         try {
             const url = source.kind === "url" ? source.url : (objectUrl = URL.createObjectURL(source.file));
-            const model = await loadThreeModelFromUrl(url, loaderRef.current ?? createThreeLoader());
+            const gltf = await loader.loadAsync(url);
+            const runtime = getInteractivityRuntime(gltf);
+            if (!runtime) throw new Error("GLTFInteractivityPlugin did not attach a runtime");
+            const model = runtime.model;
             if (loadToken !== loadTokenRef.current) {
+                runtime.dispose();
                 disposeThreeLoadedModel(model);
                 return;
             }
@@ -131,11 +135,11 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             );
             setGltfObjectModel(buildGltfObjectModel(model.gltf));
 
-            const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+            const decorator = runtime.decorator;
             decorator.setCamera(camera);
             decorator.attachPointerEvents(canvas);
             attachPointerEventLogging(decorator);
-            decoratorRef.current = decorator;
+            runtimeRef.current = runtime;
             setSupportedPointerTemplates(buildNormalizedTemplateSet(decorator.getRegisteredJsonPointers()));
 
             const interactivity = model.gltf.extensions?.KHR_interactivity;
@@ -182,7 +186,12 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         renderer.outputColorSpace = SRGBColorSpace;
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         rendererRef.current = renderer;
-        loaderRef.current = createThreeLoader(renderer);
+        const loader = createThreeLoader(renderer);
+        const unregisterInteractivity = registerGLTFInteractivity(loader, {
+            autoStart: false,
+            initializeWithoutExtension: true,
+        });
+        loaderRef.current = loader;
 
         const scene = new Scene();
         scene.background = new Color(0xffffff);
@@ -230,6 +239,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             disposeLoadedModel();
             controls.dispose();
             renderer.dispose();
+            unregisterInteractivity();
             loaderRef.current = null;
             setSupportedPointerTemplates(null);
         };

@@ -2,22 +2,25 @@ import "needle-engine-runtime";
 import { fitCamera } from "needle-engine-runtime";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Button, Container, Modal } from "react-bootstrap";
-import type { Camera } from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { BasicBehaveEngine } from "../../BasicBehaveEngine/BasicBehaveEngine";
-import { DOMEventBus } from "../../BasicBehaveEngine/eventBuses/DOMEventBus";
 import type { IInteractivityGraph } from "../../BasicBehaveEngine/types/InteractivityGraph";
 import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring/CustomEventControls";
 import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
-import { ThreeDecorator } from "../../decorators/ThreeDecorator";
 import { computeExtensionDiagnostics } from "../../diagnostics";
+import { registerNeedleInteractivity } from "../../integrations/NeedleInteractivityPlugin";
+import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { Spacer } from "../Spacer";
 import { downloadInteractivityGlb } from "./glbExport";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
-import { attachNeedlePointerEvents, type NeedleContext } from "./needlePointerEvents";
-import { buildThreeLoadedModelWithDependencies, type ThreeLoadedModel } from "./threeLoadedModel";
+import type { NeedleContext } from "../../integrations/NeedlePointerEvents";
+import type { ThreeLoadedModel } from "./threeLoadedModel";
+
+registerNeedleInteractivity({
+    autoStart: false,
+    initializeWithoutExtension: true,
+});
 
 type ModelSource = { kind: "url"; url: string } | { kind: "file"; file: File };
 
@@ -50,8 +53,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
     const sourceRef = useRef<ModelSource | null>(null);
     const pendingLoadRef = useRef<PendingLoad | null>(null);
     const loadedModelRef = useRef<ThreeLoadedModel | null>(null);
-    const decoratorRef = useRef<ThreeDecorator | null>(null);
-    const detachPointerEventsRef = useRef<(() => void) | null>(null);
+    const runtimeRef = useRef<InteractivityRuntime | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const activeObjectUrlRef = useRef<string | null>(null);
     const loadTokenRef = useRef(0);
@@ -77,10 +79,8 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         const element = engineElementRef.current;
         if (!element) return;
 
-        decoratorRef.current?.dispose();
-        detachPointerEventsRef.current?.();
-        detachPointerEventsRef.current = null;
-        decoratorRef.current = null;
+        runtimeRef.current?.dispose();
+        runtimeRef.current = null;
         loadedModelRef.current = null;
         setGraphRunning(false);
 
@@ -110,12 +110,15 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
             throw new Error("Needle Engine did not return a glTF model for the selected source");
         }
 
-        const model = await buildThreeLoadedModelWithDependencies(file as unknown as GLTF);
+        const runtime = getInteractivityRuntime(file as unknown as GLTF);
+        if (!runtime) throw new Error("GLTFInteractivityPlugin did not attach a runtime");
+        const model = runtime.model;
         if (pending.token !== loadTokenRef.current) {
-            model.mixer.stopAllAction();
+            runtime.dispose();
             return;
         }
         loadedModelRef.current = model;
+        runtimeRef.current = runtime;
 
         const gltf = model.gltf;
         setDiagnosticsForCategory(
@@ -124,11 +127,8 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         );
         setGltfObjectModel(buildGltfObjectModel(gltf));
 
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
-        decorator.setCamera(context.mainCamera as unknown as Camera);
-        detachPointerEventsRef.current = attachNeedlePointerEvents(context, model, decorator);
+        const decorator = runtime.decorator;
         attachPointerEventLogging(decorator);
-        decoratorRef.current = decorator;
         setSupportedPointerTemplates(buildNormalizedTemplateSet(decorator.getRegisteredJsonPointers()));
 
         const interactivity = gltf.extensions?.KHR_interactivity;
@@ -202,8 +202,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
 
     useEffect(() => () => {
         loadTokenRef.current += 1;
-        decoratorRef.current?.dispose();
-        detachPointerEventsRef.current?.();
+        runtimeRef.current?.dispose();
         if (activeObjectUrlRef.current) URL.revokeObjectURL(activeObjectUrlRef.current);
         setSupportedPointerTemplates(null);
     }, []);

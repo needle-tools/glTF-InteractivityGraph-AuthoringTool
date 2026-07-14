@@ -1,12 +1,20 @@
 import fs from "fs";
 import path from "path";
-import { loadThreeModelFromArrayBuffer, ThreeLoadedModel } from "../../src/components/engineViews/threeLoadedModel";
+import type { IEventBus } from "../../src/BasicBehaveEngine/IBehaveEngine";
+import { createThreeLoader, ThreeLoadedModel } from "../../src/components/engineViews/threeLoadedModel";
+import { registerGLTFInteractivity } from "../../src/integrations/GLTFInteractivityPlugin";
+import { getInteractivityRuntime } from "../../src/integrations/InteractivityRuntime";
 
-export async function loadThreeWorldFromGlb(glbPath: string): Promise<ThreeLoadedModel> {
+export async function loadThreeWorldFromGlb(glbPath: string, eventBus?: IEventBus): Promise<ThreeLoadedModel> {
     installWebGlobalsForNode();
     const bytes = fs.readFileSync(path.resolve(glbPath));
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    return loadThreeModelFromArrayBuffer(data, `${path.dirname(path.resolve(glbPath))}/`);
+    const loader = createThreeLoader();
+    registerGLTFInteractivity(loader, { autoStart: false, eventBus });
+    const gltf = await loader.parseAsync(data, `${path.dirname(path.resolve(glbPath))}/`);
+    const runtime = getInteractivityRuntime(gltf);
+    if (!runtime) throw new Error(`GLTFInteractivityPlugin did not initialize ${glbPath}`);
+    return runtime.model;
 }
 
 function installWebGlobalsForNode(): void {

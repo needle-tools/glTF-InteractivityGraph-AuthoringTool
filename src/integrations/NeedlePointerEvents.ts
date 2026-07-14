@@ -1,6 +1,6 @@
 import type { Object3D } from "three";
-import type { ThreeLoadedModel } from "./threeLoadedModel";
-import type { ThreeDecorator } from "../../decorators/ThreeDecorator";
+import type { ThreeLoadedModel } from "./ThreeLoadedModel";
+import type { ThreeDecorator } from "../decorators/ThreeDecorator";
 
 interface NeedleIntersection {
     object: unknown;

@@ -6,6 +6,7 @@ import { ThreeDecorator } from "../../src/decorators/ThreeDecorator";
 import { disposeThreeLoadedModel } from "../../src/components/engineViews/threeLoadedModel";
 import { createGlTFObjectModelFromGltf, GlTFObjectModelDecorator } from "../../src/objectModel/glTFObjectModel";
 import { loadThreeWorldFromGlb } from "./threeAssetHarness";
+import { getInteractivityRuntime, type InteractivityRuntime } from "../../src/integrations/InteractivityRuntime";
 import {
     assertAssetSubTest,
     formatError,
@@ -82,11 +83,13 @@ describe("KHR_interactivity sample assets - Three engine", () => {
             }
 
             let model;
-            let decorator: ThreeDecorator | undefined;
+            let runtime: InteractivityRuntime | undefined;
             try {
-                const engine = new BasicBehaveEngine(60, new TestEventBus());
-                model = await loadThreeWorldFromGlb(assetCase.glbPath);
-                decorator = new ThreeDecorator(engine, model);
+                model = await loadThreeWorldFromGlb(assetCase.glbPath, new TestEventBus());
+                runtime = getInteractivityRuntime(model);
+                if (!runtime) throw new Error("Three model has no interactivity runtime");
+                const engine = runtime.engine;
+                const decorator = runtime.decorator;
                 if (assetCase.entry.name === "pointer/set_and_get") {
                     assertThreePointerInventory(assetCase.gltf, decorator);
                 }
@@ -95,7 +98,7 @@ describe("KHR_interactivity sample assets - Three engine", () => {
             } catch (error) {
                 runError = error instanceof Error ? error : new Error(String(error));
             } finally {
-                decorator?.dispose();
+                runtime?.dispose();
                 if (model) {
                     disposeThreeLoadedModel(model);
                 }
