@@ -1,4 +1,5 @@
 import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
+import { glTFObjectReference } from "../objectModel/glTFReference";
 import type { ThreePointerBinder } from "./threePointerTypes";
 
 export function registerThreeStructuralPointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {
@@ -52,8 +53,8 @@ export function registerThreeStructuralPointers(model: ThreeLoadedModel, bind: T
     });
 
     model.animations.forEach((_animation, animationIndex) => {
-        const path = `/animations/${animationIndex}/`;
-        bind(path, "ref", () => [path], undefined, true);
+        const reference = glTFObjectReference("animations", animationIndex);
+        bind(reference, "ref", () => [reference], undefined, true);
     });
 }
 
@@ -62,7 +63,7 @@ function bindCount(bind: ThreePointerBinder, path: string, count: number): void 
 }
 
 function bindRef(bind: ThreePointerBinder, path: string, collection: string, index: number): void {
-    bind(path, "ref", () => [`/${collection}/${index}`], undefined, true);
+    bind(path, "ref", () => [glTFObjectReference(collection, index)], undefined, true);
 }
 
 function buildParentIndices(nodes: NonNullable<ThreeLoadedModel["gltf"]["nodes"]>): Array<number | undefined> {
