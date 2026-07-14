@@ -28,8 +28,8 @@ export function registerThreeMaterialPointers(model: ThreeLoadedModel, bind: Thr
         const sourceMaterial = model.gltf.materials?.[materialIndex] ?? {};
         const bindDefined = onlyDefinedMaterialPointers(model, materialIndex, bind);
         const colorMaterials = instances.filter(isColorMaterial);
-        const standardMaterials = instances.filter((material): material is MeshStandardMaterial => material instanceof MeshStandardMaterial);
-        const physicalMaterials = instances.filter((material): material is MeshPhysicalMaterial => material instanceof MeshPhysicalMaterial);
+        const standardMaterials = instances.filter(isStandardMaterial);
+        const physicalMaterials = instances.filter(isPhysicalMaterial);
 
         bindScalar(bindDefined, `/materials/${materialIndex}/alphaCutoff`, instances, (material) => material.alphaTest, (material, value) => material.alphaTest = value);
         bindDefined(`/materials/${materialIndex}/doubleSided`, "bool", () => [instances[0]?.side === DoubleSide], undefined, true);
@@ -130,10 +130,10 @@ function textureBindings(materialIndex: number): TextureBinding[] {
     const prefix = `/materials/${materialIndex}`;
     return [
         { path: `${prefix}/pbrMetallicRoughness/baseColorTexture`, select: (material) => isColorMaterial(material) ? material.map : null },
-        { path: `${prefix}/pbrMetallicRoughness/metallicRoughnessTexture`, select: (material) => material instanceof MeshStandardMaterial ? material.metalnessMap ?? material.roughnessMap : null },
-        { path: `${prefix}/normalTexture`, select: (material) => material instanceof MeshStandardMaterial ? material.normalMap : null },
-        { path: `${prefix}/occlusionTexture`, select: (material) => material instanceof MeshStandardMaterial ? material.aoMap : null },
-        { path: `${prefix}/emissiveTexture`, select: (material) => material instanceof MeshStandardMaterial ? material.emissiveMap : null },
+        { path: `${prefix}/pbrMetallicRoughness/metallicRoughnessTexture`, select: (material) => isStandardMaterial(material) ? material.metalnessMap ?? material.roughnessMap : null },
+        { path: `${prefix}/normalTexture`, select: (material) => isStandardMaterial(material) ? material.normalMap : null },
+        { path: `${prefix}/occlusionTexture`, select: (material) => isStandardMaterial(material) ? material.aoMap : null },
+        { path: `${prefix}/emissiveTexture`, select: (material) => isStandardMaterial(material) ? material.emissiveMap : null },
         { path: `${prefix}/extensions/KHR_materials_anisotropy/anisotropyTexture`, select: physicalTexture("anisotropyMap") },
         { path: `${prefix}/extensions/KHR_materials_clearcoat/clearcoatTexture`, select: physicalTexture("clearcoatMap") },
         { path: `${prefix}/extensions/KHR_materials_clearcoat/clearcoatRoughnessTexture`, select: physicalTexture("clearcoatRoughnessMap") },
@@ -225,16 +225,24 @@ function bindColor<T extends Material>(
 
 function physicalTexture(property: keyof MeshPhysicalMaterial): (material: Material) => Texture | null {
     return (material) => {
-        if (!(material instanceof MeshPhysicalMaterial)) {
+        if (!isPhysicalMaterial(material)) {
             return null;
         }
         const value = material[property];
-        return value instanceof Texture ? value : null;
+        return (value as Texture | undefined)?.isTexture ? value as Texture : null;
     };
 }
 
 function isColorMaterial(material: Material): material is ColorMaterial {
-    return material instanceof MeshBasicMaterial || material instanceof MeshStandardMaterial;
+    return Boolean((material as MeshBasicMaterial).isMeshBasicMaterial || (material as MeshStandardMaterial).isMeshStandardMaterial);
+}
+
+function isStandardMaterial(material: Material): material is MeshStandardMaterial {
+    return Boolean((material as MeshStandardMaterial).isMeshStandardMaterial);
+}
+
+function isPhysicalMaterial(material: Material): material is MeshPhysicalMaterial {
+    return Boolean((material as MeshPhysicalMaterial).isMeshPhysicalMaterial);
 }
 
 function setNormalScale(target: { x: number; y: number; set(x: number, y: number): unknown }, value: number): void {

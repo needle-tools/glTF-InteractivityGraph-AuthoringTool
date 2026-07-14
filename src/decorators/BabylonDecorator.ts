@@ -4,13 +4,10 @@ import {IBehaveEngine} from "../BasicBehaveEngine/IBehaveEngine";
 import {
     AbstractMesh,
     AnimationGroup, Camera, Color3,
-    float,
     Matrix, PBRMaterial,
     PointerEventTypes,
     Quaternion,
     TargetCamera, Node,
-    PickingInfo,
-    IPointerEvent,
     TransformNode,
     Material,
     Observer,
@@ -18,7 +15,6 @@ import {
     SpotLight
 } from "@babylonjs/core";
 import {Vector3} from "@babylonjs/core/Maths/math.vector";
-import {cubicBezier, easeFloat, easeFloat3, easeFloat4, linearFloat, slerpFloat4} from "../BasicBehaveEngine/easingUtils";
 import {Scene} from "@babylonjs/core/scene";
 import {OnSelect} from "../BasicBehaveEngine/nodes/experimental/OnSelect";
 import {KHR_materials_variants} from "@babylonjs/loaders/glTF/2.0";
@@ -29,6 +25,17 @@ import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGrap
 import * as glMatrix from "gl-matrix";
 import {glTFObjectReference} from "../objectModel/glTFReference";
 
+interface BabylonAnimationState {
+    instance: AnimationGroup;
+    timer: ReturnType<typeof setTimeout> | null;
+    updateTimer: ReturnType<typeof setInterval> | null;
+    startTime: number;
+    endTime: number;
+    speed: number;
+    startedAt: number;
+    callback: () => void;
+}
+
 export class BabylonDecorator extends ADecorator {
     scene: Scene;
     world: any;
@@ -36,6 +43,8 @@ export class BabylonDecorator extends ADecorator {
     hoveredNodeIndex: number;
     private beforeRenderObserver: Observer<Scene> | null = null;
     private pointerObserver: Observer<PointerInfo> | null = null;
+    private activeAnimations = new Map<number, BabylonAnimationState>();
+    private animationPlayheads = new Map<number, { playhead: number; virtualPlayhead: number }>();
 
     constructor(behaveEngine: IBehaveEngine, world: any, scene: Scene) {
         super(behaveEngine);
@@ -125,6 +134,9 @@ export class BabylonDecorator extends ADecorator {
     }
 
     public dispose(): void {
+        for (const animationIndex of [...this.activeAnimations.keys()]) {
+            this.clearAnimation(animationIndex);
+        }
         if (this.beforeRenderObserver != null) {
             this.scene.onBeforeRenderObservable.remove(this.beforeRenderObserver);
             this.beforeRenderObserver = null;
@@ -1094,8 +1106,7 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/animations/${maxAnimations}/extensions/KHR_interactivity/isPlaying`, (path) => {
             const parts: string[] = path.split("/");
-            const animation: AnimationGroup = this.world.animations[Number(parts[2])];
-            return [animation.metadata?.instance?.isPlaying ?? false];
+            return [this.activeAnimations.has(Number(parts[2]))];
         }, (path, value) => {
             //no-op
         }, "bool", true);
@@ -1103,8 +1114,7 @@ export class BabylonDecorator extends ADecorator {
         this.registerJsonPointer(`/animations/${maxAnimations}/extensions/KHR_interactivity/minTime`, (path) => {
             const parts: string[] = path.split("/");
             const animation: AnimationGroup = this.world.animations[Number(parts[2])];
-            const fps = 60;
-            return [animation === undefined ? NaN : animation.from / fps];
+            return [animation === undefined ? NaN : animation.from / animationFramesPerSecond(animation)];
         }, (path, value) => {
             //no-op
         }, "float", true);
@@ -1112,33 +1122,23 @@ export class BabylonDecorator extends ADecorator {
         this.registerJsonPointer(`/animations/${maxAnimations}/extensions/KHR_interactivity/maxTime`, (path) => {
             const parts: string[] = path.split("/");
             const animation: AnimationGroup = this.world.animations[Number(parts[2])];
-            const fps = 60;
-            return [animation === undefined ? NaN : animation.to / fps];
+            return [animation === undefined ? NaN : animation.to / animationFramesPerSecond(animation)];
         }, (path, value) => {
             //no-op
         }, "float", true);
 
         this.registerJsonPointer(`/animations/${maxAnimations}/extensions/KHR_interactivity/playhead`, (path) => {
             const parts: string[] = path.split("/");
-            const animation: AnimationGroup = this.world.animations[Number(parts[2])];
-            const animationInstance: AnimationGroup = animation?.metadata?.instance;
-            if (animationInstance === undefined || animationInstance.animatables[0] === undefined) {return [NaN]}
-            const masterFrame = animationInstance.animatables[0].masterFrame;
-            const fps = 60;
-            return [masterFrame / fps];
+            const animationIndex = Number(parts[2]);
+            return [this.currentAnimationPlayheads(animationIndex).playhead];
         }, (path, value) => {
             //no-op
         }, "float", true);
 
-        // TODO: virtual playhead isnt something that is really stored on animations, ask babylon js to add it if we really need it 
         this.registerJsonPointer(`/animations/${maxAnimations}/extensions/KHR_interactivity/virtualPlayhead`, (path) => {
             const parts: string[] = path.split("/");
-            const animation: AnimationGroup = this.world.animations[Number(parts[2])];
-            const animationInstance: AnimationGroup = animation?.metadata?.instance;
-            if (animationInstance === undefined || animationInstance.animatables[0] === undefined) {return [NaN]}
-            const masterFrame = animationInstance.animatables[0].masterFrame;
-            const fps = 60;
-            return [masterFrame / fps];
+            const animationIndex = Number(parts[2]);
+            return [this.currentAnimationPlayheads(animationIndex).virtualPlayhead];
         }, (path, value) => {
             //no-op
         }, "float", true);
@@ -1234,129 +1234,139 @@ export class BabylonDecorator extends ADecorator {
     };
 
     public startAnimation = (animation: number, startTime: number, endTime: number, speed: number,  callback: () => void): void => {
-        // const fps = this.behaveEngine.fps;
-        //TODO: how should animation fps be determined?
-        const fps = 60;
-        const startFrame: number = startTime * fps;
-        const endFrame: number = endTime * fps;
+        const source: AnimationGroup | undefined = this.world.animations[animation];
+        if (!source) return;
+        this.clearAnimation(animation);
 
-        const anim: AnimationGroup = this.world.animations[animation]
-        anim.metadata = anim.metadata || {};
-
-        const loopingForever = !isFinite(endFrame);
-        const forward = startFrame < endFrame;
-
-        if (!loopingForever) {
-            const loops = Math.abs(endFrame - startFrame)/(anim.to - anim.from);
-            if (forward) {
-                if (loops > 1) {
-                    let count = 0;
-                    this._animateRange(speed, true, true, anim.from, anim.to, startFrame, anim, undefined, () => {
-                        count++;
-                        if (count > loops) {
-                            this._animateRange(speed, true, false, anim.from, endFrame % anim.to, anim.from, anim, callback, undefined);
-                        }
-                    })
-                } else if (endFrame <= anim.to) {
-                    this._animateRange(speed, true, false, startFrame, endFrame, startFrame, anim, callback, undefined);
-                } else {
-                    this._animateRange(speed, true, false, startFrame, anim.to, startFrame, anim, () => {
-                        this._animateRange(speed, true, false, anim.from, endFrame - anim.to, anim.to, anim, callback, undefined);
-                    }, undefined)
-                }
-            } else {
-                if (loops > 1) {
-                    let count = 0;
-                    this._animateRange(speed, false, true, anim.to, anim.from, startFrame, anim, undefined, () => {
-                        count++;
-                        if (count > loops) {
-                            this._animateRange(speed, false, false, anim.to, anim.from  - ((endFrame - startFrame) % (anim.to - anim.from)), anim.to, anim,
-                                callback, undefined);
-                        }
-                    })
-                } else if (endFrame >= 0) {
-                    this._animateRange(speed, false, false, startFrame, endFrame, startFrame, anim, callback, undefined);
-                } else {
-                    this._animateRange(speed, false, false, startFrame, anim.from, startFrame, anim, () => {
-                        this._animateRange(speed, false, false, anim.to, endFrame + anim.to, anim.to, anim, callback, undefined);
-                    }, undefined)
-                }
-            }
-        } else {
-            if (forward) {
-                //forward
-                this._animateRange(speed, true, true, anim.from, anim.to, startFrame, anim, undefined,undefined);
-            } else {
-                //backwards
-                this._animateRange(speed, false, true, anim.to, anim.from, startFrame, anim, undefined, undefined);
-            }
-        }
+        const instance = source.clone(`${source.name}-instance`);
+        const forward = startTime <= endTime;
+        instance.start(true, forward ? speed : -speed, source.from, source.to, false);
+        instance.goToFrame(animationFrameAtTime(source, startTime, false, forward));
+        const state: BabylonAnimationState = {
+            instance,
+            timer: null,
+            updateTimer: null,
+            startTime,
+            endTime,
+            speed,
+            startedAt: performance.now(),
+            callback,
+        };
+        this.activeAnimations.set(animation, state);
+        this.animationPlayheads.set(animation, {
+            playhead: animationTimeInRange(source, startTime, false, forward),
+            virtualPlayhead: startTime,
+        });
+        state.updateTimer = setInterval(() => this.applyAnimationPlayhead(animation, state), 16);
+        this.scheduleAnimationCompletion(animation, state);
     }
 
     public stopAnimation = (animationIndex: number): void => {
-        const animation: AnimationGroup = this.world.animations[animationIndex]
-        const animationInstance: AnimationGroup = animation?.metadata?.instance;
-        if (animationInstance === undefined) return;
-
-        animationInstance.stop();
-        animationInstance.dispose();
-        animation.metadata.instance = undefined;
+        this.captureAnimationPlayheads(animationIndex);
+        this.clearAnimation(animationIndex);
     }
 
     public stopAnimationAt = (animationIndex: number, stopTime: number , callback: () => void): void => {
-        const animation: AnimationGroup = this.world.animations[animationIndex]
-        const animationInstance: AnimationGroup = animation?.metadata?.instance;
-        if (animationInstance === undefined) return;
-
-        const forward = animationInstance.metadata.isForward;
-        if (animationInstance.animatables[0] === undefined) {return}
-        const frame = animationInstance.animatables[0].animationStarted ? animationInstance.animatables[0].masterFrame : animationInstance.animatables[0].fromFrame;
-        const fps = 60;
-        const stopFrame = stopTime * fps;
-        if ((forward && (stopFrame < animationInstance.animatables[0].fromFrame || stopFrame > animationInstance.animatables[0].toFrame) ||
-            (!forward && (stopFrame > animationInstance.animatables[0].fromFrame || stopFrame < animationInstance.animatables[0].toFrame)))) {
-            //no-op since we are outside the animation range
+        const state = this.activeAnimations.get(animationIndex);
+        if (!state) return;
+        const currentTime = this.currentAnimationPlayheads(animationIndex).virtualPlayhead;
+        const forward = state.startTime <= state.endTime;
+        if ((forward && (stopTime < currentTime || stopTime > state.endTime))
+            || (!forward && (stopTime > currentTime || stopTime < state.endTime))) {
             return;
         }
-        if ((forward && stopFrame <= frame) || (!forward && stopFrame >= frame)) {
-            //snap to stop frame if we have passed it
-            animationInstance.goToFrame(stopFrame);
-            animationInstance.stop();
-            animationInstance.dispose();
-            callback();
+        if (state.timer) clearTimeout(state.timer);
+        state.startTime = currentTime;
+        state.endTime = stopTime;
+        state.startedAt = performance.now();
+        state.callback = callback;
+        this.scheduleAnimationCompletion(animationIndex, state);
+    }
+
+    private scheduleAnimationCompletion(animationIndex: number, state: BabylonAnimationState): void {
+        const durationMs = Math.abs(state.endTime - state.startTime) / state.speed * 1000;
+        if (!Number.isFinite(durationMs)) {
+            state.timer = null;
             return;
         }
-        this._animateRange(animationInstance.speedRatio, forward, false, frame, stopFrame, frame, animation, () => callback(), undefined);
+        state.timer = setTimeout(() => {
+            if (this.activeAnimations.get(animationIndex) !== state) return;
+            const source = this.world.animations[animationIndex] as AnimationGroup;
+            const forward = state.startTime <= state.endTime;
+            state.instance.goToFrame(animationFrameAtTime(source, state.endTime, true, forward));
+            this.animationPlayheads.set(animationIndex, {
+                playhead: animationTimeInRange(source, state.endTime, true, forward),
+                virtualPlayhead: state.endTime,
+            });
+            this.clearAnimation(animationIndex);
+            state.callback();
+        }, Math.max(0, durationMs));
     }
 
-    private _animateRange = (speed: float, isForward: boolean, isLoop: boolean, startFrame: float, endFrame: float, currentFrame: float,
-                             animation: AnimationGroup, endCallback: (() => void) | undefined, loopCallback: (() => void )| undefined) => {
-        if (animation.metadata.instance !== undefined) {
-            //clear any previous animation
-            if (animation.metadata.instance.isPlaying) {
-                animation.metadata.instance.stop();
-                animation.metadata.instance.dispose();
-            }
-            animation.metadata.instance = undefined;
+    private currentAnimationPlayheads(animationIndex: number): { playhead: number; virtualPlayhead: number } {
+        const source = this.world.animations[animationIndex] as AnimationGroup | undefined;
+        if (!source) return { playhead: NaN, virtualPlayhead: NaN };
+        const state = this.activeAnimations.get(animationIndex);
+        if (!state) {
+            return this.animationPlayheads.get(animationIndex) ?? {
+                playhead: source.from / animationFramesPerSecond(source),
+                virtualPlayhead: source.from / animationFramesPerSecond(source),
+            };
         }
+        const direction = state.startTime <= state.endTime ? 1 : -1;
+        const elapsed = Math.max(0, (performance.now() - state.startedAt) / 1000);
+        const virtualPlayhead = state.startTime + direction * elapsed * state.speed;
+        return {
+            playhead: animationTimeInRange(source, virtualPlayhead, false, direction > 0),
+            virtualPlayhead,
+        };
+    }
 
-        const animationInstance: AnimationGroup = animation.clone(`${animation.name}-instance`);
-        animation.metadata.instance = animationInstance;
-        animation.metadata.instance.metadata = animation.metadata.instance.metadata || {};
-        animation.metadata.instance.metadata.isForward = isForward;
-
-        animationInstance.start(isLoop, speed, startFrame, endFrame, false);
-
-        if (isLoop) {
-            animationInstance.goToFrame(currentFrame);
-        }
-
-
-        if (endCallback !== undefined) {
-            animationInstance.onAnimationGroupEndObservable.add(endCallback);
-        }
-        if (loopCallback !== undefined) {
-            animationInstance.onAnimationGroupLoopObservable.add(loopCallback);
+    private captureAnimationPlayheads(animationIndex: number): void {
+        if (this.activeAnimations.has(animationIndex)) {
+            this.animationPlayheads.set(animationIndex, this.currentAnimationPlayheads(animationIndex));
         }
     }
+
+    private applyAnimationPlayhead(animationIndex: number, state: BabylonAnimationState): void {
+        if (this.activeAnimations.get(animationIndex) !== state) return;
+        const source = this.world.animations[animationIndex] as AnimationGroup | undefined;
+        if (!source) return;
+        const playheads = this.currentAnimationPlayheads(animationIndex);
+        state.instance.goToFrame(playheads.playhead * animationFramesPerSecond(source));
+    }
+
+    private clearAnimation(animationIndex: number): void {
+        const state = this.activeAnimations.get(animationIndex);
+        if (!state) return;
+        if (state.timer) clearTimeout(state.timer);
+        if (state.updateTimer) clearInterval(state.updateTimer);
+        state.instance.stop();
+        state.instance.dispose();
+        this.activeAnimations.delete(animationIndex);
+    }
+}
+
+function animationFramesPerSecond(animation: AnimationGroup): number {
+    const fps = animation.targetedAnimations
+        .map((targeted) => targeted.animation.framePerSecond)
+        .find((value) => Number.isFinite(value) && value > 0);
+    return fps ?? 60;
+}
+
+function animationTimeInRange(animation: AnimationGroup, virtualTime: number, finalFrame: boolean, forward: boolean): number {
+    const fps = animationFramesPerSecond(animation);
+    const minTime = animation.from / fps;
+    const maxTime = animation.to / fps;
+    const duration = maxTime - minTime;
+    if (!Number.isFinite(virtualTime) || duration <= 0) return minTime;
+    const wrapped = ((virtualTime - minTime) % duration + duration) % duration;
+    if (finalFrame && wrapped === 0 && virtualTime !== minTime) {
+        return forward ? maxTime : minTime;
+    }
+    return minTime + wrapped;
+}
+
+function animationFrameAtTime(animation: AnimationGroup, virtualTime: number, finalFrame: boolean, forward: boolean): number {
+    return animationTimeInRange(animation, virtualTime, finalFrame, forward) * animationFramesPerSecond(animation);
 }

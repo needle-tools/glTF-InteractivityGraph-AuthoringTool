@@ -15,6 +15,7 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { GLTFAnimationPointerExtension } from "@needle-tools/three-animation-pointer";
 import type { IInteractivityGraph } from "../../BasicBehaveEngine/types/InteractivityGraph";
 
 const DRACO_DECODER_PATH = "https://www.gstatic.com/draco/v1/decoders/";
@@ -80,6 +81,7 @@ export interface ThreeLoadedModel {
 
 export function createThreeLoader(renderer?: WebGLRenderer): GLTFLoader {
     const loader = new GLTFLoader();
+    loader.register((parser) => new GLTFAnimationPointerExtension(parser));
     loader.setMeshoptDecoder(MeshoptDecoder);
 
     const dracoLoader = new DRACOLoader();
@@ -107,7 +109,7 @@ export async function loadThreeModelFromArrayBuffer(
     return buildThreeLoadedModelWithDependencies(await loader.parseAsync(data, resourcePath));
 }
 
-async function buildThreeLoadedModelWithDependencies(result: GLTF): Promise<ThreeLoadedModel> {
+export async function buildThreeLoadedModelWithDependencies(result: GLTF): Promise<ThreeLoadedModel> {
     const [materials, nodes] = await Promise.all([
         result.parser.getDependencies("material") as Promise<Material[]>,
         result.parser.getDependencies("node") as Promise<Object3D[]>,
@@ -156,14 +158,14 @@ export function buildThreeLoadedModel(
         if (!reference) {
             return;
         }
-        if (target instanceof Material && reference.materials !== undefined) {
+        if (isThreeMaterial(target) && reference.materials !== undefined) {
             materials[reference.materials] ??= target;
             pushUnique(materialInstances[reference.materials], target);
         }
     });
 
     result.scene.traverse((object) => {
-        if (object instanceof Mesh) {
+        if (isThreeMesh(object)) {
             meshes.push(object);
         }
     });
@@ -182,7 +184,7 @@ export function buildThreeLoadedModel(
             const initialWeights = nodeDefinition.weights ?? meshDefinition?.weights;
             if (initialWeights) {
                 node.traverse((object) => {
-                    if (object instanceof Mesh && object.morphTargetInfluences) {
+                    if (isThreeMesh(object) && object.morphTargetInfluences) {
                         object.morphTargetInfluences.splice(0, initialWeights.length, ...initialWeights);
                     }
                 });
@@ -190,14 +192,14 @@ export function buildThreeLoadedModel(
         }
 
         if (nodeDefinition.camera !== undefined) {
-            collectInstances(node, Camera).forEach((camera) => pushUnique(cameraInstances[nodeDefinition.camera!], camera));
+            collectInstances(node, isThreeCamera).forEach((camera) => pushUnique(cameraInstances[nodeDefinition.camera!], camera));
         }
 
         const lightIndex = nodeDefinition.extensions?.KHR_lights_punctual?.light;
         if (lightIndex !== undefined) {
             const lights: Light[] = [];
             node.traverse((object) => {
-                if (object instanceof Light) lights.push(object);
+                if (isThreeLight(object)) lights.push(object);
             });
             lights.forEach((light) => pushUnique(lightInstances[lightIndex], light));
         }
@@ -235,10 +237,10 @@ function mapNodeHierarchy(
     });
 }
 
-function collectInstances<T extends Object3D>(root: Object3D, type: new (...args: any[]) => T): T[] {
+function collectInstances<T extends Object3D>(root: Object3D, isType: (object: Object3D) => object is T): T[] {
     const instances: T[] = [];
     root.traverse((object) => {
-        if (object instanceof type) {
+        if (isType(object)) {
             instances.push(object);
         }
     });
@@ -260,7 +262,7 @@ export function disposeThreeLoadedModel(model: ThreeLoadedModel): void {
     const roots = [model.scene, ...model.nodes.filter((node): node is Object3D => node !== undefined)];
     roots.forEach((root) => {
         root.traverse((object) => {
-            if (!(object instanceof Mesh)) {
+            if (!isThreeMesh(object)) {
                 return;
             }
             if (!disposedGeometries.has(object.geometry)) {
@@ -274,7 +276,7 @@ export function disposeThreeLoadedModel(model: ThreeLoadedModel): void {
                 }
                 disposedMaterials.add(material);
                 for (const value of Object.values(material)) {
-                    if (value instanceof Texture && !disposedTextures.has(value)) {
+                    if (isThreeTexture(value) && !disposedTextures.has(value)) {
                         disposedTextures.add(value);
                         value.dispose();
                     }
@@ -283,4 +285,24 @@ export function disposeThreeLoadedModel(model: ThreeLoadedModel): void {
             }
         });
     });
+}
+
+function isThreeMaterial(value: unknown): value is Material {
+    return Boolean((value as Material | undefined)?.isMaterial);
+}
+
+function isThreeTexture(value: unknown): value is Texture {
+    return Boolean((value as Texture | undefined)?.isTexture);
+}
+
+function isThreeMesh(value: Object3D): value is Mesh {
+    return Boolean((value as Mesh).isMesh);
+}
+
+function isThreeCamera(value: Object3D): value is Camera {
+    return Boolean((value as Camera).isCamera);
+}
+
+function isThreeLight(value: Object3D): value is Light {
+    return Boolean((value as Light).isLight);
 }

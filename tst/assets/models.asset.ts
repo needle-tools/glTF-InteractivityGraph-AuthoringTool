@@ -12,7 +12,11 @@ jest.setTimeout(30_000);
 
 const cases = loadModelAssetCases();
 
-const PHYSICS_NODE_PATH = "/nodes/3/translation";
+const PHYSICS_NODE_PATHS = [
+    "/nodes/3/translation",
+    "/nodes/4/translation",
+    "/nodes/5/translation",
+] as const;
 const CONSTRUCTION_LIGHT_PATH = "/materials/2/pbrMetallicRoughness/baseColorFactor";
 
 function readNumbers(decorator: BabylonDecorator | ThreeDecorator, path: string): number[] {
@@ -46,34 +50,56 @@ async function runModelGraph(
     decorator: BabylonDecorator | ThreeDecorator,
     graph: any,
 ): Promise<void> {
+    if (name === "Ghost") {
+        const animatedPath = "/nodes/6/translation";
+        const initialPosition = readNumbers(decorator, animatedPath);
+        decorator.loadBehaveGraph(graph);
+        decorator.hoverOn(4, 0);
+        decorator.executeEventQueueTick();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        decorator.executeEventQueueTick();
+        expect(readNumbers(decorator, animatedPath)).not.toEqual(initialPosition);
+        decorator.hoverOn(undefined, 0);
+        decorator.pauseEventQueue();
+        decorator.clearCustomEventListeners();
+        return;
+    }
+
     if (name !== "PhysicsMath") {
         await runGraphAndWait(decorator, graph);
         return;
     }
 
-    const initialPosition = readNumbers(decorator, PHYSICS_NODE_PATH);
+    const initialPositions = PHYSICS_NODE_PATHS.map((path) => readNumbers(decorator, path));
     decorator.loadBehaveGraph(graph);
-    const positions: number[][] = [];
-    for (let index = 0; index < 18; index++) {
+    const positionsByNode = PHYSICS_NODE_PATHS.map(() => [] as number[][]);
+    for (let index = 0; index < 90; index++) {
         await new Promise((resolve) => setTimeout(resolve, 50));
         decorator.executeEventQueueTick();
-        positions.push(readNumbers(decorator, PHYSICS_NODE_PATH));
+        PHYSICS_NODE_PATHS.forEach((path, nodeIndex) => {
+            positionsByNode[nodeIndex].push(readNumbers(decorator, path));
+        });
     }
     decorator.pauseEventQueue();
     decorator.clearCustomEventListeners();
 
-    const heights = positions.map((position) => position[1]);
-    const minimum = Math.min(...heights);
-    const minimumIndex = heights.indexOf(minimum);
-    const reboundHeight = Math.max(...heights.slice(minimumIndex + 1));
-    const lateralDeflection = Math.max(...positions.map((position) => Math.hypot(
-        position[0] - initialPosition[0],
-        position[2] - initialPosition[2],
-    )));
-    if (reboundHeight <= minimum + 0.2 || lateralDeflection <= 0.1) {
-        throw new Error(
-            `PhysicsMath did not produce a box collision response: rebound=${(reboundHeight - minimum).toFixed(3)}, lateral deflection=${lateralDeflection.toFixed(3)}`,
-        );
+    const failures = positionsByNode.flatMap((positions, nodeIndex) => {
+        const heights = positions.map((position) => position[1]);
+        const minimum = Math.min(...heights);
+        const minimumIndex = heights.indexOf(minimum);
+        const reboundHeight = Math.max(...heights.slice(minimumIndex + 1));
+        const initialPosition = initialPositions[nodeIndex];
+        const verticalTravel = Math.max(...heights) - Math.min(...heights);
+        const lateralDeflection = Math.max(...positions.map((position) => Math.hypot(
+            position[0] - initialPosition[0],
+            position[2] - initialPosition[2],
+        )));
+        return verticalTravel > 0.2 && lateralDeflection > 0.1
+            ? []
+            : [`${PHYSICS_NODE_PATHS[nodeIndex]}: vertical travel=${verticalTravel.toFixed(3)}, y=${heights[0].toFixed(3)}..${heights[heights.length - 1].toFixed(3)}, min=${minimum.toFixed(3)} at sample ${minimumIndex}, rebound=${(reboundHeight - minimum).toFixed(3)}, lateral deflection=${lateralDeflection.toFixed(3)}`];
+    });
+    if (failures.length > 0) {
+        throw new Error(`PhysicsMath did not produce a collision response for every sphere:\n${failures.join("\n")}`);
     }
 }
 
@@ -109,6 +135,10 @@ describe("KHR_interactivity showcase models - Three engine", () => {
         const model = await loadThreeWorldFromGlb(assetCase.glbPath);
         const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new TestEventBus()), model);
         try {
+            if (assetCase.entry.name === "Ghost") {
+                expect(model.animations.length).toBeGreaterThan(0);
+                expect(model.animations.every((clip) => clip.duration > 0 && clip.tracks.length > 0)).toBe(true);
+            }
             await runModelGraph(assetCase.entry.name, decorator, assetCase.graph);
             await verifyModelBehavior(assetCase.entry.name, decorator);
         } finally {
