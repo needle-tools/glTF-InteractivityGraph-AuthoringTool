@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import {App} from './App';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import './css/app.css';
 
 // Defer ResizeObserver callbacks to the next animation frame to avoid the benign
 // "ResizeObserver loop completed with undelivered notifications" error, which

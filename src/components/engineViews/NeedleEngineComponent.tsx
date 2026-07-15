@@ -209,7 +209,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
 
     return (
         <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
-            <div style={{ background: "#3d5987", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+            <div className="engine-toolbar">
                 <Button variant="outline-light" onClick={play} disabled={!modelName}>Play</Button>
                 <Spacer width={16} height={0}/>
                 <Button variant="outline-light" onClick={() => setOpenModal(NeedleEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>Send Custom Event</Button>

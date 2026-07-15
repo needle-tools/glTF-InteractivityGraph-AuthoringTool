@@ -1079,9 +1079,9 @@ export const AuthoringComponent = () => {
     }, [edges, ancestorEdgeIds]);
 
     return (
-        <div style={{width: "100%", height: "100%", textAlign: "center", padding: 16, display: "flex", flexDirection: "column", boxSizing: "border-box"}}>
-            <h2 style={{padding: 8, margin: 0}}>Interactivity Graph Authoring</h2>
-            <p style={{margin: "0 0 8px"}}>You can inspect and adjust the Interactivity Graph here.</p>
+        <div className="authoring-shell" style={{width: "100%", height: "100%", textAlign: "center", padding: 16, display: "flex", flexDirection: "column", boxSizing: "border-box"}}>
+            <h2 className="authoring-shell__title" style={{padding: 8, margin: 0}}>Interactivity Graph Authoring</h2>
+            <p className="authoring-shell__intro" style={{margin: "0 0 8px"}}>You can inspect and adjust the Interactivity Graph here.</p>
             <div
                 ref={reactFlowRef}
                 style={{width: "100%", flex: 1, minHeight: 0, border: "1px solid black", margin: "0 auto"}}
