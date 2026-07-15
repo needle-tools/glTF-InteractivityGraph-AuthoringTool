@@ -60,6 +60,8 @@ Schema metadata is committed to the repo. `npm start`, `npm run build`, and the 
 
 2. Open your web browser and go to [http://localhost:3000](http://localhost:3000).
 
+   The Samples sidebar loads the Khronos `main` catalog by default. To test an unmerged asset branch, set `REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL` to its raw repository URL before starting the app.
+
 3. Use the app's interface to create or load your glTF asset. (There is a menu bar for adding custom events and variables on the right hand side, right-click the authoring view panel to bring up the add node modal)
 
 4. Pick the Logging, Babylon, or Three engine and press play to see your graph in action.
