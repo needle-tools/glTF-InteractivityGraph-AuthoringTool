@@ -1,6 +1,7 @@
 import type { Object3D } from "three";
 import type { ThreeLoadedModel } from "./ThreeLoadedModel";
 import type { ThreeDecorator } from "../decorators/ThreeDecorator";
+import { attachPointerTap } from "./pointerTap";
 
 interface NeedleIntersection {
     object: unknown;
@@ -52,7 +53,7 @@ export function attachNeedlePointerEvents(
         decorator.hoverOn(hit ? findNodeIndex(hit.object as Object3D) : undefined, 0);
     };
     const onPointerLeave = (): void => decorator.hoverOn(undefined, 0);
-    const onClick = (event: MouseEvent): void => {
+    const onTap = (event: MouseEvent | PointerEvent): void => {
         const hit = pick(event, "selectable");
         const nodeIndex = hit ? findNodeIndex(hit.object as Object3D) : undefined;
         if (!hit || nodeIndex === undefined) return;
@@ -68,11 +69,11 @@ export function attachNeedlePointerEvents(
 
     element.addEventListener("pointermove", onPointerMove);
     element.addEventListener("pointerleave", onPointerLeave);
-    element.addEventListener("click", onClick);
+    const detachTap = attachPointerTap(element, onTap);
     return () => {
         element.removeEventListener("pointermove", onPointerMove);
         element.removeEventListener("pointerleave", onPointerLeave);
-        element.removeEventListener("click", onClick);
+        detachTap();
     };
 }
 
