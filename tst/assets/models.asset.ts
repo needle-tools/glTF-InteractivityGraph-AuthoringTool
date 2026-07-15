@@ -19,6 +19,9 @@ const PHYSICS_NODE_PATHS = [
     "/nodes/5/translation",
 ] as const;
 const CONSTRUCTION_LIGHT_PATH = "/materials/2/pbrMetallicRoughness/baseColorFactor";
+const BOW_AIM_ROTATION_PATH = "/nodes/4/rotation";
+const BOW_ARROW_TRANSLATION_PATH = "/nodes/11/translation";
+const BOW_ARROW_VISIBLE_PATH = "/nodes/12/extensions/KHR_node_visibility/visible";
 
 function readNumbers(decorator: BabylonDecorator | ThreeDecorator, path: string): number[] {
     const value = decorator.getPathValue(path);
@@ -51,6 +54,32 @@ async function runModelGraph(
     decorator: BabylonDecorator | ThreeDecorator,
     graph: any,
 ): Promise<void> {
+    if (name === "BowShooting") {
+        const initialAimRotation = readNumbers(decorator, BOW_AIM_ROTATION_PATH);
+        decorator.loadBehaveGraph(graph);
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        expect(readNumbers(decorator, BOW_AIM_ROTATION_PATH)).not.toEqual(initialAimRotation);
+
+        decorator.select(16, 0, [0, 0, 0], [0, 1, 0]);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        decorator.select(16, 0, [0, 0, 0], [0, 1, 0]);
+
+        const initialArrowPosition = readNumbers(decorator, BOW_ARROW_TRANSLATION_PATH);
+        const positions: number[][] = [];
+        for (let index = 0; index < 10; index++) {
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            positions.push(readNumbers(decorator, BOW_ARROW_TRANSLATION_PATH));
+        }
+        expect(decorator.getPathValue(BOW_ARROW_VISIBLE_PATH)).toEqual([true]);
+        expect(positions.some((position) => position.some(
+            (value, component) => Math.abs(value - initialArrowPosition[component]) > 0.01,
+        ))).toBe(true);
+        expect(positions.flat().every(Number.isFinite)).toBe(true);
+        decorator.pauseEventQueue();
+        decorator.clearCustomEventListeners();
+        return;
+    }
+
     if (name === "Ghost") {
         const animatedPath = "/nodes/6/translation";
         const initialPosition = readNumbers(decorator, animatedPath);
