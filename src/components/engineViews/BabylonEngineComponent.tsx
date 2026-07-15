@@ -72,7 +72,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
 
     useEffect(() => {
         // Create the Babylon.js engines
-        engineRef.current = new Engine(canvasRef.current, true);
+        engineRef.current = new Engine(canvasRef.current, true, { limitDeviceRatio: 2 }, true);
 
         createScene();
 
