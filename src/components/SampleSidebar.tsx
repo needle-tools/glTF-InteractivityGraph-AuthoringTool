@@ -10,6 +10,15 @@ const SAMPLE_VARIANTS: ReadonlyArray<{ key: SampleVariant; label: string }> = [
 const DEFAULT_REPO_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/';
 const SAMPLE_BASE_PATH = 'Models/';
 const TEST_BASE_PATH = 'Tests/Interactivity/';
+const PRIORITIZED_SAMPLE_NAMES = [
+  'WhackAMole',
+  'BowShooting',
+  'TrafficLight',
+  'PhysicsMath',
+  'SnailRace',
+  'Sundial',
+  'Flocking',
+] as const;
 
 export function getSampleAssetsBaseUrl(): string {
   const configuredUrl = process.env.REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL?.trim();
@@ -29,6 +38,20 @@ export interface Sample {
   variants: {
     [key: string]: string;
   };
+}
+
+export function orderSampleModels(samples: readonly Sample[]): Sample[] {
+  const priority = new Map<string, number>(
+    PRIORITIZED_SAMPLE_NAMES.map((name, index) => [name, index]),
+  );
+  return samples
+    .map((sample, originalIndex) => ({ sample, originalIndex }))
+    .sort((left, right) => {
+      const leftPriority = priority.get(left.sample.name) ?? Number.MAX_SAFE_INTEGER;
+      const rightPriority = priority.get(right.sample.name) ?? Number.MAX_SAFE_INTEGER;
+      return leftPriority - rightPriority || left.originalIndex - right.originalIndex;
+    })
+    .map(({ sample }) => sample);
 }
 
 /**
@@ -107,7 +130,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
       
       // Make sure the data is an array before setting it
       if (Array.isArray(sampleData)) {
-        setSampleModels(sampleData);
+        setSampleModels(orderSampleModels(sampleData));
       } else {
         console.error('Received invalid sample data format:', sampleData);
         setSampleModels([]);
