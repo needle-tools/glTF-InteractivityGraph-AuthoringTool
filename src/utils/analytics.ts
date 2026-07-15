@@ -1,41 +1,75 @@
-// Thin, dependency-free wrapper around the Needle analytics (Plausible-compatible) script loaded
-// in public/index.html. The script exposes a global `plausible(eventName, { props })` function;
-// custom events show up in the dashboard as a breakdown by event name + property. Everything here
-// is best-effort and must never throw into the app: analytics being blocked, offline, or not yet
-// loaded should be invisible to the user.
+// Thin, dependency-free wrapper around the Needle analytics (Rybbit) script loaded in
+// public/index.html. Rybbit exposes a global `rybbit` object; custom events are sent via
+// `rybbit.event(name, properties)` and show up in the dashboard as a breakdown by event name +
+// property. Everything here is best-effort and must never throw into the app: analytics being
+// blocked, offline, or not yet loaded should be invisible to the user.
 
 type PropValue = string | number | boolean;
 type Props = Record<string, PropValue | null | undefined>;
 
-// Plausible's queue stub: calls made before script.js finishes loading are buffered on `q` and
-// flushed once it initialises. Declaring it here means a tracked event fired during startup is not
-// lost. Mirrors the snippet Plausible documents for manual/custom events.
-interface PlausibleFn {
-    (event: string, options?: { props?: Record<string, PropValue> }): void;
-    q?: unknown[];
+// The subset of the Rybbit tracking API we use. The script is loaded with `defer`, so this global
+// may not exist yet when the first events fire during startup (see the pending buffer below).
+interface RybbitApi {
+    event: (name: string, properties?: Record<string, PropValue>) => void;
+    pageview?: (path?: string) => void;
 }
 
 declare global {
     interface Window {
-        plausible?: PlausibleFn;
+        rybbit?: RybbitApi;
     }
 }
 
-const getPlausible = (): PlausibleFn | undefined => {
+const getRybbit = (): RybbitApi | undefined => {
     if (typeof window === "undefined") { return undefined; }
-    if (!window.plausible) {
-        // install the buffering stub so events fired before script.js loads are queued, not dropped
-        // (canonical Plausible manual-events snippet)
-        const stub = function (this: PlausibleFn, ...args: unknown[]) {
-            (window.plausible!.q = window.plausible!.q || []).push(args);
-        } as unknown as PlausibleFn;
-        window.plausible = stub;
-    }
-    return window.plausible;
+    const rybbit = window.rybbit;
+    return rybbit && typeof rybbit.event === "function" ? rybbit : undefined;
 };
 
-// Plausible only accepts scalar property values; drop nullish entries and coerce the rest so a
-// stray object/array can't make the whole event silently fail.
+// Events fired before the deferred script has initialised are buffered here and flushed once
+// `window.rybbit` appears. Capped so an early burst can't grow unbounded if the script is blocked.
+const pending: Array<[string, Record<string, PropValue> | undefined]> = [];
+const MAX_PENDING = 100;
+let flushTimer: number | null = null;
+let flushAttempts = 0;
+const MAX_FLUSH_ATTEMPTS = 40; // ~12s of polling at 300ms, then give up
+
+const stopFlushing = () => {
+    if (flushTimer !== null) {
+        window.clearInterval(flushTimer);
+        flushTimer = null;
+    }
+};
+
+const flushPending = () => {
+    const rybbit = getRybbit();
+    if (!rybbit) {
+        // keep waiting for the deferred script, but don't poll forever if it never loads
+        if (++flushAttempts >= MAX_FLUSH_ATTEMPTS) {
+            pending.length = 0;
+            stopFlushing();
+        }
+        return;
+    }
+    while (pending.length > 0) {
+        const [name, props] = pending.shift()!;
+        try {
+            rybbit.event(name, props);
+        } catch {
+            // analytics must never break the app
+        }
+    }
+    stopFlushing();
+};
+
+const scheduleFlush = () => {
+    if (flushTimer !== null || typeof window === "undefined") { return; }
+    flushAttempts = 0;
+    flushTimer = window.setInterval(flushPending, 300);
+};
+
+// Rybbit only accepts scalar property values; drop nullish entries and coerce the rest so a stray
+// object/array can't make the whole event silently fail.
 const sanitizeProps = (props?: Props): Record<string, PropValue> | undefined => {
     if (!props) { return undefined; }
     const cleaned: Record<string, PropValue> = {};
@@ -47,14 +81,20 @@ const sanitizeProps = (props?: Props): Record<string, PropValue> | undefined => 
 };
 
 /**
- * Send a custom analytics event. Safe to call anywhere; failures are swallowed.
+ * Send a custom analytics event. Safe to call anywhere; failures are swallowed and events fired
+ * before the analytics script loads are buffered and flushed once it is ready.
  */
 export const trackEvent = (event: string, props?: Props): void => {
     try {
-        const plausible = getPlausible();
-        if (!plausible) { return; }
         const cleaned = sanitizeProps(props);
-        plausible(event, cleaned ? { props: cleaned } : undefined);
+        const rybbit = getRybbit();
+        if (rybbit) {
+            rybbit.event(event, cleaned);
+            return;
+        }
+        pending.push([event, cleaned]);
+        if (pending.length > MAX_PENDING) { pending.shift(); }
+        scheduleFlush();
     } catch {
         // analytics must never break the app
     }
