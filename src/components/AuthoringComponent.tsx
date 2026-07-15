@@ -31,6 +31,7 @@ import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } fro
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { countReferencesByIndex, findNodesWithReferences, remapReferencesAfterDelete, type ReferenceKind } from '../authoring/referenceRemap';
 import { joinSearchTerms } from '../authoring/searchText';
+import { trackEvent, trackEventThrottled } from '../utils/analytics';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import { getShortcutLabels } from '../utils/platform';
@@ -689,6 +690,8 @@ export const AuthoringComponent = () => {
             }
             return addEdge({ ...vals, style: { stroke: edgeColor, strokeWidth: 2 } }, filtered);
         });
+        // wiring can fire rapidly (drag-to-connect); throttle so a burst collapses to one event
+        trackEventThrottled('graph_edge_connected', { flow: sourceIsFlow || targetIsFlow }, 'graph_edge_connected', 2000);
         markGraphDirty();
     }, [nodes, graph, bumpNodeData, recolorEdges, refreshValueConsumers]);
 
@@ -750,6 +753,7 @@ export const AuthoringComponent = () => {
                 refreshValueConsumers(targetNode.uid!);
             }
         }
+        trackEvent('graph_edges_deleted', { count: edges.length });
         markGraphDirty();
     }, [graph, bumpNodeData, recolorEdges, refreshValueConsumers]);
 
@@ -758,6 +762,7 @@ export const AuthoringComponent = () => {
             const node = nodes[i];
             removeNode(node.id);
         }
+        trackEvent('graph_nodes_deleted', { count: nodes.length });
     }, [removeNode]);
 
     // handle adding nodes and edges to the graph. Returns the new node's uid so callers (e.g. the
@@ -803,6 +808,12 @@ export const AuthoringComponent = () => {
         }
 
         addNode(interactivityNode);
+
+        // track which node types people add while authoring (low-volume, high-signal)
+        trackEvent('node_added', {
+            op: nodeType,
+            preset: typeof nodeRequest === "string" ? undefined : nodeRequest.id,
+        });
 
         onNodesChange([{type: "add", item: nodeToAdd}]);
 
@@ -1253,16 +1264,23 @@ export const AuthoringComponent = () => {
         const bounds = reactFlowRef.current.getBoundingClientRect();
         mousePosRef.current = reactFlowInstance.project({ x: bounds.width / 2, y: bounds.height / 2 });
         pendingWireRef.current = null;
+        trackEvent('graph_panel_opened', { panel: 'add_node' });
         setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
     };
 
-    // open a graph authoring side panel (variables, custom events, JSON view, ...), or close it
-    // again when its own menu bar button is clicked a second time
-    const togglePanel = (modal: AuthoringComponentModelType) => {
-        setAuthoringComponentModal(authoringComponentModal === modal ? AuthoringComponentModelType.NONE : modal);
+    // open a graph authoring side panel (variables, custom events, JSON view, ...) and record which
+    // one, so the dashboard shows how people interact with the graph tooling
+    const openPanel = (modal: AuthoringComponentModelType, name: string) => {
+        if (authoringComponentModal === modal) {
+            setAuthoringComponentModal(AuthoringComponentModelType.NONE);
+            return;
+        }
+        trackEvent('graph_panel_opened', { panel: name });
+        setAuthoringComponentModal(modal);
     };
 
     const toggleGraphFullscreen = async () => {
+        trackEvent('graph_fullscreen_toggled', { enabled: !graphFullscreen });
         await graphFullscreenState.toggle();
     };
 
@@ -1360,14 +1378,14 @@ export const AuthoringComponent = () => {
                     icon={<IconVariables/>}
                     label={"Variables"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
-                    onClick={() => togglePanel(AuthoringComponentModelType.VARIABLES)}
+                    onClick={() => openPanel(AuthoringComponentModelType.VARIABLES, 'variables')}
                 />
                 <MenuBarButton
                     id={"custom-events-btn"}
                     icon={<IconCustomEvents/>}
                     label={"Custom Events"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
-                    onClick={() => togglePanel(AuthoringComponentModelType.CUSTOM_EVENTS)}
+                    onClick={() => openPanel(AuthoringComponentModelType.CUSTOM_EVENTS, 'custom_events')}
                 />
                 <MenuBarDivider/>
                 <MenuBarButton
@@ -1375,14 +1393,14 @@ export const AuthoringComponent = () => {
                     icon={<IconJsonView/>}
                     label={"JSON View"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
-                    onClick={() => togglePanel(AuthoringComponentModelType.JSON_VIEW)}
+                    onClick={() => openPanel(AuthoringComponentModelType.JSON_VIEW, 'json_view')}
                 />
                 <MenuBarButton
                     id={"show-node-list-btn"}
                     icon={<IconNodeTypes/>}
                     label={"Node Types"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
-                    onClick={() => togglePanel(AuthoringComponentModelType.NODE_LIST)}
+                    onClick={() => openPanel(AuthoringComponentModelType.NODE_LIST, 'node_list')}
                 />
                 <span className={"panel__toolbar-spacer"}/>
                 {/* view actions live on the right of the bar, ahead of the status indicators */}
@@ -1391,9 +1409,9 @@ export const AuthoringComponent = () => {
                     icon={<IconSearch/>}
                     label={"Search Graph"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
-                    onClick={() => togglePanel(AuthoringComponentModelType.GRAPH_SEARCH)}
+                    onClick={() => openPanel(AuthoringComponentModelType.GRAPH_SEARCH, 'search')}
                 />
-                <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
+                <ReloadIndicator dirty={graphDirty} onReload={() => { trackEvent('graph_reload'); requestPlay(); }}/>
                 <DiagnosticsCounter diagnostics={liveDiagnostics} onJumpToNode={jumpToNode}/>
             </div>
             {/* .authoring-view is what the fullscreen toggle expands (see the fullscreen rules in
