@@ -19,6 +19,7 @@ import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { computeExtensionDiagnostics } from "../../diagnostics";
 import { registerGLTFInteractivity } from "../../integrations/GLTFInteractivityPlugin";
+import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { Spacer } from "../Spacer";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
@@ -168,6 +169,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
     };
 
     const play = (): void => {
+        trackEvent('scene_play', { engine: 'three' });
         if (sourceRef.current) {
             void loadSource(sourceRef.current, getExecutableGraph(), false);
         }

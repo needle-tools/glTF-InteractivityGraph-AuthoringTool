@@ -7,6 +7,7 @@ import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { DOMEventBus } from "../../BasicBehaveEngine/eventBuses/DOMEventBus";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { createGlTFObjectModelFromGltf, readGlbJsonFromArrayBuffer } from "../../objectModel/glTFObjectModel";
+import { trackEvent } from "../../utils/analytics";
 
 enum LoggingEngineModal {
     OBJECT_MODEL = "OBJECT_MODEL",
@@ -38,6 +39,7 @@ export const LoggingEngineComponent: React.FC<LoggingEngineComponentProps> = ({ 
     }, []);
 
     const play = () => {
+        trackEvent('scene_play', { engine: 'logging' });
         setExecutionLog("");
         runGraph(getExecutableGraph(), setExecutionLog, JSON.parse(objectModelJson));
         setGraphRunning(true);

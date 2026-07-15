@@ -28,6 +28,7 @@ import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { BabylonLoadedModel, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "./babylonLoadedModel";
 import { downloadInteractivityGlb } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
+import { trackEvent } from "../../utils/analytics";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
@@ -136,6 +137,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     }, [fileUploaded, useUploadedFile])
 
     const play = (shouldOverrideGraph: boolean) => {
+        trackEvent('scene_play', { engine: 'babylon' });
         resetScene()
             .then(async (res: BabylonLoadedModel) => {
                 await runGraph(babylonEngineRef, getExecutableGraph(), sceneRef.current, res, shouldOverrideGraph);
@@ -244,6 +246,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     const exportKHRInteractivityGLB = async () => {
         const file = fileInputRef.current?.files?.[0];
         if (file) {
+            trackEvent('graph_exported', { engine: 'babylon' });
             await downloadInteractivityGlb(file, getExecutableGraph());
         }
     }

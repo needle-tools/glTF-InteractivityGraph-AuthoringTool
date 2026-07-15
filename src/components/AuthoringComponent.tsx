@@ -27,6 +27,7 @@ import { LoadingProgressBar } from './LoadingProgressBar';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
+import { trackEvent, trackEventThrottled } from '../utils/analytics';
 import '../css/flowNodes.css';
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
@@ -537,6 +538,8 @@ export const AuthoringComponent = () => {
             }
             return addEdge({ ...vals, style: { stroke: edgeColor, strokeWidth: 2 } }, filtered);
         });
+        // wiring can fire rapidly (drag-to-connect); throttle so a burst collapses to one event
+        trackEventThrottled('graph_edge_connected', { flow: sourceIsFlow || targetIsFlow }, 'graph_edge_connected', 2000);
         markGraphDirty();
     }, [nodes, graph, bumpNodeData]);
 
@@ -630,6 +633,7 @@ export const AuthoringComponent = () => {
                 bumpNodeData(edge.target!);
             }
         }
+        trackEvent('graph_edges_deleted', { count: edges.length });
         markGraphDirty();
     }, [graph, bumpNodeData]);
 
@@ -638,6 +642,7 @@ export const AuthoringComponent = () => {
             const node = nodes[i];
             removeNode(node.id);
         }
+        trackEvent('graph_nodes_deleted', { count: nodes.length });
     }, []);
 
     // handle adding nodes and edges to the graph. Returns the new node's uid so callers (e.g. the
@@ -683,6 +688,12 @@ export const AuthoringComponent = () => {
         }
 
         addNode(interactivityNode);
+
+        // track which node types people add while authoring (low-volume, high-signal)
+        trackEvent('node_added', {
+            op: nodeType,
+            preset: typeof nodeRequest === "string" ? undefined : nodeRequest.id,
+        });
 
         onNodesChange([{type: "add", item: nodeToAdd}]);
         return uid;
@@ -1089,12 +1100,21 @@ export const AuthoringComponent = () => {
         const bounds = reactFlowRef.current.getBoundingClientRect();
         mousePosRef.current = reactFlowInstance.project({ x: bounds.width / 2, y: bounds.height / 2 });
         pendingWireRef.current = null;
+        trackEvent('graph_panel_opened', { panel: 'add_node' });
         setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
+    };
+
+    // open a graph authoring side panel (variables, custom events, JSON view, ...) and record which
+    // one, so the dashboard shows how people interact with the graph tooling
+    const openPanel = (modal: AuthoringComponentModelType, name: string) => {
+        trackEvent('graph_panel_opened', { panel: name });
+        setAuthoringComponentModal(modal);
     };
 
     const toggleGraphFullscreen = async () => {
         const element = reactFlowRef.current;
         if (!element) return;
+        trackEvent('graph_fullscreen_toggled', { enabled: !graphFullscreen });
         if (fullscreenFallback) {
             setFullscreenFallback(false);
             return;
@@ -1282,7 +1302,7 @@ export const AuthoringComponent = () => {
                                 icon={<IconVariables/>}
                                 label={"Variables"}
                                 isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.VARIABLES)}
+                                onClick={() => openPanel(AuthoringComponentModelType.VARIABLES, 'variables')}
                             />
                             <MenuBarDivider/>
                             <MenuBarButton
@@ -1290,7 +1310,7 @@ export const AuthoringComponent = () => {
                                 icon={<IconCustomEvents/>}
                                 label={"Custom Events"}
                                 isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.CUSTOM_EVENTS)}
+                                onClick={() => openPanel(AuthoringComponentModelType.CUSTOM_EVENTS, 'custom_events')}
                             />
                             <MenuBarDivider/>
                             <MenuBarButton
@@ -1298,28 +1318,28 @@ export const AuthoringComponent = () => {
                                 icon={<IconJsonView/>}
                                 label={"JSON View"}
                                 isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.JSON_VIEW)}
+                                onClick={() => openPanel(AuthoringComponentModelType.JSON_VIEW, 'json_view')}
                             />
                             <MenuBarButton
                                 id={"search-graph-btn"}
                                 icon={<IconSearch/>}
                                 label={"Search Graph"}
                                 isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
+                                onClick={() => openPanel(AuthoringComponentModelType.GRAPH_SEARCH, 'search')}
                             />
                             <MenuBarButton
                                 id={"show-node-list-btn"}
                                 icon={<IconNodeTypes/>}
                                 label={"Node Types"}
                                 isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
+                                onClick={() => openPanel(AuthoringComponentModelType.NODE_LIST, 'node_list')}
                             />
                             <MenuBarButton
                                 id={"upload-graph-btn"}
                                 icon={<IconUpload/>}
                                 label={"Upload Graph"}
                                 isActive={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.UPLOAD_GRAPH)}
+                                onClick={() => openPanel(AuthoringComponentModelType.UPLOAD_GRAPH, 'upload_graph')}
                             />
                             <MenuBarButton
                                 id={"fullscreen-graph-btn"}
@@ -1328,7 +1348,7 @@ export const AuthoringComponent = () => {
                                 isActive={graphFullscreen}
                                 onClick={() => void toggleGraphFullscreen()}
                             />
-                            <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
+                            <ReloadIndicator dirty={graphDirty} onReload={() => { trackEvent('graph_reload'); requestPlay(); }}/>
                             <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
                         </div>
                         <LoadingProgressBar />
