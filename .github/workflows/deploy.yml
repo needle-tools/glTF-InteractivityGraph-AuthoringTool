@@ -13,6 +13,12 @@ permissions:
   pages: write
   id-token: write
 
+# A newer push to dev supersedes any in-progress run — cancel it instead of building a commit
+# that will never be deployed (only the latest push to dev deploys).
+concurrency:
+  group: build-and-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,13 +28,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          # cache the global npm download cache (~/.npm) as a fallback for install cache misses
+          cache: "npm"
+      # Skip the whole install when the lockfile is unchanged: the biggest single time saver.
+      - name: Cache node_modules
+        id: node-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
       - name: Install dependencies
-        run: npm i --force
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm i --force --prefer-offline --no-audit --no-fund
+      # Persist CRA/webpack's incremental compilation cache across runs to speed up the build itself.
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache
+          key: cra-cache-${{ runner.os }}-${{ hashFiles('src/**', 'public/**') }}
+          restore-keys: |
+            cra-cache-${{ runner.os }}-
       - name: Build
         run: npm run build
         env:
           # Warnings should not be treated as errors
           CI: false
+          # Skip source maps: not needed on a public Pages deploy, and generating them for the
+          # babylon/three/needle bundles is a large share of build time and output size.
+          GENERATE_SOURCEMAP: false
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
