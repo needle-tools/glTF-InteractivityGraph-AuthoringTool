@@ -3,7 +3,7 @@ import { Object3D } from "three";
 import { configureNeedleXR, NEEDLE_AR_OPTIONS } from "../src/integrations/NeedleXR";
 
 describe("Needle XR configuration", () => {
-    it("enables reticle placement and post-placement adjustment once per context", () => {
+    it("enables automatic reticle placement and post-placement adjustment once per context", () => {
         const addWebXR = jest.fn();
         const context = {
             scene: new Object3D(),
@@ -20,7 +20,7 @@ describe("Needle XR configuration", () => {
             createVRButton: false,
             usePlacementReticle: true,
             usePlacementAdjustment: true,
-            autoPlace: false,
+            autoPlace: true,
         });
         expect(context.menu.showFullscreenOption).toHaveBeenCalledWith(true);
     });
