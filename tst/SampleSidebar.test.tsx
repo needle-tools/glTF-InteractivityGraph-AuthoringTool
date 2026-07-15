@@ -28,6 +28,7 @@ const testAsset: Sample = {
 
 describe("SampleSidebar variants", () => {
     const originalFetch = globalThis.fetch;
+    const originalAssetsUrl = process.env.REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL;
 
     beforeEach(() => {
         Object.defineProperty(window, "matchMedia", {
@@ -47,6 +48,11 @@ describe("SampleSidebar variants", () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
+        if (originalAssetsUrl === undefined) {
+            delete process.env.REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL;
+        } else {
+            process.env.REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL = originalAssetsUrl;
+        }
         if (originalFetch) {
             Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
         } else {
@@ -63,6 +69,8 @@ describe("SampleSidebar variants", () => {
     });
 
     it("loads the selected JSON glTF variant from the sidebar", async () => {
+        process.env.REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL =
+            "https://raw.githubusercontent.com/needle-tools/glTF-Test-Assets-Interactivity/fix/manual-fixes";
         const fetchMock = jest.fn<typeof fetch>()
             .mockResolvedValueOnce(mockResponse([showcase]))
             .mockResolvedValueOnce(mockResponse([testAsset]))
@@ -71,13 +79,16 @@ describe("SampleSidebar variants", () => {
         const onSelectModel = jest.fn();
         render(<SampleSidebar onSelectModel={onSelectModel} />);
 
-        fireEvent.click(screen.getByRole("button", { name: /Samples and Tests/ }));
+        fireEvent.click(screen.getByRole("button", { name: /open samples and tests/i }));
         await screen.findByText("Bow Shooting");
         fireEvent.click(screen.getByLabelText("glTF"));
         fireEvent.click(screen.getByText("Bow Shooting"));
 
+        expect(fetchMock).toHaveBeenNthCalledWith(1,
+            "https://raw.githubusercontent.com/needle-tools/glTF-Test-Assets-Interactivity/fix/manual-fixes/Models/model-index.json",
+        );
         await waitFor(() => expect(onSelectModel).toHaveBeenCalledWith(
-            "https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/Models/BowShooting/glTF/BowShooting.gltf",
+            "https://raw.githubusercontent.com/needle-tools/glTF-Test-Assets-Interactivity/fix/manual-fixes/Models/BowShooting/glTF/BowShooting.gltf",
         ));
     });
 });
