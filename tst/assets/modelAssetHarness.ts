@@ -1,20 +1,22 @@
 import fs from "fs";
 import path from "path";
-import { IInteractivityGraph } from "../../src/BasicBehaveEngine/types/InteractivityGraph";
-import { getSampleAssetsRoot, readGlbJson } from "./sampleAssetHarness";
+import { getSampleAssetsRoot } from "./sampleAssetHarness";
 
 interface ModelIndexEntry {
     label: string;
     name: string;
-    variants: { "glTF-Binary": string };
+    variants: Partial<Record<ModelVariant, string>>;
 }
+
+export type ModelVariant = "glTF-Binary" | "glTF";
 
 export interface ModelAssetCase {
     entry: ModelIndexEntry;
-    glbPath: string;
-    graph?: IInteractivityGraph;
-    loadError?: Error;
+    variant: ModelVariant;
+    assetPath: string;
 }
+
+const MODEL_VARIANTS: ModelVariant[] = ["glTF-Binary", "glTF"];
 
 export function loadModelAssetCases(): ModelAssetCase[] {
     const root = path.join(getSampleAssetsRoot(), "Models");
@@ -32,22 +34,9 @@ export function loadModelAssetCases(): ModelAssetCase[] {
         .filter((entry) => !nameFilter || entry.name === nameFilter || `Models/${entry.name}` === nameFilter)
         .filter((entry) => !filter || entry.name.includes(filter) || entry.label.includes(filter))
         .slice(0, limit > 0 ? limit : undefined)
-        .map((entry) => {
-            const glbPath = path.join(root, entry.name, "glTF-Binary", entry.variants["glTF-Binary"]);
-            try {
-                const gltf = readGlbJson(glbPath);
-                const interactivity = gltf.extensions?.KHR_interactivity;
-                const graph = interactivity?.graphs?.[interactivity.graph ?? 0] as IInteractivityGraph | undefined;
-                if (!graph) {
-                    throw new Error(`No KHR_interactivity graph found in ${glbPath}`);
-                }
-                return { entry, glbPath, graph };
-            } catch (error) {
-                return {
-                    entry,
-                    glbPath,
-                    loadError: error instanceof Error ? error : new Error(String(error)),
-                };
-            }
-        });
+        .flatMap((entry): ModelAssetCase[] => MODEL_VARIANTS.flatMap((variant): ModelAssetCase[] => {
+            const fileName = entry.variants[variant];
+            if (!fileName) return [];
+            return [{ entry, variant, assetPath: path.join(root, entry.name, variant, fileName) }];
+        }));
 }
