@@ -1,11 +1,24 @@
 declare module "needle-engine-runtime" {
-    export class OrbitControls {
-        fitCamera(options?: NeedleCameraFitOptions): unknown;
+    export class WebXR {
+        createARButton: boolean;
+        createVRButton: boolean;
+        createQRCode: boolean;
+        createSendToQuestButton: boolean;
+        usePlacementReticle: boolean;
+        usePlacementAdjustment: boolean;
+        autoPlace: boolean;
     }
 
-    export class WebXRButtonFactory {
-        static getOrCreate(): WebXRButtonFactory;
-        createARButton(init?: XRSessionInit): HTMLButtonElement;
+    export class GameObject {
+        static addComponent<T>(
+            object: unknown,
+            componentType: new () => T,
+            init?: Partial<T>,
+        ): T;
+    }
+
+    export class OrbitControls {
+        fitCamera(options?: NeedleCameraFitOptions): unknown;
     }
 
     export interface NeedleCameraFitOptions {
