@@ -7,9 +7,15 @@ const SAMPLE_VARIANTS: ReadonlyArray<{ key: SampleVariant; label: string }> = [
   { key: 'glTF-Binary', label: 'GLB' },
   { key: 'glTF', label: 'glTF' },
 ];
-const BASE_REPO_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/';
+const DEFAULT_REPO_URL = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/';
 const SAMPLE_BASE_PATH = 'Models/';
 const TEST_BASE_PATH = 'Tests/Interactivity/';
+
+export function getSampleAssetsBaseUrl(): string {
+  const configuredUrl = process.env.REACT_APP_KHR_INTERACTIVITY_SAMPLE_ASSETS_URL?.trim();
+  const baseUrl = configuredUrl || DEFAULT_REPO_URL;
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
 
 /**
  * Represents a single sample model from the repository
@@ -39,6 +45,7 @@ interface SampleSidebarProps {
  * When a model is selected, it calls the onSelectModel callback with the model URL.
  */
 export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) => {
+  const baseRepoUrl = getSampleAssetsBaseUrl();
   // State to manage the sidebar visibility, data, loading state, and errors
   const [show, setShow] = useState(false);
   const [sampleModels, setSampleModels] = useState<Sample[]>([]);
@@ -62,7 +69,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
     try {
       // Fetch sample models
       const sampleResponse = await fetch(
-        'https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/Models/model-index.json'
+        `${baseRepoUrl}${SAMPLE_BASE_PATH}model-index.json`
       );
       
       if (!sampleResponse.ok) {
@@ -74,7 +81,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
       
       // Fetch test models
       const testResponse = await fetch(
-        'https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/Tests/Interactivity/test-index.json'
+        `${baseRepoUrl}${TEST_BASE_PATH}test-index.json`
       );
       
       if (!testResponse.ok) {
@@ -83,7 +90,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
 
             // Fetch test models
       const mathTestResponse = await fetch(
-        'https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/Tests/Interactivity/mathtests-index.json'
+        `${baseRepoUrl}${TEST_BASE_PATH}mathtests-index.json`
       );
       
       if (!mathTestResponse.ok) {
@@ -140,7 +147,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
       return;
     }
 
-    const modelUrl = buildSampleUrl(model, isTestModel, variant);
+    const modelUrl = buildSampleUrl(model, isTestModel, variant, baseRepoUrl);
     console.log('Loading model:', modelUrl);
     
     onSelectModel(modelUrl);
@@ -242,7 +249,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                     <div>{model.description}</div>
                     {model.screenshot && (
                       <img 
-                        src={`${BASE_REPO_URL}${SAMPLE_BASE_PATH}${model.name}/${model.screenshot}`}
+                        src={`${baseRepoUrl}${SAMPLE_BASE_PATH}${model.name}/${model.screenshot}`}
                         alt={model.label || model.name} 
                         className="img-fluid mt-2 mb-2" 
                         style={{ maxWidth: '120px', height: 'auto' }}
@@ -347,11 +354,16 @@ export function resolveSampleVariant(model: Sample, preferredVariant: SampleVari
   return SAMPLE_VARIANTS.find(({ key }) => model.variants?.[key])?.key;
 }
 
-export function buildSampleUrl(model: Sample, isTestModel: boolean, variant: SampleVariant): string {
+export function buildSampleUrl(
+  model: Sample,
+  isTestModel: boolean,
+  variant: SampleVariant,
+  baseRepoUrl = getSampleAssetsBaseUrl(),
+): string {
   const fileName = model.variants[variant];
   if (!fileName) throw new Error(`${model.name} has no ${variant} variant`);
   const basePath = isTestModel ? TEST_BASE_PATH : SAMPLE_BASE_PATH;
-  return `${BASE_REPO_URL}${basePath}${model.name}/${variant}/${fileName}`;
+  return `${baseRepoUrl}${basePath}${model.name}/${variant}/${fileName}`;
 }
 
 const VariantBadge: React.FC<{ model: Sample; preferredVariant: SampleVariant }> = ({ model, preferredVariant }) => {
