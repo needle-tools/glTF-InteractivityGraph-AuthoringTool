@@ -640,9 +640,14 @@ export const AuthoringComponent = () => {
     const onNodesDelete = useCallback((nodes: Node[]) => {
         for (let i = 0; i < nodes.length; i++) {
             const node = nodes[i];
+            trackEvent('node_deleted', { op: node.data?.op ?? node.type });
             removeNode(node.id);
         }
-        trackEvent('graph_nodes_deleted', { count: nodes.length });
+    }, []);
+
+    // a node was clicked on the canvas — record which type, so we can see which nodes people inspect
+    const onNodeClick = useCallback((_e: React.MouseEvent, node: Node) => {
+        trackEvent('node_clicked', { op: node.data?.op ?? node.type });
     }, []);
 
     // handle adding nodes and edges to the graph. Returns the new node's uid so callers (e.g. the
@@ -1176,11 +1181,22 @@ export const AuthoringComponent = () => {
         return { nodeIds: visitedNodes, edgeIds: visitedEdges };
     }, [edges]);
 
+    // the single node currently selected, so onSelectionChange only reports a *new* selection
+    // (it fires repeatedly for the same selection as ancestors/highlights recompute)
+    const lastSelectedNodeIdRef = useRef<string | null>(null);
+
     // recompute the highlighted ancestor set whenever selection changes; only meaningful for a
     // single selected node, so multi-select or an empty selection clears the highlight
     const onSelectionChange = useCallback(({ nodes: selectedNodes }: { nodes: Node[] }) => {
-        const { nodeIds, edgeIds } = selectedNodes.length === 1
-            ? getAncestors(selectedNodes[0].id)
+        const singleSelected = selectedNodes.length === 1 ? selectedNodes[0] : null;
+        // report a node becoming selected once, when the selected node actually changes
+        if (singleSelected && singleSelected.id !== lastSelectedNodeIdRef.current) {
+            trackEvent('node_selected', { op: singleSelected.data?.op ?? singleSelected.type });
+        }
+        lastSelectedNodeIdRef.current = singleSelected?.id ?? null;
+
+        const { nodeIds, edgeIds } = singleSelected
+            ? getAncestors(singleSelected.id)
             : { nodeIds: new Set<string>(), edgeIds: new Set<string>() };
         setAncestorNodeIds(nodeIds);
         setAncestorEdgeIds(edgeIds);
@@ -1228,6 +1244,7 @@ export const AuthoringComponent = () => {
                     onConnectEnd={onConnectEnd}
                     onEdgesDelete={onEdgesDelete}
                     onNodeDragStop={onNodeDragStop}
+                    onNodeClick={onNodeClick}
                     onSelectionChange={onSelectionChange}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}

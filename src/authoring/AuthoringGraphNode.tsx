@@ -21,6 +21,7 @@ import { VariablesConfigField } from "./VariablesConfigField";
 import { IntArrayConfigField } from "./IntArrayConfigField";
 import { InterpolationCurveField, ControlPoint } from "./InterpolationCurveField";
 import { CustomEventSendMonitor, CustomEventReceiveTrigger, PointerEventMonitor } from "./CustomEventControls";
+import { trackEventThrottled } from "../utils/analytics";
 import "../css/flowNodes.css";
 
 // a setState-style updater: either the next value directly, or a function of the previous value
@@ -160,6 +161,9 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     const markDirtyIfChanged = () => {
         if (!suppressDirtyRef.current) {
             markGraphDirty();
+            // a genuine user edit to this node (value / configuration / socket type / dynamic
+            // sockets). Throttled per node so dragging a slider or typing collapses to one event.
+            trackEventThrottled('node_modified', { op: node?.op }, `node_modified:${uid}`, 2000);
         }
     };
 
