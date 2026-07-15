@@ -11,6 +11,7 @@ import { createGlTFObjectModelFromGltf, readGltfJsonFromArrayBuffer } from "../.
 import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { omitEmptyGraphArrays } from "../../authoring/executableGraph";
 import { IconJsonFile, IconPlay, IconPointer, IconSendEvent } from "../toolbarIcons";
+import { trackEvent } from "../../utils/analytics";
 
 enum LoggingEngineModal {
     OBJECT_MODEL = "OBJECT_MODEL",
@@ -48,6 +49,7 @@ export const LoggingEngineComponent: React.FC<LoggingEngineComponentProps> = ({ 
     }, []);
 
     const play = () => {
+        trackEvent('scene_play', { engine: 'logging' });
         setExecutionLog("");
         runGraph(getExecutableGraph(), setExecutionLog, JSON.parse(objectModelJson));
         setGraphRunning(true);

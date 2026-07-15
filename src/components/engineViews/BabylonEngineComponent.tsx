@@ -33,6 +33,7 @@ import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
 import { useFullscreen } from "../../hooks/useFullscreen";
 import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
 import { ViewportControls } from "./ViewportControls";
+import { trackEvent } from "../../utils/analytics";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
@@ -235,6 +236,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     }, []);
 
     const play = (shouldOverrideGraph: boolean) => {
+        trackEvent('scene_play', { engine: 'babylon' });
         resetScene()
             .then(async (res: BabylonLoadedModel) => {
                 await runGraph(babylonEngineRef, omitEmptyGraphArrays(getExecutableGraph()), sceneRef.current, res, shouldOverrideGraph);
@@ -367,6 +369,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             return;
         }
         try {
+            trackEvent('graph_exported', { engine: 'babylon' });
             await downloadInteractiveModel(source, getExecutableGraph(), format);
         } catch (error) {
             console.error("Failed to export model:", error);
