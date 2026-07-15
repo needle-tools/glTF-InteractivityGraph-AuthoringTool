@@ -599,6 +599,7 @@ export class BasicBehaveEngine implements IBehaveEngine {
     }
 
     public loadBehaveGraph = (behaveGraph: any, runGraph = true) => {
+        const runtimeGraph = cloneGraphData(behaveGraph);
         this.hoverableNodesIndices.clear();
         this.selectableNodesIndices.clear();
         this.lastHoveredNodeIndices.clear();
@@ -608,15 +609,15 @@ export class BasicBehaveEngine implements IBehaveEngine {
         this._pauseDuration = 0;
         this._pauseTickTime = NaN;
         try {
-            this.validateGraph(behaveGraph);
+            this.validateGraph(runtimeGraph);
         } catch (e) {
             throw new Error(`The graph is invalid ${e}`)
         }
 
-        this.nodes = behaveGraph.nodes;
-        this._variables = behaveGraph.variables;
-        this.events = behaveGraph.events;
-        this.types = behaveGraph.types;
+        this.nodes = runtimeGraph.nodes;
+        this._variables = runtimeGraph.variables;
+        this.events = runtimeGraph.events;
+        this.types = runtimeGraph.types;
         this.idToBehaviourNodeMap.clear();
         this.registerGraphEventPointers();
 
@@ -639,9 +640,9 @@ export class BasicBehaveEngine implements IBehaveEngine {
 
         let index = 0;
         this.nodes.forEach(node => {
-            const nodeDeclaration: IInteractivityDeclaration | undefined = behaveGraph.declarations[node.declaration];
+            const nodeDeclaration: IInteractivityDeclaration | undefined = runtimeGraph.declarations[node.declaration];
             if (nodeDeclaration === undefined) {
-                throw Error(`Unrecognized node declaration ${node.declaration} but declerations has ${Object.keys(behaveGraph.declarations).length} keys`);
+                throw Error(`Unrecognized node declaration ${node.declaration} but declerations has ${Object.keys(runtimeGraph.declarations).length} keys`);
             }
             const behaviourNodeProps: IBehaviourNodeProps = {
                 ...defaultProps,
@@ -649,8 +650,8 @@ export class BasicBehaveEngine implements IBehaveEngine {
                 flows:node.flows || {},
                 values: node.values || {},
                 configuration: node.configuration || {},
-                variables: behaveGraph.variables,
-                types: behaveGraph.types,
+                variables: runtimeGraph.variables,
+                types: runtimeGraph.types,
                 graphEngine: this,
                 declaration: nodeDeclaration,
                 addEventToWorkQueue: this.addEventToWorkQueue,
@@ -667,11 +668,11 @@ export class BasicBehaveEngine implements IBehaveEngine {
         });
 
         this.onTickNodeIndices = this.nodes
-            .map((node, idx) => behaveGraph.declarations[node.declaration].op === "event/onTick" ? idx : -1)
+            .map((node, idx) => runtimeGraph.declarations[node.declaration].op === "event/onTick" ? idx : -1)
             .filter(idx => idx !== -1);
 
         const onStartIndices = this.nodes
-            .map((node, idx) => behaveGraph.declarations[node.declaration].op=== "event/onStart" ? idx : -1)
+            .map((node, idx) => runtimeGraph.declarations[node.declaration].op=== "event/onStart" ? idx : -1)
             .filter(idx => idx !== -1);
 
         for (const startNodeIndex of onStartIndices) {
@@ -928,4 +929,16 @@ export class BasicBehaveEngine implements IBehaveEngine {
     isEventTransitivePropagationCancelled(event: string): boolean {
         return this.transitivePropagationCancelled.has(event);
     }
+}
+
+function cloneGraphData<T>(value: T): T {
+    if (Array.isArray(value)) {
+        return value.map((entry) => cloneGraphData(entry)) as T;
+    }
+    if (value !== null && typeof value === "object") {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, entry]) => [key, cloneGraphData(entry)]),
+        ) as T;
+    }
+    return value;
 }
