@@ -328,7 +328,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
 
     return (
         <div style={{width: "100%", height: "100%", display: "flex", flexDirection: "column"}}>
-            <div style={{background: "#3d5987", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16}}>
+            <div className="engine-toolbar">
                 <Button variant="outline-light" onClick={() => {
                     play(false)
                 }} disabled={fileUploaded == null}>
@@ -343,7 +343,6 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
 
                 <Spacer width={16} height={0}/>
 
-                <label className="mx-3" style={{color: "white"}}>Choose file: </label>
                 <input className="d-none" type="file" accept=".glb" ref={fileInputRef} data-testid={"babylon-engine-file-input"} onChange={() => {
                     if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
                         setFileUploaded(null);

@@ -157,19 +157,17 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
   return (
     <>
       <Button 
+        className="sample-sidebar-trigger"
         onClick={handleShow} 
         variant="primary" 
-        style={{ 
-          position: 'fixed', 
-          top: '10px', 
-          right: '10px', 
-          zIndex: 1030 
-        }}
+        aria-label="Open samples and tests"
+        title="Samples and Tests"
       >
-        ☰ Samples and Tests
+        <span className="sample-sidebar-trigger__icon" aria-hidden="true">☰</span>
+        <span className="sample-sidebar-trigger__label">Samples and Tests</span>
       </Button>
 
-      <Offcanvas show={show} onHide={handleClose} placement="end">
+      <Offcanvas className="sample-sidebar" show={show} onHide={handleClose} placement="end">
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>Samples and Tests</Offcanvas.Title>
         </Offcanvas.Header>

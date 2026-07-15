@@ -7,7 +7,6 @@ import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComp
 import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponent";
 import {NeedleEngineComponent} from "./components/engineViews/NeedleEngineComponent";
 import {Tab, Tabs} from "react-bootstrap";
-import {Spacer} from "./components/Spacer";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
 import { SampleSidebar } from './components/SampleSidebar';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
@@ -191,7 +190,7 @@ export const App = () => {
 
   return (
     <InteractivityGraphProvider>
-        <div style={{width: "100vw", height: "100vh"}}>
+        <div className="app-shell">
 
         <EngineSelector setEngineType={handleEngineTypeChange} currentEngineType={engineType} />
 
@@ -199,12 +198,10 @@ export const App = () => {
 
         <DiagnosticsPanel />
 
-        <Spacer width={0} height={32}/>
-
         {/* side-by-side, resizable: 3D/logging engine view on the left, graph authoring on the
             right, with a draggable divider controlling the split (see startSplitDrag) */}
-        <div ref={splitRowRef} style={{display: "flex", flexDirection: "row", width: "100vw", height: "85vh", boxSizing: "border-box", padding: "0 16px"}}>
-            <div style={{flexGrow: splitRatio, flexShrink: 1, flexBasis: 0, minWidth: 0, height: "100%"}}>
+        <div ref={splitRowRef} className="app-workspace">
+            <div className="app-engine-pane" style={{flexGrow: splitRatio}}>
                 <RenderIf shouldShow={engineType === EngineType.LOGGING}>
                      <LoggingEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
@@ -219,26 +216,15 @@ export const App = () => {
                 </RenderIf>
             </div>
             <div
+                className={`app-workspace-divider${dividerActive ? " app-workspace-divider--active" : ""}`}
                 onMouseDown={startSplitDrag}
                 onMouseEnter={() => setDividerHovered(true)}
                 onMouseLeave={() => setDividerHovered(false)}
                 title={"Drag to resize"}
-                style={{
-                    flex: "0 0 12px", height: "100%", cursor: "col-resize",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: dividerActive ? "rgba(61, 89, 135, 0.08)" : "transparent",
-                    transition: "background 120ms ease",
-                }}
             >
-                <div style={{
-                    width: dividerActive ? 4 : 2,
-                    height: dividerActive ? 64 : 40,
-                    borderRadius: 3,
-                    background: dividerActive ? "#3d5987" : "#adb5bd",
-                    transition: "all 120ms ease",
-                }}/>
+                <div className="app-workspace-divider__handle"/>
             </div>
-            <div style={{flexGrow: 1 - splitRatio, flexShrink: 1, flexBasis: 0, minWidth: 0, height: "100%"}}>
+            <div className="app-graph-pane" style={{flexGrow: 1 - splitRatio}}>
                 <AuthoringComponent/>
             </div>
         </div>
@@ -302,19 +288,21 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
     };
 
     return (
-        <div style={{width: "90vw", margin: "0 auto", textAlign: "center", marginTop: 32}}>
-            <h2>glTF Interactivity Editor and Viewer</h2>
-            <p style={{marginBottom: "0"}}>This web app allows interacting with, graph inspection and authoring of glTF files using the <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank">KHR_interactivity</a> extension.</p>
-            <p style={{marginBottom: "0"}}>You can load samples and test assets and inspect their graphs, or create your own files with the experimental graph UI.</p>
-            <div data-testid={"engine-selector"}>
+        <div className="engine-selector">
+            <h1 className="engine-selector__title">glTF Interactivity Editor and Viewer</h1>
+            <div className="engine-selector__intro">
+                <p>This web app allows interacting with, graph inspection and authoring of glTF files using the <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank" rel="noreferrer">KHR_interactivity</a> extension.</p>
+                <p>You can load samples and test assets and inspect their graphs, or create your own files with the experimental graph UI.</p>
+            </div>
+            <div className="engine-selector__tabs" data-testid={"engine-selector"}>
                 <Tabs
                     activeKey={activeKey}
                     onSelect={handleEngineChange}
                 >
-                    <Tab title={"Babylon Engine"} eventKey={2}/>
-                    <Tab title={"Three Engine"} eventKey={3}/>
-                    <Tab title={"Needle Engine"} eventKey={4}/>
-                    <Tab title={"Logging Engine (for development)"} eventKey={1}/>
+                    <Tab title={"Babylon"} eventKey={2}/>
+                    <Tab title={"three.js"} eventKey={3}/>
+                    <Tab title={"Needle"} eventKey={4}/>
+                    <Tab title={"Debug"} eventKey={1}/>
                 </Tabs>
             </div>
         </div>
