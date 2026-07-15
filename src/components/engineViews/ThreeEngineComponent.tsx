@@ -24,6 +24,7 @@ import { Spacer } from "../Spacer";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
 import { downloadInteractivityGlb } from "./glbExport";
+import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 
 type ModelSource = { kind: "url"; url: string } | { kind: "file"; file: File };
 
@@ -85,7 +86,11 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         const size = box.getSize(new Vector3());
         const maxDimension = Math.max(size.x, size.y, size.z, 0.01);
         const distance = (maxDimension / Math.tan(cameraRef.current.fov * Math.PI / 360)) * 0.75;
-        cameraRef.current.position.set(center.x, center.y + maxDimension * 0.4, center.z + distance);
+        cameraRef.current.position.set(
+            center.x,
+            center.y + maxDimension * 0.4,
+            center.z + distance * MODEL_VIEW_Z_DIRECTION,
+        );
         cameraRef.current.near = Math.max(distance / 1000, 0.001);
         cameraRef.current.far = Math.max(distance * 100, 1000);
         cameraRef.current.updateProjectionMatrix();
