@@ -3,10 +3,10 @@ import { BasicBehaveEngine } from "../../src/BasicBehaveEngine/BasicBehaveEngine
 import { disposeThreeLoadedModel } from "../../src/components/engineViews/threeLoadedModel";
 import { BabylonDecorator } from "../../src/decorators/BabylonDecorator";
 import { ThreeDecorator } from "../../src/decorators/ThreeDecorator";
-import { BabylonScene, loadBabylonWorldFromGlb, NullEngine } from "./babylonAssetHarness";
+import { BabylonScene, loadBabylonWorldFromGltf, NullEngine } from "./babylonAssetHarness";
 import { loadModelAssetCases } from "./modelAssetHarness";
 import { runGraphAndWait, TestEventBus } from "./sampleAssetHarness";
-import { loadThreeWorldFromGlb } from "./threeAssetHarness";
+import { loadThreeWorldFromGltf } from "./threeAssetHarness";
 import { getInteractivityRuntime } from "../../src/integrations/InteractivityRuntime";
 
 jest.setTimeout(30_000);
@@ -134,19 +134,17 @@ async function runModelGraph(
 }
 
 describe("KHR_interactivity showcase models - Babylon engine", () => {
-    it.each(cases)("$entry.name", async (assetCase) => {
-        if (assetCase.loadError || !assetCase.graph) {
-            throw assetCase.loadError ?? new Error(`${assetCase.entry.name} has no graph`);
-        }
-
+    it.each(cases)("$entry.name ($variant)", async (assetCase) => {
         const nullEngine = new NullEngine();
         const scene = new BabylonScene(nullEngine);
         let decorator: BabylonDecorator | undefined;
         try {
             const engine = new BasicBehaveEngine(60, new TestEventBus());
-            const world = await loadBabylonWorldFromGlb(assetCase.glbPath, scene);
+            const world = await loadBabylonWorldFromGltf(assetCase.assetPath, scene);
             decorator = new BabylonDecorator(engine, world, scene);
-            await runModelGraph(assetCase.entry.name, decorator, assetCase.graph);
+            const graph = decorator.extractBehaveGraphFromScene();
+            if (!graph) throw new Error(`${assetCase.entry.name} (${assetCase.variant}) loader did not expose its embedded graph`);
+            await runModelGraph(assetCase.entry.name, decorator, graph);
             await verifyModelBehavior(assetCase.entry.name, decorator);
         } finally {
             decorator?.dispose();
@@ -157,12 +155,8 @@ describe("KHR_interactivity showcase models - Babylon engine", () => {
 });
 
 describe("KHR_interactivity showcase models - Three engine", () => {
-    it.each(cases)("$entry.name", async (assetCase) => {
-        if (assetCase.loadError || !assetCase.graph) {
-            throw assetCase.loadError ?? new Error(`${assetCase.entry.name} has no graph`);
-        }
-
-        const model = await loadThreeWorldFromGlb(assetCase.glbPath, new TestEventBus());
+    it.each(cases)("$entry.name ($variant)", async (assetCase) => {
+        const model = await loadThreeWorldFromGltf(assetCase.assetPath, new TestEventBus());
         const runtime = getInteractivityRuntime(model);
         if (!runtime) throw new Error("Three model has no interactivity runtime");
         const decorator = runtime.decorator;
@@ -171,7 +165,9 @@ describe("KHR_interactivity showcase models - Three engine", () => {
                 expect(model.animations.length).toBeGreaterThan(0);
                 expect(model.animations.every((clip) => clip.duration > 0 && clip.tracks.length > 0)).toBe(true);
             }
-            await runModelGraph(assetCase.entry.name, decorator, assetCase.graph);
+            const graph = runtime.graph;
+            if (!graph) throw new Error(`${assetCase.entry.name} (${assetCase.variant}) loader did not expose its embedded graph`);
+            await runModelGraph(assetCase.entry.name, decorator, graph);
             await verifyModelBehavior(assetCase.entry.name, decorator);
         } finally {
             runtime.dispose();

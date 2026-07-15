@@ -4,16 +4,25 @@ import type { IEventBus } from "../../src/BasicBehaveEngine/IBehaveEngine";
 import { createThreeLoader, ThreeLoadedModel } from "../../src/components/engineViews/threeLoadedModel";
 import { registerGLTFInteractivity } from "../../src/integrations/GLTFInteractivityPlugin";
 import { getInteractivityRuntime } from "../../src/integrations/InteractivityRuntime";
+import { localResourceDataUrl } from "./localAssetUrl";
 
 export async function loadThreeWorldFromGlb(glbPath: string, eventBus?: IEventBus): Promise<ThreeLoadedModel> {
+    return loadThreeWorldFromGltf(glbPath, eventBus);
+}
+
+export async function loadThreeWorldFromGltf(assetPath: string, eventBus?: IEventBus): Promise<ThreeLoadedModel> {
     installWebGlobalsForNode();
-    const bytes = fs.readFileSync(path.resolve(glbPath));
-    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const absolutePath = path.resolve(assetPath);
     const loader = createThreeLoader();
+    loader.manager.setURLModifier((url) => localResourceDataUrl(url, path.dirname(absolutePath)) ?? url);
     registerGLTFInteractivity(loader, { autoStart: false, eventBus });
-    const gltf = await loader.parseAsync(data, `${path.dirname(path.resolve(glbPath))}/`);
+    const source = fs.readFileSync(absolutePath);
+    const data = path.extname(absolutePath).toLowerCase() === ".gltf"
+        ? source.toString("utf8")
+        : source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+    const gltf = await loader.parseAsync(data, `${path.dirname(absolutePath)}/`);
     const runtime = getInteractivityRuntime(gltf);
-    if (!runtime) throw new Error(`GLTFInteractivityPlugin did not initialize ${glbPath}`);
+    if (!runtime) throw new Error(`GLTFInteractivityPlugin did not initialize ${assetPath}`);
     return runtime.model;
 }
 
