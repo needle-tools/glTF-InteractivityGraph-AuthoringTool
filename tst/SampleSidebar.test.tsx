@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import {
     buildSampleUrl,
+    orderSampleModels,
     resolveSampleVariant,
     Sample,
     SampleSidebar,
@@ -66,6 +67,35 @@ describe("SampleSidebar variants", () => {
             "https://raw.githubusercontent.com/KhronosGroup/glTF-Test-Assets-Interactivity/main/Models/BowShooting/glTF/BowShooting.gltf",
         );
         expect(resolveSampleVariant(testAsset, "glTF")).toBe("glTF-Binary");
+    });
+
+    it("prioritizes showcase samples while preserving the order of the rest", () => {
+        const names = [
+            "Calculator",
+            "Flocking",
+            "ConstructionSite",
+            "SnailRace",
+            "PhysicsMath",
+            "TrafficLight",
+            "BowShooting",
+            "WhackAMole",
+            "Sundial",
+            "Ghost",
+        ];
+        const samples = names.map((name): Sample => ({ label: name, name, variants: {} }));
+
+        expect(orderSampleModels(samples).map(({ name }) => name)).toEqual([
+            "WhackAMole",
+            "BowShooting",
+            "TrafficLight",
+            "PhysicsMath",
+            "SnailRace",
+            "Sundial",
+            "Flocking",
+            "Calculator",
+            "ConstructionSite",
+            "Ghost",
+        ]);
     });
 
     it("loads the selected JSON glTF variant from the sidebar", async () => {
