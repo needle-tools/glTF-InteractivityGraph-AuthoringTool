@@ -14,7 +14,7 @@ export const NEEDLE_AR_OPTIONS = Object.freeze({
     createSendToQuestButton: false,
     usePlacementReticle: true,
     usePlacementAdjustment: true,
-    autoPlace: false,
+    autoPlace: true,
 });
 
 const configuredContexts = new WeakSet<object>();
