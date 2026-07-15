@@ -14,6 +14,7 @@ import { OnHoverIn } from "../BasicBehaveEngine/nodes/experimental/OnHoverIn";
 import { OnHoverOut } from "../BasicBehaveEngine/nodes/experimental/OnHoverOut";
 import { OnSelect } from "../BasicBehaveEngine/nodes/experimental/OnSelect";
 import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
+import { attachPointerTap } from "../integrations/pointerTap";
 import { registerThreeMaterialPointers } from "./threeMaterialPointers";
 import { registerThreeActiveCameraPointers, registerThreeScenePointers } from "./threeScenePointers";
 import { registerThreeStructuralPointers } from "./threeStructuralPointers";
@@ -43,6 +44,7 @@ export class ThreeDecorator extends ADecorator {
     private readonly threeAnimations = new Map<number, ActiveAnimation>();
     private camera: Camera | null = null;
     private domElement: HTMLElement | null = null;
+    private detachTap: (() => void) | undefined;
     private animationTimer: ReturnType<typeof setInterval> | null = null;
     private lastAnimationTick = 0;
     private manualAnimationUpdates = false;
@@ -98,7 +100,7 @@ export class ThreeDecorator extends ADecorator {
         this.domElement = domElement;
         domElement.addEventListener("pointermove", this.handlePointerMove);
         domElement.addEventListener("pointerleave", this.handlePointerLeave);
-        domElement.addEventListener("click", this.handleClick);
+        this.detachTap = attachPointerTap(domElement, this.handleTap);
     }
 
     setManualAnimationUpdates(enabled: boolean): void {
@@ -264,7 +266,8 @@ export class ThreeDecorator extends ADecorator {
     private detachPointerEvents(): void {
         this.domElement?.removeEventListener("pointermove", this.handlePointerMove);
         this.domElement?.removeEventListener("pointerleave", this.handlePointerLeave);
-        this.domElement?.removeEventListener("click", this.handleClick);
+        this.detachTap?.();
+        this.detachTap = undefined;
         this.domElement = null;
     }
 
@@ -277,7 +280,7 @@ export class ThreeDecorator extends ADecorator {
         this.hoverOn(undefined, 0);
     };
 
-    private handleClick = (event: MouseEvent): void => {
+    private handleTap = (event: MouseEvent | PointerEvent): void => {
         const hit = this.pick(event, (object) => interactionEnabled(object, "selectable"));
         const nodeIndex = hit ? findNodeIndex(hit.object) : undefined;
         if (!hit || nodeIndex === undefined) {
