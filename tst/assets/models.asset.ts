@@ -105,7 +105,6 @@ async function runModelGraph(
     const positionsByNode = PHYSICS_NODE_PATHS.map(() => [] as number[][]);
     for (let index = 0; index < 90; index++) {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        decorator.executeEventQueueTick();
         PHYSICS_NODE_PATHS.forEach((path, nodeIndex) => {
             positionsByNode[nodeIndex].push(readNumbers(decorator, path));
         });
@@ -115,18 +114,24 @@ async function runModelGraph(
 
     const failures = positionsByNode.flatMap((positions, nodeIndex) => {
         const heights = positions.map((position) => position[1]);
-        const minimum = Math.min(...heights);
-        const minimumIndex = heights.indexOf(minimum);
-        const reboundHeight = Math.max(...heights.slice(minimumIndex + 1));
         const initialPosition = initialPositions[nodeIndex];
-        const verticalTravel = Math.max(...heights) - Math.min(...heights);
         const lateralDeflection = Math.max(...positions.map((position) => Math.hypot(
             position[0] - initialPosition[0],
             position[2] - initialPosition[2],
         )));
-        return verticalTravel > 0.2 && lateralDeflection > 0.1
+        const reboundIndex = positions.findIndex((position, index) => {
+            if (index < 2) return false;
+            const previousDrop = heights[index - 1] - heights[index - 2];
+            const upwardStep = position[1] - heights[index - 1];
+            const horizontalTravel = Math.hypot(
+                position[0] - initialPosition[0],
+                position[2] - initialPosition[2],
+            );
+            return previousDrop < -0.01 && upwardStep > 0.05 && horizontalTravel > 0.02;
+        });
+        return reboundIndex >= 0 && lateralDeflection > 0.1
             ? []
-            : [`${PHYSICS_NODE_PATHS[nodeIndex]}: vertical travel=${verticalTravel.toFixed(3)}, y=${heights[0].toFixed(3)}..${heights[heights.length - 1].toFixed(3)}, min=${minimum.toFixed(3)} at sample ${minimumIndex}, rebound=${(reboundHeight - minimum).toFixed(3)}, lateral deflection=${lateralDeflection.toFixed(3)}`];
+            : [`${PHYSICS_NODE_PATHS[nodeIndex]}: no collision rebound found, y=${heights[0].toFixed(3)}..${heights[heights.length - 1].toFixed(3)}, lateral deflection=${lateralDeflection.toFixed(3)}`];
     });
     if (failures.length > 0) {
         throw new Error(`PhysicsMath did not produce a collision response for every sphere:\n${failures.join("\n")}`);

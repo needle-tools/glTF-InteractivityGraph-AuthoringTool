@@ -1,5 +1,5 @@
 import "needle-engine-runtime";
-import { fitCamera, WebXRButtonFactory } from "needle-engine-runtime";
+import { getComponent, OrbitControls, WebXRButtonFactory } from "needle-engine-runtime";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Button, Container, Modal } from "react-bootstrap";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -62,6 +62,21 @@ function configureNeedleMenu(context: NeedleMenuContext): void {
     configuredNeedleMenus.add(context);
     context.menu.appendChild(WebXRButtonFactory.getOrCreate().createARButton());
     context.menu.showFullscreenOption(true);
+}
+
+function frameNeedleModel(context: NeedleMenuContext, objects: unknown): void {
+    const controls = getComponent(context.mainCamera, OrbitControls);
+    if (!controls) {
+        console.warn("Needle OrbitControls are not available for camera framing");
+        return;
+    }
+    controls.fitCamera({
+        objects,
+        fitOffset: 1.2,
+        fitDirection: { x: 0, y: 0.35, z: 1 },
+        cameraNearFar: "auto",
+        immediate: true,
+    });
 }
 
 export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ modelUrl }) => {
@@ -157,13 +172,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
             loadGraphFromJson,
             loadBehaveGraph: (graph) => decorator.loadBehaveGraph(graph),
         });
-        fitCamera({
-            context,
-            objects: (file as unknown as { scene: unknown }).scene,
-            fitOffset: 1.2,
-            relativeCameraOffset: { y: 0.2 },
-            cameraNearFar: "auto",
-        });
+        frameNeedleModel(context, (file as unknown as { scene: unknown }).scene);
         setGraphRunning(true);
         clearGraphDirty();
     };
@@ -178,13 +187,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         const context = engineElementRef.current?.context;
         const model = loadedModelRef.current;
         if (context && model) {
-            fitCamera({
-                context,
-                objects: model.scene,
-                fitOffset: 1.2,
-                relativeCameraOffset: { y: 0.2 },
-                cameraNearFar: "auto",
-            });
+            frameNeedleModel(context, model.scene);
         }
     };
 
