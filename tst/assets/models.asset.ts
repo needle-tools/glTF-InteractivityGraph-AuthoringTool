@@ -71,9 +71,12 @@ async function runModelGraph(
             positions.push(readNumbers(decorator, BOW_ARROW_TRANSLATION_PATH));
         }
         expect(decorator.getPathValue(BOW_ARROW_VISIBLE_PATH)).toEqual([true]);
-        expect(positions.some((position) => position.some(
-            (value, component) => Math.abs(value - initialArrowPosition[component]) > 0.01,
-        ))).toBe(true);
+        expect(Math.max(...positions.map((position) => Math.hypot(
+            position[0] - initialArrowPosition[0],
+            position[1] - initialArrowPosition[1],
+            position[2] - initialArrowPosition[2],
+        )))).toBeGreaterThan(1);
+        expect(Math.max(...positions.map((position) => position[1]))).toBeGreaterThan(initialArrowPosition[1] + 0.5);
         expect(positions.flat().every(Number.isFinite)).toBe(true);
         decorator.pauseEventQueue();
         decorator.clearCustomEventListeners();
