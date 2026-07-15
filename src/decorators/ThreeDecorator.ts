@@ -13,6 +13,7 @@ import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGrap
 import { OnHoverIn } from "../BasicBehaveEngine/nodes/experimental/OnHoverIn";
 import { OnHoverOut } from "../BasicBehaveEngine/nodes/experimental/OnHoverOut";
 import { OnSelect } from "../BasicBehaveEngine/nodes/experimental/OnSelect";
+import { trackSceneInteraction } from "../utils/analytics";
 import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import { attachPointerTap } from "../integrations/pointerTap";
 import { registerThreeMaterialPointers } from "./threeMaterialPointers";
@@ -66,7 +67,10 @@ export class ThreeDecorator extends ADecorator {
         registerThreeActiveCameraPointers(camera, this.bindPointer);
     }
 
-    processNodeStarted = (_node: BehaveEngineNode): void => undefined;
+    processNodeStarted = (node: BehaveEngineNode): void => {
+        // report user interactions with the running scene (select/hover); filtered + throttled
+        trackSceneInteraction(node.declaration?.op);
+    };
     processAddingNodeToQueue = (_flow: IInteractivityFlow): void => undefined;
     processExecutingNextNode = (_flow: IInteractivityFlow): void => undefined;
     getWorld = (): ThreeLoadedModel => this.model;

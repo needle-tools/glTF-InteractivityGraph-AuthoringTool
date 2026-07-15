@@ -10,6 +10,7 @@ import {Tab, Tabs} from "react-bootstrap";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
 import { SampleSidebar } from './components/SampleSidebar';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
+import { describeModelUrl, trackEvent } from './utils/analytics';
 
 // Storage key for persisting the engine type
 const ENGINE_TYPE_STORAGE_KEY = 'interactivity-graph-engine-type';
@@ -39,6 +40,10 @@ export const App = () => {
   const [dividerHovered, setDividerHovered] = useState(false);
   const [dividerDragging, setDividerDragging] = useState(false);
   const splitRowRef = useRef<HTMLDivElement | null>(null);
+  // mirror of engineType so the model-load analytics can read the current engine without adding it
+  // to the model effect's deps (which would re-fire the effect on every engine switch)
+  const engineTypeRef = useRef(engineType);
+  engineTypeRef.current = engineType;
 
   // drag the divider: track the pointer against the row's bounds and clamp so neither panel collapses
   const startSplitDrag = (e: React.MouseEvent) => {
@@ -170,6 +175,11 @@ export const App = () => {
 
   useEffect(() => {
     if (modelUrl) {
+      // record which model URL was loaded, reduced to host + file name so the dashboard groups by
+      // source and model without collecting unbounded query strings (see describeModelUrl)
+      const { model, host } = describeModelUrl(modelUrl);
+      trackEvent('model_loaded', { model, host, engine: engineTypeRef.current });
+
       const params = new URLSearchParams(window.location.search);
       params.set('model', modelUrl);
       // set title based on model name
