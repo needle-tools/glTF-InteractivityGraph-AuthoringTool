@@ -1,5 +1,5 @@
 import "needle-engine-runtime";
-import { getComponent, OrbitControls, WebXRButtonFactory } from "needle-engine-runtime";
+import { GameObject, getComponent, OrbitControls, WebXR } from "needle-engine-runtime";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Button, Container, Modal } from "react-bootstrap";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -11,6 +11,7 @@ import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { computeExtensionDiagnostics } from "../../diagnostics";
 import { registerNeedleInteractivity } from "../../integrations/NeedleInteractivityPlugin";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
+import { configureNeedleXR, type NeedleXRContext } from "../../integrations/NeedleXR";
 import { Spacer } from "../Spacer";
 import { downloadInteractivityGlb } from "./glbExport";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
@@ -39,12 +40,7 @@ interface NeedleEngineElement extends HTMLElement {
     context?: NeedleMenuContext;
 }
 
-interface NeedleMenuContext extends NeedleContext {
-    menu: {
-        appendChild(child: HTMLElement): void;
-        showFullscreenOption(visible: boolean): void;
-    };
-}
+type NeedleMenuContext = NeedleContext & NeedleXRContext;
 
 enum NeedleEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
@@ -55,13 +51,10 @@ interface NeedleEngineComponentProps {
     modelUrl?: string | null;
 }
 
-const configuredNeedleMenus = new WeakSet<object>();
-
-function configureNeedleMenu(context: NeedleMenuContext): void {
-    if (configuredNeedleMenus.has(context)) return;
-    configuredNeedleMenus.add(context);
-    context.menu.appendChild(WebXRButtonFactory.getOrCreate().createARButton());
-    context.menu.showFullscreenOption(true);
+function configureNeedleView(context: NeedleMenuContext): void {
+    configureNeedleXR(context, (scene, options) => {
+        GameObject.addComponent(scene, WebXR, options);
+    });
 }
 
 function frameNeedleModel(context: NeedleMenuContext, objects: unknown): void {
@@ -134,7 +127,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
     };
 
     const handleLoadedModel = async (context: NeedleMenuContext, loadedFiles: NeedleLoadedModel[]): Promise<void> => {
-        configureNeedleMenu(context);
+        configureNeedleView(context);
         const pending = pendingLoadRef.current;
         const file = loadedFiles[0]?.file;
         if (loadedFiles.length === 0) return;
