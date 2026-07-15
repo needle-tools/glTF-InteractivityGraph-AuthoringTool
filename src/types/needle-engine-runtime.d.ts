@@ -1,4 +1,9 @@
 declare module "needle-engine-runtime" {
+    export class WebXRButtonFactory {
+        static getOrCreate(): WebXRButtonFactory;
+        createARButton(init?: XRSessionInit): HTMLButtonElement;
+    }
+
     export interface NeedleCameraFitOptions {
         context: unknown;
         objects: unknown;
