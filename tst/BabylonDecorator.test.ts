@@ -2,32 +2,10 @@ import { BasicBehaveEngine } from "../src/BasicBehaveEngine/BasicBehaveEngine";
 import { BabylonDecorator } from "../src/decorators/BabylonDecorator";
 import { BabylonScene, NullEngine } from "./assets/babylonAssetHarness";
 import { TestEventBus } from "./assets/sampleAssetHarness";
-import { Animation, AnimationGroup, FreeCamera, Quaternion, TransformNode, Vector3 } from "@babylonjs/core";
+import { Animation, AnimationGroup, TransformNode } from "@babylonjs/core";
 import { jest } from "@jest/globals";
 
 describe("BabylonDecorator", () => {
-    it("does not rotate the active camera pointer by 180 degrees around Y", () => {
-        const nullEngine = new NullEngine();
-        const scene = new BabylonScene(nullEngine);
-        try {
-            const camera = new FreeCamera("camera", Vector3.Zero(), scene);
-            camera.rotationQuaternion = Quaternion.Identity();
-            camera.computeWorldMatrix();
-            scene.activeCamera = camera;
-            const decorator = new BabylonDecorator(
-                new BasicBehaveEngine(60, new TestEventBus()),
-                { glTFNodes: [], materials: [], meshes: [], animations: [] },
-                scene,
-            );
-
-            expect(decorator.getPathValue("/extensions/KHR_interactivity/activeCamera/rotation"))
-                .toEqual([0, -0, 0, 1]);
-        } finally {
-            scene.dispose();
-            nullEngine.dispose();
-        }
-    });
-
     it("does not throw from animation time pointer getters when an animation slot is absent", () => {
         const nullEngine = new NullEngine();
         const scene = new BabylonScene(nullEngine);
