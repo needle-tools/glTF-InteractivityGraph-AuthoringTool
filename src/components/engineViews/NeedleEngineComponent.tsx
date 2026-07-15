@@ -10,6 +10,7 @@ import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { computeExtensionDiagnostics } from "../../diagnostics";
 import { registerNeedleInteractivity } from "../../integrations/NeedleInteractivityPlugin";
+import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { configureNeedleXR, type NeedleXRContext } from "../../integrations/NeedleXR";
 import { Spacer } from "../Spacer";
@@ -172,6 +173,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
     };
 
     const play = (): void => {
+        trackEvent('scene_play', { engine: 'needle' });
         if (sourceRef.current) loadSource(sourceRef.current, getExecutableGraph(), false);
     };
     const playRef = useRef(play);
