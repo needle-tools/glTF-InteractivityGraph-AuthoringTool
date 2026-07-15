@@ -14,8 +14,8 @@ import { ensureInteractivityDeclaration } from './authoring/declarations';
 import { getExecutableDeclarationIndex, toExecutableConfigurationValue, toExecutableValue } from './authoring/executableGraph';
 import { trackEvent } from './utils/analytics';
 
-// cap on how many distinct node ops we emit a per-op analytics event for on a single graph load, so
-// a pathological graph can't flood the dashboard; the aggregate counts on graph_loaded are unbounded
+// cap on how many distinct node ops are listed in the single graph_loaded analytics event, so a
+// pathological graph can't bloat the event payload; the aggregate counts on graph_loaded are exact
 const MAX_TRACKED_NODE_OPS = 60;
 
 const edgeStyle = (color: string) => ({ stroke: color, strokeWidth: 2 });
@@ -705,21 +705,26 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
         newGraph.nodes = loadedNodes;
 
-        // report which graph was loaded and which node types it contains, so the dashboard shows a
-        // breakdown of node usage across loaded graphs (see MAX_TRACKED_NODE_OPS for the per-op cap)
+        // report which graph was loaded and which node types it contains as a single event, so the
+        // dashboard shows node usage per load without one event per op (see MAX_TRACKED_NODE_OPS)
         try {
             const opCounts = new Map<string, number>();
             for (const loadedNode of loadedNodes) {
                 if (loadedNode.op === undefined) { continue; }
                 opCounts.set(loadedNode.op, (opCounts.get(loadedNode.op) ?? 0) + 1);
             }
-            trackEvent('graph_loaded', { nodeCount: loadedNodes.length, nodeTypeCount: opCounts.size });
-            let emitted = 0;
-            for (const [op, count] of opCounts) {
-                if (emitted >= MAX_TRACKED_NODE_OPS) { break; }
-                trackEvent('node_type_loaded', { op, count });
-                emitted++;
-            }
+            // most-used first, so the payload cap keeps the node types that matter most
+            const sortedOps = [...opCounts.entries()].sort((a, b) => b[1] - a[1]);
+            const cappedOps = sortedOps.slice(0, MAX_TRACKED_NODE_OPS);
+            trackEvent('graph_loaded', {
+                nodeCount: loadedNodes.length,
+                nodeTypeCount: opCounts.size,
+                // distinct node types, most-used first, as one readable comma-separated property
+                nodeTypes: cappedOps.map(([op]) => op).join(', '),
+                // per-type counts as a JSON string, so the detail survives in a single event
+                nodeTypeCounts: JSON.stringify(Object.fromEntries(cappedOps)),
+                nodeTypesTruncated: sortedOps.length > cappedOps.length,
+            });
         } catch {
             // analytics must never break a graph load
         }
