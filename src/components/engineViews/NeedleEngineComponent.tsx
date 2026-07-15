@@ -1,5 +1,5 @@
 import "needle-engine-runtime";
-import { fitCamera } from "needle-engine-runtime";
+import { fitCamera, WebXRButtonFactory } from "needle-engine-runtime";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Button, Container, Modal } from "react-bootstrap";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -36,7 +36,14 @@ interface NeedleLoadedModel {
 }
 
 interface NeedleEngineElement extends HTMLElement {
-    context?: NeedleContext;
+    context?: NeedleMenuContext;
+}
+
+interface NeedleMenuContext extends NeedleContext {
+    menu: {
+        appendChild(child: HTMLElement): void;
+        showFullscreenOption(visible: boolean): void;
+    };
 }
 
 enum NeedleEngineModal {
@@ -46,6 +53,15 @@ enum NeedleEngineModal {
 
 interface NeedleEngineComponentProps {
     modelUrl?: string | null;
+}
+
+const configuredNeedleMenus = new WeakSet<object>();
+
+function configureNeedleMenu(context: NeedleMenuContext): void {
+    if (configuredNeedleMenus.has(context)) return;
+    configuredNeedleMenus.add(context);
+    context.menu.appendChild(WebXRButtonFactory.getOrCreate().createARButton());
+    context.menu.showFullscreenOption(true);
 }
 
 export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ modelUrl }) => {
@@ -102,7 +118,8 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         });
     };
 
-    const handleLoadedModel = async (context: NeedleContext, loadedFiles: NeedleLoadedModel[]): Promise<void> => {
+    const handleLoadedModel = async (context: NeedleMenuContext, loadedFiles: NeedleLoadedModel[]): Promise<void> => {
+        configureNeedleMenu(context);
         const pending = pendingLoadRef.current;
         const file = loadedFiles[0]?.file;
         if (loadedFiles.length === 0) return;
@@ -180,7 +197,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         const element = engineElementRef.current;
         if (!element) return;
         const onLoadFinished = (event: Event): void => {
-            const detail = (event as CustomEvent<{ context: NeedleContext; loadedFiles: NeedleLoadedModel[] }>).detail;
+            const detail = (event as CustomEvent<{ context: NeedleMenuContext; loadedFiles: NeedleLoadedModel[] }>).detail;
             void handleLoadedModel(detail.context, detail.loadedFiles).catch((error) => {
                 console.error("Error loading model in Needle engine", error);
             });

@@ -265,6 +265,75 @@
     flex-shrink: 0;
 }
 
+.authoring-view:fullscreen,
+.authoring-view:-webkit-full-screen,
+.authoring-view--fullscreen-fallback {
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    background: #fff;
+}
+
+.authoring-view--fullscreen-fallback {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+}
+
+@media (max-width: 767.98px), (pointer: coarse) {
+    .graph-menu-bar {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+        padding: 4px;
+        scrollbar-width: none;
+    }
+
+    .graph-menu-bar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .graph-menu-bar-btn {
+        flex: 0 0 36px;
+        width: 36px;
+        height: 36px;
+        justify-content: center;
+        padding: 0;
+    }
+
+    .graph-menu-bar-btn__label,
+    .graph-menu-bar-divider,
+    .graph-shortcuts {
+        display: none !important;
+    }
+
+    .graph-diagnostics-counter {
+        position: static;
+        flex: 0 0 auto;
+        transform: none;
+    }
+
+    .react-flow__controls-button {
+        width: 38px;
+        height: 38px;
+    }
+
+    #node-picker-panel {
+        width: calc(100% - 16px) !important;
+        max-height: calc(100% - 20px);
+        overflow-y: auto;
+    }
+
+    #node-picker-panel .nowheel {
+        column-width: auto !important;
+        max-height: 44vh !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }
+}
+
 .graph-menu-bar-btn--reload {
     background: #fdf1d8;
     color: #8a6116;

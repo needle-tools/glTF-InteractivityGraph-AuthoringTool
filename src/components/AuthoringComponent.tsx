@@ -47,6 +47,27 @@ const edgeTypes: EdgeTypes = {
     default: DeletableEdge,
 };
 
+interface WebkitFullscreenDocument extends Document {
+    webkitFullscreenElement?: Element | null;
+    webkitExitFullscreen?: () => Promise<void> | void;
+}
+
+interface WebkitFullscreenElement extends HTMLElement {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+}
+
+function getFullscreenElement(): Element | null {
+    return document.fullscreenElement ?? (document as WebkitFullscreenDocument).webkitFullscreenElement ?? null;
+}
+
+async function exitFullscreen(): Promise<void> {
+    if (document.exitFullscreen) {
+        await document.exitFullscreen();
+    } else {
+        await (document as WebkitFullscreenDocument).webkitExitFullscreen?.();
+    }
+}
+
 
 // one end of a drag-connection: the node + handle it started from, and whether that handle is a
 // source (output) or target (input). Used to decide which sockets to offer on the dropped-onto node.
@@ -122,14 +143,34 @@ const IconSearch = () => (
     </svg>
 );
 
+const IconAddNode = () => (
+    <svg {...iconProps}>
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+);
+
+const IconFullscreen = (props: { active: boolean }) => props.active ? (
+    <svg {...iconProps}>
+        <polyline points="9 3 9 9 3 9"/><polyline points="15 3 15 9 21 9"/>
+        <polyline points="9 21 9 15 3 15"/><polyline points="15 21 15 15 21 15"/>
+    </svg>
+) : (
+    <svg {...iconProps}>
+        <polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/>
+        <polyline points="8 21 3 21 3 16"/><polyline points="16 21 21 21 21 16"/>
+    </svg>
+);
+
 const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void}) => (
     <button
         id={props.id}
         className={`graph-menu-bar-btn${props.isActive ? " is-active" : ""}`}
         onClick={props.onClick}
+        aria-label={props.label}
+        title={props.label}
     >
         {props.icon}
-        {props.label}
+        <span className="graph-menu-bar-btn__label">{props.label}</span>
     </button>
 );
 
@@ -156,7 +197,7 @@ const ReloadIndicator = (props: { dirty: boolean, onReload: () => void }) => {
             onClick={props.onReload}
         >
             <IconReload/>
-            Unplayed changes — Reload
+            <span className="graph-menu-bar-btn__label">Unplayed changes — Reload</span>
         </button>
     );
 };
@@ -256,6 +297,38 @@ export const AuthoringComponent = () => {
     const reactFlowRef = useRef<HTMLDivElement | null>(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const [authoringComponentModal, setAuthoringComponentModal] = useState<AuthoringComponentModelType>(AuthoringComponentModelType.NONE)
+    const [coarsePointer, setCoarsePointer] = useState(false);
+    const [nativeGraphFullscreen, setNativeGraphFullscreen] = useState(false);
+    const [fullscreenFallback, setFullscreenFallback] = useState(false);
+    const graphFullscreen = nativeGraphFullscreen || fullscreenFallback;
+
+    useEffect(() => {
+        if (typeof window.matchMedia !== "function") return;
+        const media = window.matchMedia("(max-width: 767px), (pointer: coarse)");
+        const update = () => setCoarsePointer(media.matches);
+        update();
+        media.addEventListener?.("change", update);
+        return () => media.removeEventListener?.("change", update);
+    }, []);
+
+    useEffect(() => {
+        const update = () => setNativeGraphFullscreen(getFullscreenElement() === reactFlowRef.current);
+        document.addEventListener("fullscreenchange", update);
+        document.addEventListener("webkitfullscreenchange", update);
+        return () => {
+            document.removeEventListener("fullscreenchange", update);
+            document.removeEventListener("webkitfullscreenchange", update);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!fullscreenFallback) return;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setFullscreenFallback(false);
+        };
+        window.addEventListener("keydown", closeOnEscape);
+        return () => window.removeEventListener("keydown", closeOnEscape);
+    }, [fullscreenFallback]);
 
     useEffect(() => {
         if (authoringComponentModal === AuthoringComponentModelType.NONE) {
@@ -1011,6 +1084,38 @@ export const AuthoringComponent = () => {
         setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
     };
 
+    const openNodePickerAtCenter = () => {
+        if (!reactFlowInstance || !reactFlowRef.current) return;
+        const bounds = reactFlowRef.current.getBoundingClientRect();
+        mousePosRef.current = reactFlowInstance.project({ x: bounds.width / 2, y: bounds.height / 2 });
+        pendingWireRef.current = null;
+        setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
+    };
+
+    const toggleGraphFullscreen = async () => {
+        const element = reactFlowRef.current;
+        if (!element) return;
+        if (fullscreenFallback) {
+            setFullscreenFallback(false);
+            return;
+        }
+        if (getFullscreenElement() === element) {
+            await exitFullscreen();
+            return;
+        }
+        try {
+            if (element.requestFullscreen) {
+                await element.requestFullscreen();
+            } else if ((element as WebkitFullscreenElement).webkitRequestFullscreen) {
+                await (element as WebkitFullscreenElement).webkitRequestFullscreen!();
+            } else {
+                setFullscreenFallback(true);
+            }
+        } catch {
+            setFullscreenFallback(true);
+        }
+    };
+
     const handleLeftClick = (e: React.MouseEvent) => {
         e.preventDefault();
        setAuthoringComponentModal(AuthoringComponentModelType.NONE)
@@ -1084,6 +1189,7 @@ export const AuthoringComponent = () => {
             <p className="authoring-shell__intro" style={{margin: "0 0 8px"}}>You can inspect and adjust the Interactivity Graph here.</p>
             <div
                 ref={reactFlowRef}
+                className={`authoring-view${fullscreenFallback ? " authoring-view--fullscreen-fallback" : ""}`}
                 style={{width: "100%", flex: 1, minHeight: 0, border: "1px solid black", margin: "0 auto"}}
                 data-testid={"authoring-view"}
                 onContextMenuCapture={suppressBrowserContextMenu}
@@ -1112,8 +1218,10 @@ export const AuthoringComponent = () => {
                     onlyRenderVisibleElements={true}
                     onPaneClick={handleLeftClick}
                     onPaneContextMenu={handleRightClick}
-                    panOnDrag={[2]}
-                    selectionOnDrag={true}
+                    panOnDrag={coarsePointer ? true : [2]}
+                    selectionOnDrag={!coarsePointer}
+                    zoomOnPinch={true}
+                    connectOnClick={true}
                     zoomOnScroll={true}
                     zoomOnDoubleClick={false}
                     preventScrolling={true}
@@ -1162,6 +1270,14 @@ export const AuthoringComponent = () => {
                     <Panel position={"top-center"} style={{width: "calc(100% - 32px)", maxWidth: 1100, margin: "10px 16px"}}>
                         <div className="graph-menu-bar">
                             <MenuBarButton
+                                id={"add-node-btn"}
+                                icon={<IconAddNode/>}
+                                label={"Add Node"}
+                                isActive={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}
+                                onClick={openNodePickerAtCenter}
+                            />
+                            <MenuBarDivider/>
+                            <MenuBarButton
                                 id={"variables-btn"}
                                 icon={<IconVariables/>}
                                 label={"Variables"}
@@ -1205,6 +1321,13 @@ export const AuthoringComponent = () => {
                                 isActive={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}
                                 onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.UPLOAD_GRAPH)}
                             />
+                            <MenuBarButton
+                                id={"fullscreen-graph-btn"}
+                                icon={<IconFullscreen active={graphFullscreen}/>}
+                                label={graphFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                                isActive={graphFullscreen}
+                                onClick={() => void toggleGraphFullscreen()}
+                            />
                             <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
                             <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
                         </div>
@@ -1212,7 +1335,7 @@ export const AuthoringComponent = () => {
                     </Panel>
 
                     <Panel position={"bottom-center"}>
-                        <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '0 14px', background: 'rgba(255,255,255,0.88)', border: '1px solid #ccc', borderRadius: 8, padding: '5px 14px', marginBottom: 6, fontSize: 11, color: '#000', userSelect: 'none', backdropFilter: 'blur(4px)' }}>
+                        <div className="graph-shortcuts" style={{ display: 'flex', flexWrap: 'nowrap', gap: '0 14px', background: 'rgba(255,255,255,0.88)', border: '1px solid #ccc', borderRadius: 8, padding: '5px 14px', marginBottom: 6, fontSize: 11, color: '#000', userSelect: 'none', backdropFilter: 'blur(4px)' }}>
                             {([
                                 ['Right-click', 'Add node'],
                                 ['Drop wire on canvas', 'Add & connect node'],
