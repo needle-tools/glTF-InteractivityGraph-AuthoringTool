@@ -717,6 +717,8 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
             const sortedOps = [...opCounts.entries()].sort((a, b) => b[1] - a[1]);
             const cappedOps = sortedOps.slice(0, MAX_TRACKED_NODE_OPS);
             trackEvent('graph_loaded', {
+                // the graph's own name, when the loaded JSON carries one (omitted otherwise)
+                graphName: typeof json?.name === 'string' ? json.name : undefined,
                 nodeCount: loadedNodes.length,
                 nodeTypeCount: opCounts.size,
                 // distinct node types, most-used first, as one readable comma-separated property
