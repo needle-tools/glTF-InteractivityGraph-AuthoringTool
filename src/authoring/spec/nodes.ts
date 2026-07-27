@@ -3788,6 +3788,43 @@ const rawNodeSpecs: Array<Omit<AuthoredNode, "declaration">> = [
         }
     },
     {
+        op: "math/quatFromAngles",
+        description: "Create a quaternion from three Tait-Bryan intrinsic angles (radians)",
+        configuration: {
+            order: {
+                type: InteractivityConfigurationValueType.STRING,
+                description: "Rotation order for the intrinsic angles; one of xyz, xzy, yxz, yzx, zxy, zyx. Defaults to yxz",
+                value: ["yxz"]
+            }
+        },
+        values: {
+            input: {
+                x: {
+                    typeOptions: [2],
+                    type: 2,
+                    value: [undefined]
+                },
+                y: {
+                    typeOptions: [2],
+                    type: 2,
+                    value: [undefined]
+                },
+                z: {
+                    typeOptions: [2],
+                    type: 2,
+                    value: [undefined]
+                }
+            },
+            output: {
+                value: {
+                    typeOptions: [5],
+                    type: 5,
+                    value: [undefined]
+                }
+            }
+        }
+    },
+    {
         op: "math/quatToAxisAngle",
         description: "Convert a quaternion to an axis and an angle",
         values: {
