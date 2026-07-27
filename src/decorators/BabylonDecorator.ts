@@ -28,6 +28,8 @@ import { OnHoverOut } from "../BasicBehaveEngine/nodes/event/OnHoverOut";
 import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGraph";
 import * as glMatrix from "gl-matrix";
 import {glTFObjectReference} from "../objectModel/glTFReference";
+import {SUPPORTED_GLTF_EXTENSIONS} from "../diagnostics";
+import {assetExtensionEnabled, KHR_INTERACTIVITY_LIMITS, parseGltfVersion} from "../objectModel/assetCapabilities";
 
 export class BabylonDecorator extends ADecorator {
     scene: Scene;
@@ -97,6 +99,25 @@ export class BabylonDecorator extends ADecorator {
     /** Babylon.js is left-handed; glTF/KHR_interactivity is right-handed, so X is negated. */
     private static toRightHandedXYZ(x: number, y: number, z: number): [number, number, number] {
         return [-x, y, z];
+    }
+
+    // Asset extension `enabled` capability pointers (spec 4.2.1) are valid for ANY extension name,
+    // returning true when the extension is used+supported and false otherwise. The JsonPtrTrie only
+    // wildcards numeric segments, so we wrap the engine's pointer resolution to answer these queries
+    // before falling back to the trie. Mirrors the concrete pointers registered above.
+    private bridgeAssetCapabilityPointers(extensionsUsed: readonly string[]): void {
+        const engine = this.behaveEngine;
+        const baseIsValidJsonPtr = engine.isValidJsonPtr;
+        const baseIsReadOnly = engine.isReadOnly;
+        const baseGetPathValue = engine.getPathValue;
+        const baseGetPathTypeName = engine.getPathTypeName;
+        engine.isValidJsonPtr = (path: string) => assetExtensionEnabled(path, extensionsUsed) !== undefined || baseIsValidJsonPtr(path);
+        engine.isReadOnly = (path: string) => assetExtensionEnabled(path, extensionsUsed) !== undefined ? true : baseIsReadOnly(path);
+        engine.getPathValue = (path: string) => {
+            const enabled = assetExtensionEnabled(path, extensionsUsed);
+            return enabled !== undefined ? [enabled] : baseGetPathValue(path);
+        };
+        engine.getPathTypeName = (path: string) => assetExtensionEnabled(path, extensionsUsed) !== undefined ? "bool" : baseGetPathTypeName(path);
     }
 
     // Undoes the left-handed conversion Babylon's glTF loader bakes into its __root__ node
@@ -300,6 +321,34 @@ export class BabylonDecorator extends ADecorator {
         }, (path, value) => {
             //no-op
         }, "float3", true)
+
+        // Asset Capabilities & runtime limits (KHR_interactivity spec 4.2.1 / 4.2.2): read-only glTF
+        // version, per-extension support flags, and implementation limits. Extensions that are BOTH
+        // used by the asset AND supported get a concrete `enabled` = true pointer (so authoring can
+        // surface them); every other asset extension `enabled` query resolves to false via the
+        // wildcard fallback bridged in bridgeAssetCapabilityPointers().
+        const [assetMajorVersion, assetMinorVersion] = parseGltfVersion(this.scene.metadata?.gltfAsset?.version);
+        this.registerJsonPointer(`/extensions/KHR_interactivity/asset/majorVersion`, () => {
+            return [assetMajorVersion];
+        }, () => {/*no-op*/}, "int", true);
+        this.registerJsonPointer(`/extensions/KHR_interactivity/asset/minorVersion`, () => {
+            return [assetMinorVersion];
+        }, () => {/*no-op*/}, "int", true);
+        const extensionsUsed: string[] = this.scene.metadata?.gltfExtensionsUsed ?? [];
+        for (const extensionName of extensionsUsed) {
+            if (!SUPPORTED_GLTF_EXTENSIONS.has(extensionName)) {
+                continue;
+            }
+            this.registerJsonPointer(`/extensions/KHR_interactivity/asset/extensions/${extensionName}/enabled`, () => {
+                return [true];
+            }, () => {/*no-op*/}, "bool", true);
+        }
+        for (const { name, value } of KHR_INTERACTIVITY_LIMITS) {
+            this.registerJsonPointer(`/extensions/KHR_interactivity/limits/${name}`, () => {
+                return [value];
+            }, () => {/*no-op*/}, "int", true);
+        }
+        this.bridgeAssetCapabilityPointers(extensionsUsed);
 
         //TODO: update to match what object model has once that is published
         this.registerJsonPointer(`/KHR_materials_variants/variant`, (path) => {

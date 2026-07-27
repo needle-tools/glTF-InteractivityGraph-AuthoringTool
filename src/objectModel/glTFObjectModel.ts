@@ -6,6 +6,8 @@ import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGrap
 import { glTFSchemaMetadata } from "./generated/glTFSchemaMetadata";
 import { glTFObjectReference } from "./glTFReference";
 import { createObjectModelAnimation, effectiveAnimationTime, sampleAnimationChannel } from "./glTFAnimation";
+import { SUPPORTED_GLTF_EXTENSIONS } from "../diagnostics";
+import { assetExtensionEnabled, KHR_INTERACTIVITY_LIMITS, parseGltfVersion } from "./assetCapabilities";
 export { readGlbJsonFromArrayBuffer } from "./glTFBinary";
 
 type PointerGetter = () => any;
@@ -40,6 +42,8 @@ export interface GlTFObjectModel {
     lights: any[];
     scene: number;
     extensions: any;
+    extensionsUsed: string[];
+    asset: any;
 }
 
 const SCHEMA_DEFAULTS = glTFSchemaMetadata.defaultBySchemaPointer as Record<string, any>;
@@ -153,6 +157,7 @@ export class GlTFObjectModelDecorator extends ADecorator {
         this.registerLightPointers();
         this.registerAnimationPointers();
         this.registerInteractivityEventPointers();
+        this.registerAssetCapabilityPointers();
     };
 
     private bridgeObjectModelHooks(): void {
@@ -164,13 +169,38 @@ export class GlTFObjectModelDecorator extends ADecorator {
         this.behaveEngine.getRegisteredJsonPointers = this.getRegisteredJsonPointers;
     }
 
-    isValidJsonPtr = (path: string): boolean => this.pointerBindings.has(path) || this.isActiveDelayRef(path);
-    isReadOnly = (path: string): boolean => this.pointerBindings.get(path)?.readOnly ?? this.isActiveDelayRef(path);
+    isValidJsonPtr = (path: string): boolean => this.pointerBindings.has(path) || this.assetExtensionEnabled(path) !== undefined || this.isActiveDelayRef(path);
+    isReadOnly = (path: string): boolean => {
+        const binding = this.pointerBindings.get(path);
+        if (binding !== undefined) {
+            return binding.readOnly;
+        }
+        // asset extension `enabled` capability pointers and delay refs are all read-only
+        return this.assetExtensionEnabled(path) !== undefined || this.isActiveDelayRef(path);
+    };
     getPathValue = (path: string): any => {
         this.updateActiveAnimations();
-        return this.pointerBindings.get(path)?.get() ?? (this.isActiveDelayRef(path) ? [path] : undefined);
+        const binding = this.pointerBindings.get(path);
+        if (binding !== undefined) {
+            return binding.get();
+        }
+        const enabled = this.assetExtensionEnabled(path);
+        if (enabled !== undefined) {
+            return [enabled];
+        }
+        return this.isActiveDelayRef(path) ? [path] : undefined;
     };
-    getPathTypeName = (path: string): string | undefined => this.pointerBindings.get(path)?.typeName ?? (this.isActiveDelayRef(path) ? "ref" : undefined);
+    getPathTypeName = (path: string): string | undefined => {
+        const binding = this.pointerBindings.get(path);
+        if (binding !== undefined) {
+            return binding.typeName;
+        }
+        if (this.assetExtensionEnabled(path) !== undefined) {
+            return "bool";
+        }
+        return this.isActiveDelayRef(path) ? "ref" : undefined;
+    };
+    private assetExtensionEnabled = (path: string): boolean | undefined => assetExtensionEnabled(path, this.objectModel.extensionsUsed);
     setPathValue = (path: string, value: any): void => {
         const binding = this.pointerBindings.get(path);
         if (binding && !binding.readOnly) {
@@ -393,6 +423,26 @@ export class GlTFObjectModelDecorator extends ADecorator {
         }
     }
 
+    // Asset Capabilities & runtime limits (KHR_interactivity spec 4.2.1 / 4.2.2): read-only virtual
+    // properties describing the glTF version presented, which used extensions the implementation
+    // supports, and the implementation's runtime limits. Extensions that are BOTH listed in
+    // extensionsUsed AND supported get a concrete `enabled` = true pointer (so authoring can surface
+    // them); every other asset extension `enabled` query resolves to false via assetExtensionEnabled.
+    private registerAssetCapabilityPointers(): void {
+        const [majorVersion, minorVersion] = parseGltfVersion(this.objectModel.asset?.version);
+        this.scalarPointer("/extensions/KHR_interactivity/asset/majorVersion", "int", () => majorVersion, ignoreSet, true);
+        this.scalarPointer("/extensions/KHR_interactivity/asset/minorVersion", "int", () => minorVersion, ignoreSet, true);
+        for (const extensionName of this.objectModel.extensionsUsed) {
+            if (!SUPPORTED_GLTF_EXTENSIONS.has(extensionName)) {
+                continue;
+            }
+            this.scalarPointer(`/extensions/KHR_interactivity/asset/extensions/${extensionName}/enabled`, "bool", () => true, ignoreSet, true);
+        }
+        for (const { name, value } of KHR_INTERACTIVITY_LIMITS) {
+            this.scalarPointer(`/extensions/KHR_interactivity/limits/${name}`, "int", () => value, ignoreSet, true);
+        }
+    }
+
     private isActiveDelayRef(path: string): boolean {
         const match = path.match(/^\/extensions\/KHR_interactivity\/delays\/(\d+)$/);
         if (!match) {
@@ -487,6 +537,8 @@ export function createGlTFObjectModelFromGltf(gltf: any): GlTFObjectModel {
         lights: (gltf.extensions?.KHR_lights_punctual?.lights ?? []).map(cloneValue),
         scene: gltf.scene ?? 0,
         extensions: cloneValue(gltf.extensions ?? {}),
+        extensionsUsed: cloneValue(gltf.extensionsUsed ?? []),
+        asset: cloneValue(gltf.asset ?? {}),
     });
 }
 
@@ -505,6 +557,8 @@ function completeGlTFObjectModel(objectModel: Partial<GlTFObjectModel> | any): G
         lights: (objectModel.lights ?? objectModel.extensions?.KHR_lights_punctual?.lights ?? []).map(cloneValue),
         scene: objectModel.scene ?? 0,
         extensions: cloneValue(objectModel.extensions ?? {}),
+        extensionsUsed: cloneValue(objectModel.extensionsUsed ?? []),
+        asset: cloneValue(objectModel.asset ?? {}),
     };
 }
 

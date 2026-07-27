@@ -39,6 +39,8 @@ export class KHR_interactivity implements IGLTFLoaderExtension {
         // record the glb's declared extensions so the UI can warn about unsupported ones
         this._loader.babylonScene.metadata.gltfExtensionsUsed = gltf?.extensionsUsed ?? [];
         this._loader.babylonScene.metadata.gltfExtensionsRequired = gltf?.extensionsRequired ?? [];
+        // asset version feeds the KHR_interactivity Asset Capabilities pointers (spec 4.2.1)
+        this._loader.babylonScene.metadata.gltfAsset = gltf?.asset ?? {};
         // snapshot the addressable objects (nodes/meshes/materials/...) for the ref-value picker
         this._loader.babylonScene.metadata.gltfObjectModel = buildGltfObjectModel(gltf);
     }
