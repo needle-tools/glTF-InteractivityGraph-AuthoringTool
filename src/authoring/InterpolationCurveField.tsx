@@ -42,6 +42,42 @@ const ACCENT = "#3d5987";
 const approxEqual = (a: number, b: number) => Math.abs(a - b) < 1e-3;
 const pointsEqual = (a: ControlPoint, b: ControlPoint) => approxEqual(a[0], b[0]) && approxEqual(a[1], b[1]);
 
+const formatComponent = (v: number) => String(Math.round(v * 1000) / 1000);
+
+const cubicAt = (t: number, p0: number, p1: number, p2: number, p3: number) => {
+    const u = 1 - t;
+    return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+};
+
+// Exact min/max of one coordinate of a cubic bezier over t in [0,1]: the endpoints plus any
+// interior root of the derivative (a quadratic). Used to fit the plot around custom control
+// points, whose curve can leave the unit box on either axis.
+const cubicExtent = (p0: number, p1: number, p2: number, p3: number): [number, number] => {
+    let min = Math.min(p0, p3);
+    let max = Math.max(p0, p3);
+    const consider = (t: number) => {
+        if (t <= 0 || t >= 1) { return; }
+        const v = cubicAt(t, p0, p1, p2, p3);
+        min = Math.min(min, v);
+        max = Math.max(max, v);
+    };
+    // B'(t)/3 = qa*t^2 + qb*t + qc
+    const qa = p3 - p0 + 3 * (p1 - p2);
+    const qb = 2 * (p0 - 2 * p1 + p2);
+    const qc = p1 - p0;
+    if (Math.abs(qa) < 1e-9) {
+        if (Math.abs(qb) > 1e-9) { consider(-qc / qb); }
+    } else {
+        const disc = qb * qb - 4 * qa * qc;
+        if (disc >= 0) {
+            const root = Math.sqrt(disc);
+            consider((-qb + root) / (2 * qa));
+            consider((-qb - root) / (2 * qa));
+        }
+    }
+    return [min, max];
+};
+
 export interface InterpolationCurveFieldProps {
     /** first control point [x, y]; NaN/undefined components fall back to the linear default (0,0) */
     p1: ControlPoint;
@@ -56,7 +92,8 @@ export interface InterpolationCurveFieldProps {
  * pointer/interpolate and variable/interpolate nodes. The curve is the cubic bezier defined by
  * p1 and p2 with implicit endpoints (0,0) and (1,1); the y axis is the blend factor `c` and the
  * x axis is normalized time. Unset control-point components render as the linear default so the
- * preview is always drawable.
+ * preview is always drawable, and both axes are fitted to the drawn geometry so custom control
+ * points outside the unit box still show up.
  */
 export const InterpolationCurveField: React.FC<InterpolationCurveFieldProps> = ({ p1, p2, onChange }) => {
     const cp1: ControlPoint = [Number.isFinite(p1[0]) ? p1[0] : 0, Number.isFinite(p1[1]) ? p1[1] : 0];
@@ -67,12 +104,22 @@ export const InterpolationCurveField: React.FC<InterpolationCurveFieldProps> = (
         [cp1[0], cp1[1], cp2[0], cp2[1]]
     );
 
-    // fit the vertical range so overshoot curves (e.g. Back) stay visible; x stays in [0,1]
-    const yMin = Math.min(0, cp1[1], cp2[1], 1);
-    const yMax = Math.max(0, cp1[1], cp2[1], 1);
+    // Fit both axes around everything that gets drawn — the unit box, the curve's own extent and
+    // the control points themselves — so custom (non-preset) values stay inside the plot instead
+    // of being clipped at the viewBox edge. Presets that stay in the unit box are unaffected.
+    const [curveXMin, curveXMax] = cubicExtent(0, cp1[0], cp2[0], 1);
+    const [curveYMin, curveYMax] = cubicExtent(0, cp1[1], cp2[1], 1);
+    const xMin = Math.min(0, curveXMin, cp1[0], cp2[0]);
+    const xMax = Math.max(1, curveXMax, cp1[0], cp2[0]);
+    const yMin = Math.min(0, curveYMin, cp1[1], cp2[1]);
+    const yMax = Math.max(1, curveYMax, cp1[1], cp2[1]);
+    const xSpan = xMax - xMin || 1;
     const ySpan = yMax - yMin || 1;
-    const toX = (x: number) => PAD + x * INNER;
+    const toX = (x: number) => PAD + ((x - xMin) / xSpan) * INNER;
     const toY = (y: number) => PAD + ((yMax - y) / ySpan) * INNER;
+
+    // p1.x / p2.x outside [0,1] make the node error at runtime, so call it out here
+    const xOutOfRange = cp1[0] < 0 || cp1[0] > 1 || cp2[0] < 0 || cp2[0] > 1;
 
     const curvePath = `M ${toX(0)} ${toY(0)} C ${toX(cp1[0])} ${toY(cp1[1])}, ${toX(cp2[0])} ${toY(cp2[1])}, ${toX(1)} ${toY(1)}`;
 
@@ -106,7 +153,7 @@ export const InterpolationCurveField: React.FC<InterpolationCurveFieldProps> = (
                 style={{ background: "#fafafa", border: "1px solid #e2e2e2", borderRadius: 6, alignSelf: "center" }}
             >
                 {/* unit box: baseline (c=0) and target (c=1) guides */}
-                <rect x={toX(0)} y={toY(1)} width={INNER} height={toY(0) - toY(1)} fill="none" stroke="#e2e2e2" />
+                <rect x={toX(0)} y={toY(1)} width={toX(1) - toX(0)} height={toY(0) - toY(1)} fill="none" stroke="#e2e2e2" />
                 <line x1={toX(0)} y1={toY(0)} x2={toX(1)} y2={toY(1)} stroke="#e8e8e8" strokeDasharray="3 3" />
 
                 {/* control handles */}
@@ -122,6 +169,13 @@ export const InterpolationCurveField: React.FC<InterpolationCurveFieldProps> = (
                 <circle cx={toX(cp1[0])} cy={toY(cp1[1])} r={3.5} fill="#c26" />
                 <circle cx={toX(cp2[0])} cy={toY(cp2[1])} r={3.5} fill="#c26" />
             </svg>
+
+            {/* the exact values behind the curve, so a custom (unmatched) setting is still readable */}
+            <div style={{ fontSize: 10, color: xOutOfRange ? "#c33" : "#777", textAlign: "center", fontFamily: "monospace" }}
+                 title={xOutOfRange ? "p1.x and p2.x must be within [0, 1]; the node errors otherwise" : undefined}>
+                {xOutOfRange && "⚠ "}
+                {`cubic-bezier(${formatComponent(cp1[0])}, ${formatComponent(cp1[1])}, ${formatComponent(cp2[0])}, ${formatComponent(cp2[1])})`}
+            </div>
         </div>
     );
 };
