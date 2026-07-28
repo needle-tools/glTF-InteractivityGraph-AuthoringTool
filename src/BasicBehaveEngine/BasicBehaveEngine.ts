@@ -126,7 +126,7 @@ import { DebugLog } from "./nodes/debug/Log";
 import { QuatAngleBetween } from "./nodes/math/quaternion/QuatAngleBetween";
 import { QuatSlerp } from "./nodes/math/quaternion/QuatSlerp";
 import { QuatFromUpForward } from "./nodes/math/quaternion/QuatFromUpForward";
-import { cubicBezier, linearFloat, slerpFloat4 } from "./easingUtils";
+import { cubicBezierEase, linearFloat, slerpFloat4 } from "./easingUtils";
 import { Determinant } from "./nodes/math/matrix/Determinant";
 import { Transform } from "./nodes/math/vector/Transform";
 import { Transpose } from "./nodes/math/matrix/Transpose";
@@ -761,23 +761,24 @@ export class BasicBehaveEngine implements IBehaveEngine {
         const action = async () => {
             const elapsedDuration = (this.lastTickTime - startTime) / 1000;
             const t = Math.min(elapsedDuration / duration, 1);
-            const p = cubicBezier(t, {x: 0, y:0}, {x: p1[0], y:p1[1]}, {x: p2[0], y:p2[1]}, {x: 1, y:1});
+            // q is the output progress position: the easing curve evaluated at input progress t
+            const q = cubicBezierEase(t, p1, p2);
             if (valueType === "float3") {
-                const value = [linearFloat(p.y, initialValue[0], targetValue[0]), linearFloat(p.y, initialValue[1], targetValue[1]), linearFloat(p.y, initialValue[2], targetValue[2])];
+                const value = [linearFloat(q, initialValue[0], targetValue[0]), linearFloat(q, initialValue[1], targetValue[1]), linearFloat(q, initialValue[2], targetValue[2])];
                 this.setPathValue(path, value);
             } else if (valueType === "float4") {
                 if (this.isSlerpPath(path)) {
-                    const value = slerpFloat4(p.y, initialValue, targetValue);
+                    const value = slerpFloat4(q, initialValue, targetValue);
                     this.setPathValue(path, value);
                 } else {
-                    const value = [linearFloat(p.y, initialValue[0], targetValue[0]), linearFloat(p.y, initialValue[1], targetValue[1]), linearFloat(p.y, initialValue[2], targetValue[2]), linearFloat(p.y, initialValue[3], targetValue[3])];
+                    const value = [linearFloat(q, initialValue[0], targetValue[0]), linearFloat(q, initialValue[1], targetValue[1]), linearFloat(q, initialValue[2], targetValue[2]), linearFloat(q, initialValue[3], targetValue[3])];
                     this.setPathValue(path, value);
                 }
             } else if (valueType === "float") {
-                const value = [linearFloat(p.y, initialValue[0], targetValue[0])];
+                const value = [linearFloat(q, initialValue[0], targetValue[0])];
                 this.setPathValue(path, value);
             } else if (valueType == "float2") {
-                const value = [linearFloat(p.y, initialValue[0], targetValue[0]), linearFloat(p.y, initialValue[1], targetValue[1])];
+                const value = [linearFloat(q, initialValue[0], targetValue[0]), linearFloat(q, initialValue[1], targetValue[1])];
                 this.setPathValue(path, value);
             }
 
