@@ -19,7 +19,7 @@ describe("GlTFObjectModelDecorator", () => {
 
         expect(decorator.isValidJsonPtr("/nodes/0/camera")).toBe(false);
         expect(decorator.isValidJsonPtr("/nodes/1/camera")).toBe(true);
-        expect(decorator.getPathtypeName("/nodes/1/camera")).toBe("ref");
+        expect(decorator.getPathTypeName("/nodes/1/camera")).toBe("ref");
         expect(decorator.getPathValue("/nodes/1/camera")).toEqual(["/cameras/0"]);
 
         expect(decorator.isValidJsonPtr("/nodes/0/children/0")).toBe(false);
@@ -44,7 +44,7 @@ describe("GlTFObjectModelDecorator", () => {
         });
 
         expect(decorator.isValidJsonPtr("/animations/0")).toBe(true);
-        expect(decorator.getPathtypeName("/animations/0")).toBe("ref");
+        expect(decorator.getPathTypeName("/animations/0")).toBe("ref");
         expect(decorator.getPathValue("/animations/0")).toEqual(["/animations/0"]);
         expect(decorator.isValidJsonPtr("/animations/0/")).toBe(false);
     });
