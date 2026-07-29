@@ -565,7 +565,7 @@ export const AuthoringComponent = () => {
             const node = nodes[i];
             removeNode(node.id);
         }
-    }, []);
+    }, [removeNode]);
 
     // handle adding nodes and edges to the graph. Returns the new node's uid so callers (e.g. the
     // drop-a-wire-on-empty-canvas flow) can then wire a socket on it.
