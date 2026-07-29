@@ -3554,11 +3554,6 @@ const rawNodeSpecs: Array<Omit<AuthoredNode, "declaration">> = [
                 type: InteractivityConfigurationValueType.INT,
                 description: "Index of the glTF node to observe for selection events; omit to listen for selection on any node",
                 value: [undefined]
-            },
-            stopPropagation: {
-                type: InteractivityConfigurationValueType.BOOLEAN,
-                description: "If true, stops this event from propagating to other listeners once handled",
-                value: [undefined]
             }
         },
         flows: {
