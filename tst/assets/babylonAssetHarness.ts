@@ -16,6 +16,12 @@ export async function loadBabylonWorldFromGlb(glbPath: string, scene: BabylonSce
     const container = await SceneLoader.LoadAssetContainerAsync("", createGlbDataUrl(glbPath), scene, undefined, ".glb", path.basename(glbPath));
     container.addAllToScene();
 
+    // Mirrors BabylonEngineComponent's setup: scene.render() throws "No camera defined" otherwise,
+    // and assets under test don't necessarily author their own camera.
+    if (!scene.activeCamera) {
+        scene.createDefaultCamera(true, true, true);
+    }
+
     return buildBabylonDecoratorWorld(buildBabylonLoadedModel(container));
 }
 

@@ -565,7 +565,7 @@ export const AuthoringComponent = () => {
             const node = nodes[i];
             removeNode(node.id);
         }
-    }, []);
+    }, [removeNode]);
 
     // handle adding nodes and edges to the graph. Returns the new node's uid so callers (e.g. the
     // drop-a-wire-on-empty-canvas flow) can then wire a socket on it.
@@ -1159,60 +1159,67 @@ export const AuthoringComponent = () => {
                         <VariablesComponent closeModal={() => setAuthoringComponentModal(AuthoringComponentModelType.NONE)}/>
                     </RenderIf>
 
-                    <Panel position={"top-center"} style={{width: "calc(100% - 32px)", maxWidth: 1100, margin: "10px 16px"}}>
-                        <div className="graph-menu-bar">
-                            <MenuBarButton
-                                id={"variables-btn"}
-                                icon={<IconVariables/>}
-                                label={"Variables"}
-                                isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.VARIABLES)}
-                            />
-                            <MenuBarDivider/>
-                            <MenuBarButton
-                                id={"custom-events-btn"}
-                                icon={<IconCustomEvents/>}
-                                label={"Custom Events"}
-                                isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.CUSTOM_EVENTS)}
-                            />
-                            <MenuBarDivider/>
-                            <MenuBarButton
-                                id={"show-json-btn"}
-                                icon={<IconJsonView/>}
-                                label={"JSON View"}
-                                isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.JSON_VIEW)}
-                            />
-                            <MenuBarButton
-                                id={"search-graph-btn"}
-                                icon={<IconSearch/>}
-                                label={"Search Graph"}
-                                isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
-                            />
-                            <MenuBarButton
-                                id={"show-node-list-btn"}
-                                icon={<IconNodeTypes/>}
-                                label={"Node Types"}
-                                isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
-                            />
-                            <MenuBarButton
-                                id={"upload-graph-btn"}
-                                icon={<IconUpload/>}
-                                label={"Upload Graph"}
-                                isActive={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}
-                                onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.UPLOAD_GRAPH)}
-                            />
-                            <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
-                            <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
+                    {/* react-flow's "center" panel positions via left:50%+translateX(-50%); with an
+                        explicit width, percentages resolve against only the space from the 50% mark
+                        to the container's right edge (roughly half the real width), so the bar came out
+                        mis-sized and off-center. Overriding to a full-width, pointer-events:none wrapper
+                        (transform cleared) lets the inner bar center itself normally via margin auto. */}
+                    <Panel position={"top-center"} style={{ left: 0, right: 0, transform: 'none', boxSizing: 'border-box', padding: '10px 16px 0', pointerEvents: 'none' }}>
+                        <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", pointerEvents: 'auto' }}>
+                            <div className="graph-menu-bar">
+                                <MenuBarButton
+                                    id={"variables-btn"}
+                                    icon={<IconVariables/>}
+                                    label={"Variables"}
+                                    isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
+                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.VARIABLES)}
+                                />
+                                <MenuBarDivider/>
+                                <MenuBarButton
+                                    id={"custom-events-btn"}
+                                    icon={<IconCustomEvents/>}
+                                    label={"Custom Events"}
+                                    isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
+                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.CUSTOM_EVENTS)}
+                                />
+                                <MenuBarDivider/>
+                                <MenuBarButton
+                                    id={"show-json-btn"}
+                                    icon={<IconJsonView/>}
+                                    label={"JSON View"}
+                                    isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
+                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.JSON_VIEW)}
+                                />
+                                <MenuBarButton
+                                    id={"search-graph-btn"}
+                                    icon={<IconSearch/>}
+                                    label={"Search Graph"}
+                                    isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
+                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
+                                />
+                                <MenuBarButton
+                                    id={"show-node-list-btn"}
+                                    icon={<IconNodeTypes/>}
+                                    label={"Node Types"}
+                                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
+                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
+                                />
+                                <MenuBarButton
+                                    id={"upload-graph-btn"}
+                                    icon={<IconUpload/>}
+                                    label={"Upload Graph"}
+                                    isActive={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}
+                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.UPLOAD_GRAPH)}
+                                />
+                                <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
+                                <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
+                            </div>
+                            <LoadingProgressBar />
                         </div>
-                        <LoadingProgressBar />
                     </Panel>
 
-                    <Panel position={"bottom-center"}>
-                        <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '0 14px', background: 'rgba(255,255,255,0.88)', border: '1px solid #ccc', borderRadius: 8, padding: '5px 14px', marginBottom: 6, fontSize: 11, color: '#000', userSelect: 'none', backdropFilter: 'blur(4px)' }}>
+                    <Panel position={"bottom-center"} style={{ left: 0, right: 0, transform: 'none', display: 'flex', justifyContent: 'center', boxSizing: 'border-box', padding: '0 90px', pointerEvents: 'none' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 14px', background: 'rgba(255,255,255,0.88)', border: '1px solid #ccc', borderRadius: 8, padding: '5px 14px', marginBottom: 6, fontSize: 11, color: '#000', userSelect: 'none', backdropFilter: 'blur(4px)', maxWidth: '100%', pointerEvents: 'auto' }}>
                             {([
                                 ['Right-click', 'Add node'],
                                 ['Drop wire on canvas', 'Add & connect node'],

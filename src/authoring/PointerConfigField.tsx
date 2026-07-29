@@ -22,6 +22,7 @@ const categoryOrder: PointerCategory[] = [
     "Lights",
     "Animations",
     "Scene",
+    "Asset",
 ];
 
 export const PointerConfigField: React.FC<PointerConfigFieldProps> = ({ value, allowReadOnly, onChange }) => {

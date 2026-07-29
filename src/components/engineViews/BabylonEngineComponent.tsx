@@ -27,6 +27,7 @@ import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { BabylonLoadedModel, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "./babylonLoadedModel";
 import { downloadInteractivityGlb } from "./glbExport";
+import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
@@ -275,7 +276,11 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
 
         const camera = sceneRef.current!.activeCamera as ArcRotateCamera;
         camera.target = center;
-        camera.setPosition(new Vector3(center.x, center.y + maxDimension * 0.4, center.z + distance));
+        camera.setPosition(new Vector3(
+            center.x,
+            center.y + maxDimension * 0.4,
+            center.z + distance * MODEL_VIEW_Z_DIRECTION,
+        ));
         camera.radius = distance;
     }
 

@@ -27,7 +27,8 @@ export type PointerCategory =
     | "Cameras"
     | "Lights"
     | "Animations"
-    | "Scene";
+    | "Scene"
+    | "Asset";
 
 export interface PointerCatalogueEntry {
     /** template in authoring syntax, e.g. "/nodes/[node]/translation" */
@@ -233,10 +234,40 @@ const generatedCatalogue = [
 
 const generatedTemplates = new Set(generatedCatalogue.map((entry) => entry.template));
 
+// ---- Asset Capabilities (KHR_interactivity spec 4.2.1) ----
+// glTF version plus a per-extension `enabled` flag. The `enabled` pointer's extension name is a
+// literal path segment (not an index/ref slot), so we enumerate one concrete entry per extension the
+// catalogue knows about; each shows as supported only when the active model actually uses it.
+const assetCapabilityExtensions = Array.from(new Set<string>([
+    "KHR_interactivity",
+    ...rawCatalogue.map((entry) => entry.extension),
+    ...generatedCatalogue.map((entry) => entry.extension),
+].filter((extension): extension is string => extension !== undefined))).sort();
+
+const assetCapabilityCatalogue: PointerCatalogueEntry[] = [
+    { template: "/extensions/KHR_interactivity/asset/majorVersion", label: "Asset · glTF major version", category: "Asset", type: t.INT, readOnly: true, extension: "KHR_interactivity", aliases: ["capabilities", "version"] },
+    { template: "/extensions/KHR_interactivity/asset/minorVersion", label: "Asset · glTF minor version", category: "Asset", type: t.INT, readOnly: true, extension: "KHR_interactivity", aliases: ["capabilities", "version"] },
+    // Implementation-specific runtime limits (spec 4.2.2)
+    { template: "/extensions/KHR_interactivity/limits/maxActiveAnimations", label: "Asset · limit · max active animations", category: "Asset", type: t.INT, readOnly: true, extension: "KHR_interactivity", aliases: ["capabilities", "limits"] },
+    { template: "/extensions/KHR_interactivity/limits/maxActiveDelays", label: "Asset · limit · max active delays", category: "Asset", type: t.INT, readOnly: true, extension: "KHR_interactivity", aliases: ["capabilities", "limits"] },
+    { template: "/extensions/KHR_interactivity/limits/maxActivePropertyInterpolations", label: "Asset · limit · max active property interpolations", category: "Asset", type: t.INT, readOnly: true, extension: "KHR_interactivity", aliases: ["capabilities", "limits"] },
+    { template: "/extensions/KHR_interactivity/limits/maxActiveVariableInterpolations", label: "Asset · limit · max active variable interpolations", category: "Asset", type: t.INT, readOnly: true, extension: "KHR_interactivity", aliases: ["capabilities", "limits"] },
+    ...assetCapabilityExtensions.map((extension): PointerCatalogueEntry => ({
+        template: `/extensions/KHR_interactivity/asset/extensions/${extension}/enabled`,
+        label: `Asset · ${extension} enabled`,
+        category: "Asset",
+        type: t.BOOLEAN,
+        readOnly: true,
+        extension,
+        aliases: ["capabilities", "supported", "extension"],
+    })),
+];
+
 /** Static catalogue metadata; support is resolved dynamically against runtime templates. */
 export const pointerCatalogue: PointerCatalogueEntry[] = [
     ...rawCatalogue.filter((entry) => !generatedTemplates.has(entry.template)),
     ...generatedCatalogue,
+    ...assetCapabilityCatalogue,
 ];
 
 export const getPointerCatalogueSearchText = (entry: PointerCatalogueEntry): string =>

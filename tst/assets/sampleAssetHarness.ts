@@ -245,10 +245,31 @@ export class TestEventBus implements IEventBus {
     };
 }
 
+// Babylon's AnimationGroups only advance (and only fire onAnimationGroupEndObservable) while the
+// scene is actually rendered - in the real app that happens continuously via engine.runRenderLoop().
+// The headless asset harness has no render loop at all, so without this, animation/start|stop|stopAt
+// subtests would sample node transforms that never moved from their rest pose. Render on a real-time
+// interval for the duration of the wait so Babylon's own elapsed-time-based animation ticking lines up
+// with the engine's (also real-time-based) flow/setDelay firing.
+async function renderWhileWaiting(decorator: ADecorator, waitMs: number): Promise<void> {
+    const scene = (decorator as unknown as { scene?: { render(): void } }).scene;
+    if (scene === undefined) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        return;
+    }
+
+    const frameMs = 1000 / 60;
+    const deadline = Date.now() + waitMs;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, frameMs));
+        scene.render();
+    }
+}
+
 export async function runGraphAndWait(decorator: ADecorator, graph: any): Promise<void> {
     decorator.loadBehaveGraph(structuredCloneFallback(graph));
     const waitMs = Math.max(20, Math.ceil(getGraphSettleSeconds(graph) * 1000));
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await renderWhileWaiting(decorator, waitMs);
     decorator.executeEventQueueTick();
     decorator.pauseEventQueue();
     decorator.clearCustomEventListeners();
@@ -259,7 +280,7 @@ export async function runGraphsAndWait(decorators: ADecorator[], graphs: any[]):
     decorators[0].playEventQueue();
     const waitSeconds = Math.max(...graphs.map(getGraphSettleSeconds));
     const waitMs = Math.max(20, Math.ceil(waitSeconds * 1000));
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await Promise.all(decorators.map((decorator) => renderWhileWaiting(decorator, waitMs)));
     decorators[0].executeEventQueueTick();
     decorators.forEach((decorator) => decorator.pauseEventQueue());
     decorators[0].clearCustomEventListeners();

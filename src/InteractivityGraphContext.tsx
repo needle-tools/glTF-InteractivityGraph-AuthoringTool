@@ -964,6 +964,11 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     const removeNode = (uid: string) => {
         graph.nodes = graph.nodes.filter(node => node.uid !== uid);
+        // load-time 'node' diagnostics (e.g. "Invalid declaration reference") are keyed by nodeUid
+        // and only ever recomputed by a fresh load - unlike nodeWarnings (the live validation pass),
+        // they aren't re-derived from the current graph, so a deleted node's entry would otherwise
+        // linger in the panel forever.
+        setDiagnostics(prev => prev.filter(d => d.nodeUid !== uid));
         markGraphDirty();
     };
 
