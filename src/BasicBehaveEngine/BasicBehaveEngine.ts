@@ -140,6 +140,8 @@ import { OnSelect } from "./nodes/event/OnSelect";
 import { AnimationStart } from "./nodes/animation/AnimationStart";
 import { AnimationStop } from "./nodes/animation/AnimationStop";
 import { AnimationStopAt } from "./nodes/animation/AnimationStopAt";
+import { OnHoverIn } from "./nodes/event/OnHoverIn";
+import { OnHoverOut } from "./nodes/event/OnHoverOut";
 
 
 // Single source of truth for op -> runtime BehaveEngineNode class. registerKnownBehaviorNodes
@@ -280,6 +282,9 @@ export const behaveEngineNodeRegistry: ReadonlyArray<[string, any]> = [
     ["animation/start", AnimationStart],
     ["animation/stop", AnimationStop],
     ["animation/stopAt", AnimationStopAt],
+    ["event/onSelect", OnSelect],
+    ["event/onHoverIn", OnHoverIn],
+    ["event/onHoverOut", OnHoverOut],
 ];
 
 

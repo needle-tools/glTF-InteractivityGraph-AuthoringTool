@@ -9,8 +9,6 @@ import {
     PointerEventTypes,
     Quaternion,
     TargetCamera, Node,
-    PickingInfo,
-    IPointerEvent,
     TransformNode,
     Material,
     Observer,
@@ -18,15 +16,10 @@ import {
     SpotLight
 } from "@babylonjs/core";
 import {Vector3} from "@babylonjs/core/Maths/math.vector";
-import {cubicBezier, easeFloat, easeFloat3, easeFloat4, linearFloat, slerpFloat4} from "../BasicBehaveEngine/easingUtils";
 import {Scene} from "@babylonjs/core/scene";
-import {OnSelect} from "../BasicBehaveEngine/nodes/event/OnSelect";
 import {KHR_materials_variants} from "@babylonjs/loaders/glTF/2.0";
 import {Nullable} from "@babylonjs/core/types.js";
-import { OnHoverIn } from "../BasicBehaveEngine/nodes/event/OnHoverIn";
-import { OnHoverOut } from "../BasicBehaveEngine/nodes/event/OnHoverOut";
 import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGraph";
-import * as glMatrix from "gl-matrix";
 import {glTFObjectReference} from "../objectModel/glTFReference";
 import {SUPPORTED_GLTF_EXTENSIONS} from "../diagnostics";
 import {assetExtensionEnabled, KHR_INTERACTIVITY_LIMITS, parseGltfVersion} from "../objectModel/assetCapabilities";
@@ -45,9 +38,6 @@ export class BabylonDecorator extends ADecorator {
         this.scene = scene;
         this.bridgeEngineHooks();
         this.registerKnownPointers();
-        this.registerBehaveEngineNode("event/onSelect", OnSelect);
-        this.registerBehaveEngineNode("event/onHoverIn", OnHoverIn);
-        this.registerBehaveEngineNode("event/onHoverOut", OnHoverOut);
         // dealing with hoverability refactor this once/if babylon has an api for hoverability
         this.hoveredNodeIndex = -1;
         this.beforeRenderObserver = this.scene.onBeforeRenderObservable.add(() => {
