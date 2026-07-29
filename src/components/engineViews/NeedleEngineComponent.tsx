@@ -14,6 +14,7 @@ import { getInteractivityRuntime, type InteractivityRuntime } from "../../integr
 import { configureNeedleXR, type NeedleXRContext } from "../../integrations/NeedleXR";
 import { Spacer } from "../Spacer";
 import { downloadInteractivityGlb } from "./glbExport";
+import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import type { NeedleContext } from "../../integrations/NeedlePointerEvents";
 import type { ThreeLoadedModel } from "./threeLoadedModel";
@@ -66,7 +67,7 @@ function frameNeedleModel(context: NeedleMenuContext, objects: unknown): void {
     controls.fitCamera({
         objects,
         fitOffset: 1.2,
-        fitDirection: { x: 0, y: 0.35, z: 1 },
+        fitDirection: { x: 0, y: 0.35, z: MODEL_VIEW_Z_DIRECTION },
         cameraNearFar: "auto",
         immediate: true,
     });
