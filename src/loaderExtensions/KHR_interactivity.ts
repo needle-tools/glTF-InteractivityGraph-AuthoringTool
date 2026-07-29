@@ -43,5 +43,17 @@ export class KHR_interactivity implements IGLTFLoaderExtension {
         this._loader.babylonScene.metadata.gltfAsset = gltf?.asset ?? {};
         // snapshot the addressable objects (nodes/meshes/materials/...) for the ref-value picker
         this._loader.babylonScene.metadata.gltfObjectModel = buildGltfObjectModel(gltf);
+        // Build a map from glTF node index -> KHR_lights_punctual light index so BabylonDecorator can
+        // correctly order scene.lights after loading (Babylon 7.x stores the pointer on the light as
+        // /nodes/{nodeIndex}/extensions/KHR_lights_punctual, not /extensions/KHR_lights_punctual/lights/{N}).
+        const khrLightsNodeToLightIndex: {[nodeIndex: number]: number} = {};
+        const rawNodes: any[] = Array.isArray(gltf?.nodes) ? gltf.nodes : [];
+        for (let i = 0; i < rawNodes.length; i++) {
+            const lightIdx = rawNodes[i]?.extensions?.KHR_lights_punctual?.light;
+            if (typeof lightIdx === 'number') {
+                khrLightsNodeToLightIndex[i] = lightIdx;
+            }
+        }
+        this._loader.babylonScene.metadata.khrLightsNodeToLightIndex = khrLightsNodeToLightIndex;
     }
 }

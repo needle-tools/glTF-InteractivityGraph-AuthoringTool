@@ -1185,14 +1185,24 @@ export class BabylonDecorator extends ADecorator {
             //no-op
         }, "float", true);
 
-        const lightPointerRegex = /^\/extensions\/KHR_lights_punctual\/lights\/\d+$/;
+        // Babylon 7.x stores the light pointer as /nodes/{nodeIndex}/extensions/KHR_lights_punctual
+        // (not /extensions/KHR_lights_punctual/lights/{N} as in older versions). The node→light index
+        // mapping was snapshotted from the raw glTF JSON during loading so we can sort correctly.
+        const lightPointerRegex = /^\/nodes\/\d+\/extensions\/KHR_lights_punctual$/;
+        const nodeToLightIndex: {[nodeIndex: number]: number} = this.scene.metadata?.khrLightsNodeToLightIndex ?? {};
         const glTFLights = this.scene.lights
             .filter((l: any) => l._internalMetadata?.gltf?.pointers?.some((p: string) => lightPointerRegex.test(p)))
             .sort((a: any, b: any) => {
-                const aIndex = Number(a._internalMetadata.gltf.pointers.find((p: string) => lightPointerRegex.test(p)).split("/").pop());
-                const bIndex = Number(b._internalMetadata.gltf.pointers.find((p: string) => lightPointerRegex.test(p)).split("/").pop());
-                return aIndex - bIndex;
+                const aPointer = a._internalMetadata.gltf.pointers.find((p: string) => lightPointerRegex.test(p));
+                const bPointer = b._internalMetadata.gltf.pointers.find((p: string) => lightPointerRegex.test(p));
+                // pointer: /nodes/{nodeIndex}/extensions/KHR_lights_punctual → parts[2] = nodeIndex
+                const aNodeIdx = Number(aPointer.split("/")[2]);
+                const bNodeIdx = Number(bPointer.split("/")[2]);
+                const aLightIdx = nodeToLightIndex[aNodeIdx] ?? aNodeIdx;
+                const bLightIdx = nodeToLightIndex[bNodeIdx] ?? bNodeIdx;
+                return aLightIdx - bLightIdx;
             });
+
         const maxLight: number = Math.max(0, glTFLights.length - 1);
 
         this.registerJsonPointer(`/extensions/KHR_lights_punctual/lights/${maxLight}/color`, (path) => {
