@@ -129,9 +129,9 @@ export class BabylonDecorator extends ADecorator {
         return texture == null ? [NaN] : [-1 * texture.wAng];
     }
 
-    private static setTextureRotation(texture: {wAng: number} | null | undefined, value: number[]): void {
+    private static setTextureRotation(texture: {wAng: number} | null | undefined, value: number): void {
         if (texture != null) {
-            texture.wAng = -1 * value[0];
+            texture.wAng = -1 * value;
         }
     }
 
@@ -688,7 +688,7 @@ export class BabylonDecorator extends ADecorator {
         // NORMAL TEXTURE TRANSFORM
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/normalTexture/extensions/KHR_texture_transform/offset`, (path) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture == null) {
                 return [NaN, NaN];
             }
@@ -696,7 +696,7 @@ export class BabylonDecorator extends ADecorator {
             return [normalTexture.uOffset, normalTexture.vOffset]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture != null) {
                 normalTexture.uOffset = value[0];
                 normalTexture.vOffset = value[1];
@@ -705,7 +705,7 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/normalTexture/extensions/KHR_texture_transform/scale`, (path) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture == null) {
                 return [NaN, NaN];
             }
@@ -713,7 +713,7 @@ export class BabylonDecorator extends ADecorator {
             return [normalTexture.uScale, normalTexture.vScale]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture != null) {
                 normalTexture.uScale = value[0];
                 normalTexture.vScale = value[1];
@@ -722,18 +722,18 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/normalTexture/extensions/KHR_texture_transform/rotation`, (path) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             return BabylonDecorator.getTextureRotation(normalTexture);
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             BabylonDecorator.setTextureRotation(normalTexture, value);
         }, "float", false);
 
         // OCCLUSION TEXTURE TRANSFORM
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/occlusionTexture/extensions/KHR_texture_transform/offset`, (path) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture == null) {
                 return [NaN, NaN];
             }
@@ -741,7 +741,7 @@ export class BabylonDecorator extends ADecorator {
             return [occlusionTexture.uOffset, occlusionTexture.vOffset]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture != null) {
                 occlusionTexture.uOffset = value[0];
                 occlusionTexture.vOffset = value[1];
@@ -750,7 +750,7 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/occlusionTexture/extensions/KHR_texture_transform/scale`, (path) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture == null) {
                 return [NaN, NaN];
             }
@@ -758,7 +758,7 @@ export class BabylonDecorator extends ADecorator {
             return [occlusionTexture.uScale, occlusionTexture.vScale]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture != null) {
                 occlusionTexture.uScale = value[0];
                 occlusionTexture.vScale = value[1];
@@ -767,11 +767,11 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/occlusionTexture/extensions/KHR_texture_transform/rotation`, (path) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             return BabylonDecorator.getTextureRotation(occlusionTexture);
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             BabylonDecorator.setTextureRotation(occlusionTexture, value);
         }, "float", false);
 
