@@ -1,1 +1,1 @@
-export const MODEL_VIEW_Z_DIRECTION = -1;
+export const MODEL_VIEW_Z_DIRECTION = 1;

@@ -279,7 +279,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
         camera.setPosition(new Vector3(
             center.x,
             center.y + maxDimension * 0.4,
-            center.z - distance * MODEL_VIEW_Z_DIRECTION,
+            center.z + distance * MODEL_VIEW_Z_DIRECTION,
         ));
         camera.radius = distance;
     }
