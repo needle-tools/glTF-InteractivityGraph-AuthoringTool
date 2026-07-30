@@ -3,7 +3,7 @@ import path from "path";
 import { NullEngine, Scene as BabylonScene, SceneLoader } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF";
 import { GLTFFileLoader, GLTFLoaderAnimationStartMode } from "@babylonjs/loaders";
-import { buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "../../src/components/engineViews/babylonLoadedModel";
+import { attachSkinLoadedMetadata, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "../../src/components/engineViews/babylonLoadedModel";
 import { registerKHRInteractivityExtension } from "../../src/loaderExtensions/KHR_interactivity";
 
 export { NullEngine, BabylonScene };
@@ -31,6 +31,7 @@ function configureBabylonLoader(): void {
         SceneLoader.OnPluginActivatedObservable.add((loader) => {
             if (loader.name === "gltf") {
                 (loader as GLTFFileLoader).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
+                attachSkinLoadedMetadata(loader as GLTFFileLoader);
             }
         });
         loaderConfigured = true;
