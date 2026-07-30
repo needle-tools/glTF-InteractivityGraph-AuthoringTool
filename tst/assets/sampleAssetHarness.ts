@@ -58,6 +58,8 @@ export interface LoadAssetCasesOptions {
 }
 
 export const DEFAULT_SAMPLE_ASSETS_ROOT = path.resolve(process.cwd(), "../glTF-Test-Assets-Interactivity");
+const FLOAT_ABSOLUTE_TOLERANCE = 0.05;
+const FLOAT_RELATIVE_TOLERANCE = 0.03;
 
 export function getSampleAssetsRoot(): string {
     return process.env.KHR_INTERACTIVITY_SAMPLE_ASSETS ?? DEFAULT_SAMPLE_ASSETS_ROOT;
@@ -342,14 +344,64 @@ export function getGraphSettleSeconds(graph: any): number {
     return Math.min(seconds, maxWait);
 }
 
+function valuesEqual(actual: unknown[] | undefined, expected: unknown[], typeName: string): boolean {
+    if (!actual || actual.length !== expected.length) {
+        return false;
+    }
+
+    return expected.every((expectedValue, index) => {
+        const actualValue = actual[index];
+        if (typeName.startsWith("float")) {
+            if (isNaNLike(expectedValue)) {
+                return isNaNLike(actualValue);
+            }
+            if (isPositiveInfinityLike(expectedValue)) {
+                return Number(actualValue) === Infinity;
+            }
+            if (isNegativeInfinityLike(expectedValue)) {
+                return Number(actualValue) === -Infinity;
+            }
+            return floatsClose(Number(actualValue), Number(expectedValue));
+        }
+        return Object.is(actualValue, expectedValue);
+    });
+}
+
+function floatsClose(actual: number, expected: number): boolean {
+    const diff = Math.abs(actual - expected);
+    const relativeBase = Math.max(1, Math.abs(expected));
+    return diff <= FLOAT_ABSOLUTE_TOLERANCE || diff / relativeBase <= FLOAT_RELATIVE_TOLERANCE;
+}
+
+function isNaNLike(value: unknown): boolean {
+    return value === "NaN" || Number.isNaN(Number(value));
+}
+
+function isPositiveInfinityLike(value: unknown): boolean {
+    return value === "Infinity" || Number(value) === Infinity;
+}
+
+function isNegativeInfinityLike(value: unknown): boolean {
+    return value === "-Infinity" || Number(value) === -Infinity;
+}
+
 function getSubTestFailure(variables: IInteractivityVariable[], subTest: AssetSubTest): string | undefined {
     const result = variables[subTest.resultVarId]?.value;
     const success = variables[subTest.successResultVarId]?.value?.[0];
+
     // The graph itself computes pass/fail with its own tolerance baked in (e.g. Monte
-    // Carlo sampling deltas), so `success` is authoritative. Re-checking `result` against
-    // expectedResultValue with our own uniform tolerance would reject correct-but-inexact
-    // results the asset already accepted.
+    // Carlo sampling deltas), so `success` is the ground truth for pass/fail - never let
+    // our own tolerance check override it. We still compare `result` against
+    // expectedResultValue as a sanity check and warn (without failing) if they disagree,
+    // since that can indicate our tolerance is miscalibrated or the graph's own success
+    // computation has a bug.
     if (success === true) {
+        if (!valuesEqual(result, subTest.expectedResultValue, subTest.resultVarType)) {
+            console.warn(
+                `${subTest.name}: success=true but result=${formatTestValue(result)} does not match ` +
+                `expected ${formatTestValue(subTest.expectedResultValue)} within harness tolerance`,
+            );
+        }
         return undefined;
     }
     return `expected ${formatTestValue(subTest.expectedResultValue)} and success=true, got result=${formatTestValue(result)} success=${formatTestValue(success)}`;
