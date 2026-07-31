@@ -68,7 +68,6 @@ enum AuthoringComponentModelType {
     GRAPH_SEARCH,
     JSON_VIEW,
     NODE_LIST,
-    UPLOAD_GRAPH,
     CUSTOM_EVENTS,
     VARIABLES,
     NONE
@@ -106,12 +105,6 @@ const IconNodeTypes = () => (
     <svg {...iconProps}>
         <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
         <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-    </svg>
-);
-
-const IconUpload = () => (
-    <svg {...iconProps}>
-        <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
     </svg>
 );
 
@@ -1178,9 +1171,6 @@ export const AuthoringComponent = () => {
                             onJumpToIndex={jumpToNodeIndex}
                         />
                     </RenderIf>
-                    <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}>
-                        <UploadGraphComponent closeModal={() => setAuthoringComponentModal(AuthoringComponentModelType.NONE)}/>
-                    </RenderIf>
                     <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}>
                         <JSONViewComponent closeModal={() => setAuthoringComponentModal(AuthoringComponentModelType.NONE)}/>
                     </RenderIf>
@@ -1238,13 +1228,6 @@ export const AuthoringComponent = () => {
                                     label={"Node Types"}
                                     isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
                                     onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
-                                />
-                                <MenuBarButton
-                                    id={"upload-graph-btn"}
-                                    icon={<IconUpload/>}
-                                    label={"Upload Graph"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}
-                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.UPLOAD_GRAPH)}
                                 />
                                 <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
                                 <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
@@ -1620,7 +1603,13 @@ const JsonTreeNode = (props: {value: any, name?: string, defaultCollapsed?: bool
 
 const JSONViewComponent = (props: {closeModal: any}) => {
     const [copied, setCopied] = useState(false);
-    const {getExecutableGraph} = useContext(InteractivityGraphContext);
+    const [error, setError] = useState<string | null>(null);
+    // only shown once reading the clipboard has actually failed (Firefox exposes no readText to
+    // pages, any browser can deny the permission, and a non-secure context has no navigator.clipboard
+    // at all) — the user pastes the graph JSON in by hand instead
+    const [showPasteFallback, setShowPasteFallback] = useState(false);
+    const pasteRef = useRef<HTMLTextAreaElement>(null);
+    const {getExecutableGraph, loadGraphFromJson, markGraphDirty} = useContext(InteractivityGraphContext);
     const graph = getExecutableGraph();
     const copyToClipboard = async () => {
         const jsonString = JSON.stringify(getExecutableGraph(), undefined, '\t');
@@ -1630,6 +1619,35 @@ const JSONViewComponent = (props: {closeModal: any}) => {
         setTimeout(() => {
             setCopied(false);
         }, 2000); // Reset the copied state after 2 seconds
+    };
+
+    // parse + load; closes the panel on success, otherwise leaves it open showing what went wrong.
+    // loadGraphFromJson is async, so it has to be awaited inside the try for a rejection (malformed
+    // or incomplete graph structure) to land in the catch alongside JSON.parse's syntax errors.
+    const loadGraphText = async (text: string) => {
+        if (text.trim() === "") {return}
+
+        try {
+            await loadGraphFromJson(JSON.parse(text));
+            markGraphDirty();
+        } catch (e) {
+            setError(`Could not load graph: ${e instanceof Error ? e.message : String(e)}`);
+            return;
+        }
+        setError(null);
+        props.closeModal();
+    };
+
+    const pasteFromClipboard = async () => {
+        let text: string;
+        try {
+            text = await navigator.clipboard.readText();
+        } catch {
+            setShowPasteFallback(true);
+            setError("Couldn't read the clipboard. Paste the graph JSON into the box below instead.");
+            return;
+        }
+        await loadGraphText(text);
     };
 
     return (
@@ -1651,13 +1669,49 @@ const JSONViewComponent = (props: {closeModal: any}) => {
                 }}>
                     <JsonTreeNode value={graph} isLast={true} />
                 </div>
+                {showPasteFallback &&
+                    <Row style={{ marginTop: 12, textAlign: "left" }}>
+                        <Col>
+                            <Form.Group>
+                                <Form.Label>Graph JSON</Form.Label>
+                                <Form.Control ref={pasteRef} as="textarea" rows={6}/>
+                            </Form.Group>
+                            <Button
+                                variant={"outline-primary"}
+                                id={"load-graph-btn"}
+                                style={{ marginTop: 8 }}
+                                onClick={() => loadGraphText(pasteRef.current?.value ?? "")}
+                            >
+                                Load
+                            </Button>
+                        </Col>
+                    </Row>
+                }
+                {error !== null &&
+                    <Row style={{ marginTop: 8 }}>
+                        <Col>
+                            <div style={{ color: "#b00020", fontSize: 13, whiteSpace: "pre-wrap", textAlign: "left" }}>{error}</div>
+                        </Col>
+                    </Row>
+                }
                 <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={6}>
+                    <Col xs={12} md={4}>
                         <Button variant={"outline-primary"}  style={{width: "100%"}} onClick={copyToClipboard}>
                             {copied ? 'Copied!' : 'Copy to Clipboard'}
                         </Button>
                     </Col>
-                    <Col xs={12} md={6}>
+                    <Col xs={12} md={4}>
+                        <Button
+                            variant={"outline-primary"}
+                            id={"paste-graph-btn"}
+                            style={{width: "100%"}}
+                            title={"Replace the current graph with JSON from your clipboard"}
+                            onClick={pasteFromClipboard}
+                        >
+                            Paste from Clipboard
+                        </Button>
+                    </Col>
+                    <Col xs={12} md={4}>
                         <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
                             Cancel
                         </Button>
@@ -2178,56 +2232,3 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
     )
 }
 
-const UploadGraphComponent = (props: { closeModal: any}) => {
-    const graphRef = useRef<HTMLTextAreaElement>(null);
-    const [error, setError] = useState<string | null>(null);
-    const {loadGraphFromJson, markGraphDirty} = useContext(InteractivityGraphContext);
-    const uploadGraph = () => {
-        if (graphRef.current === null || graphRef.current.value === "") {return}
-
-        try {
-            loadGraphFromJson(JSON.parse(graphRef.current.value));
-            markGraphDirty();
-        } catch (e) {
-            // covers both invalid JSON and malformed/incomplete graph structure
-            setError(`Could not load graph: ${e instanceof Error ? e.message : String(e)}`);
-            return;
-        }
-        setError(null);
-        props.closeModal();
-    }
-
-    return (
-        <Panel id={"upload-graph-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16, width: 600}}>
-                <h3>Upload graph</h3>
-                <Row style={{textAlign: "left"}}>
-                    <Col>
-                        <Form.Group>
-                            <Form.Label>Graph JSON</Form.Label>
-                            <Form.Control ref={graphRef} as="textarea" rows={10}/>
-                        </Form.Group>
-                    </Col>
-                </Row>
-                {error !== null &&
-                    <Row style={{ marginTop: 8 }}>
-                        <Col>
-                            <div style={{ color: "#b00020", fontSize: 13, whiteSpace: "pre-wrap" }}>{error}</div>
-                        </Col>
-                    </Row>
-                }
-                <hr style={{ borderTop: '1px solid #777', margin: '16px 0' }} />
-                <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-primary"} id={"upload-graph-btn"} style={{width: "100%"}} onClick={() => {uploadGraph()}}>Load</Button>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
-                            Cancel
-                        </Button>
-                    </Col>
-                </Row>
-            </Container>
-        </Panel>
-    );
-}
