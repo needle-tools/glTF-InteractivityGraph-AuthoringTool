@@ -25,7 +25,7 @@ import { computeExtensionDiagnostics } from "../../diagnostics";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { attachSkinLoadedMetadata, BabylonLoadedModel, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "./babylonLoadedModel";
-import { downloadInteractivityGlb } from "./glbExport";
+import { downloadInteractivityGlb, GlbSource } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
 import { IconDownload, IconFrame, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
@@ -258,10 +258,30 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
         }
     }
 
-    const exportKHRInteractivityGLB = async () => {
+    // Mirrors the source resolution in resetScene: whichever glb the viewport currently shows is
+    // the one the graph gets embedded into. A sample loaded via modelUrl has no file input entry,
+    // so resolving only from fileInputRef made the button a no-op for every sample.
+    const currentGlbSource = (): GlbSource | null => {
         const file = fileInputRef.current?.files?.[0];
-        if (file) {
-            await downloadInteractivityGlb(file, getExecutableGraph());
+        if (useUploadedFile && file) {
+            return { kind: "file", file };
+        }
+        if (modelUrl) {
+            return { kind: "url", url: modelUrl };
+        }
+        return file ? { kind: "file", file } : null;
+    };
+
+    const exportKHRInteractivityGLB = async () => {
+        const source = currentGlbSource();
+        if (source == null) {
+            console.warn("No model loaded to export");
+            return;
+        }
+        try {
+            await downloadInteractivityGlb(source, getExecutableGraph());
+        } catch (error) {
+            console.error("Failed to export glb:", error);
         }
     }
 
