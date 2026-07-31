@@ -14,6 +14,8 @@ import { OnHoverIn } from "../BasicBehaveEngine/nodes/event/OnHoverIn";
 import { OnHoverOut } from "../BasicBehaveEngine/nodes/event/OnHoverOut";
 import { OnSelect } from "../BasicBehaveEngine/nodes/event/OnSelect";
 import { trackSceneInteraction } from "../utils/analytics";
+import { SUPPORTED_GLTF_EXTENSIONS } from "../diagnostics";
+import { assetExtensionEnabled, KHR_INTERACTIVITY_LIMITS, parseGltfVersion } from "../objectModel/assetCapabilities";
 import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import { attachPointerTap } from "../integrations/pointerTap";
 import { registerThreeMaterialPointers } from "./threeMaterialPointers";
@@ -89,6 +91,7 @@ export class ThreeDecorator extends ADecorator {
         registerThreeScenePointers(this.model, this.bindPointer);
         registerThreeMaterialPointers(this.model, this.bindPointer);
         this.registerAnimationPointers();
+        this.registerAssetCapabilityPointers();
         this.registerEventPointers(this.model.gltf.extensions?.KHR_interactivity?.graphs?.[
             this.model.gltf.extensions?.KHR_interactivity?.graph ?? 0
         ]);
@@ -139,6 +142,27 @@ export class ThreeDecorator extends ADecorator {
         });
     }
 
+    // Asset Capabilities & runtime limits (KHR_interactivity spec 4.2.1 / 4.2.2), mirroring the
+    // Babylon decorator: extensions that are both used by the asset and supported get a concrete
+    // `enabled` = true pointer; every other asset extension `enabled` query resolves to false via
+    // the assetExtensionEnabled fallback in the pointer hooks below.
+    private registerAssetCapabilityPointers(): void {
+        const [majorVersion, minorVersion] = parseGltfVersion(this.model.gltf.asset?.version);
+        this.bindPointer(`/extensions/KHR_interactivity/asset/majorVersion`, "int", () => [majorVersion], undefined, true);
+        this.bindPointer(`/extensions/KHR_interactivity/asset/minorVersion`, "int", () => [minorVersion], undefined, true);
+        for (const extensionName of this.extensionsUsed) {
+            if (!SUPPORTED_GLTF_EXTENSIONS.has(extensionName)) continue;
+            this.bindPointer(`/extensions/KHR_interactivity/asset/extensions/${extensionName}/enabled`, "bool", () => [true], undefined, true);
+        }
+        for (const { name, value } of KHR_INTERACTIVITY_LIMITS) {
+            this.bindPointer(`/extensions/KHR_interactivity/limits/${name}`, "int", () => [value], undefined, true);
+        }
+    }
+
+    private get extensionsUsed(): string[] {
+        return this.model.gltf.extensionsUsed ?? [];
+    }
+
     private registerEventPointers(graph: any): void {
         this.eventPointerPaths.forEach((path) => this.pointerBindings.delete(path));
         this.eventPointerPaths.clear();
@@ -163,10 +187,18 @@ export class ThreeDecorator extends ADecorator {
         this.behaveEngine.getRegisteredJsonPointers = () => [...this.pointerBindings.keys()].sort();
     }
 
-    private isValidJsonPtrExact = (path: string): boolean => this.pointerBindings.has(path) || this.isActiveDelayRef(path);
-    private isReadOnlyExact = (path: string): boolean => this.pointerBindings.get(path)?.readOnly ?? this.isActiveDelayRef(path);
-    private getPathValueExact = (path: string): unknown => this.pointerBindings.get(path)?.get() ?? (this.isActiveDelayRef(path) ? [path] : undefined);
-    private getPathTypeNameExact = (path: string): string | undefined => this.pointerBindings.get(path)?.typeName ?? (this.isActiveDelayRef(path) ? "ref" : undefined);
+    // Asset extension `enabled` pointers are valid for any extension name (spec 4.2.1) — the boolean
+    // conveys support — so they fall back to assetExtensionEnabled when not concretely registered.
+    private isValidJsonPtrExact = (path: string): boolean => this.pointerBindings.has(path) || this.isActiveDelayRef(path) || assetExtensionEnabled(path, this.extensionsUsed) !== undefined;
+    private isReadOnlyExact = (path: string): boolean => this.pointerBindings.get(path)?.readOnly ?? (this.isActiveDelayRef(path) || assetExtensionEnabled(path, this.extensionsUsed) !== undefined);
+    private getPathValueExact = (path: string): unknown => {
+        const binding = this.pointerBindings.get(path);
+        if (binding) return binding.get();
+        if (this.isActiveDelayRef(path)) return [path];
+        const enabled = assetExtensionEnabled(path, this.extensionsUsed);
+        return enabled === undefined ? undefined : [enabled];
+    };
+    private getPathTypeNameExact = (path: string): string | undefined => this.pointerBindings.get(path)?.typeName ?? (this.isActiveDelayRef(path) ? "ref" : (assetExtensionEnabled(path, this.extensionsUsed) !== undefined ? "bool" : undefined));
     private setPathValueExact = (path: string, value: unknown): void => {
         const binding = this.pointerBindings.get(path);
         if (binding && !binding.readOnly) binding.set?.(value);

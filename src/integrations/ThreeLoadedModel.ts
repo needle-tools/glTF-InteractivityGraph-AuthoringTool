@@ -14,6 +14,7 @@ import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { IInteractivityGraph } from "../BasicBehaveEngine/types/InteractivityGraph";
 
 export interface GlTfDocument {
+    asset?: { version?: string };
     scene?: number;
     scenes?: Array<{ nodes?: number[] }>;
     nodes?: Array<{
