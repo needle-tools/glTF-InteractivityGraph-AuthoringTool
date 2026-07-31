@@ -17,6 +17,10 @@ export interface NodeLiveWarning {
     message: string;
 }
 
+// standardTypes index of the "ref" type (see spec/nodes.ts) — a JSON pointer, where an empty
+// string is the valid "null reference" value rather than an unset placeholder.
+const REF_TYPE = 9;
+
 // variable/set keys its input value sockets by the numeric variable id; show the variable's name
 // instead so the warning stays identifiable without cross-referencing the "variables" config
 const getInputSocketFullLabel = (node: AuthoredNode, socket: string, variables: IInteractivityVariable[]): string => {
@@ -146,14 +150,20 @@ const getGroupTypeConflict = (
 
 // KHR_interactivity requires every input socket to either be wired or carry a static value — an
 // unconnected socket left at its "no value entered yet" placeholder (undefined/NaN/empty string,
-// depending on the socket's shape) would export as invalid.
+// depending on the socket's shape) would export as invalid. The one exception is a ref-typed
+// socket (type 9): an empty string is itself a valid JSON pointer value there, meaning "no
+// object" (a null reference) rather than "not yet set" — glTF files legitimately export ref
+// inputs this way (e.g. a material's unset pbrMetallicRoughness pointer), so it must not be
+// flagged as missing.
 const getMissingValueWarning = (
     node: AuthoredNode,
     socket: string,
     value: AuthoredValue,
+    resolvedType: number | undefined,
     variables: IInteractivityVariable[],
 ): string | undefined => {
     if (node.values?.input?.[socket]?.node !== undefined) { return undefined; }
+    if (resolvedType === REF_TYPE) { return undefined; }
     // ref sockets store their pointer array-wrapped, but older graphs may still carry a bare
     // string; normalize both shapes before checking.
     const raw = value.value;
@@ -187,7 +197,7 @@ export const computeNodeLiveWarnings = (
         const message =
             getInputTypeMismatch(node, spec, socket, value, resolvedType, variables)
             ?? getGroupTypeConflict(node, spec, socket, value, graphNodes, byUid, variables)
-            ?? getMissingValueWarning(node, socket, value, variables);
+            ?? getMissingValueWarning(node, socket, value, resolvedType, variables);
         if (message !== undefined) {
             warnings.push({ socket, message });
         }
