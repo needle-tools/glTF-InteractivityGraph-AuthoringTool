@@ -23,7 +23,7 @@ export const DiagnosticsPanel: React.FC = () => {
     const warningCount = diagnostics.length - errorCount;
 
     return (
-        <div style={{ width: "90vw", margin: "16px auto 0 auto" }} data-testid={"diagnostics-panel"}>
+        <div className={"app-notice"} data-testid={"diagnostics-panel"}>
             <Alert variant={errorCount > 0 ? "danger" : "warning"} style={{ marginBottom: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <Alert.Heading style={{ marginBottom: 0, fontSize: "1.1rem" }}>

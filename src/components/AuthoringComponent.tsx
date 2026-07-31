@@ -1,6 +1,6 @@
 import ReactFlow, {
     addEdge, Background,
-    Connection, Controls,
+    Connection,
     Edge,
     Node,
     NodeChange,
@@ -12,7 +12,7 @@ import {DeletableEdge} from "../authoring/DeletableEdge";
 import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
 import {v4 as uuidv4} from "uuid";
 import {RenderIf} from "./RenderIf";
-import {Button, Col, Container, Row, Form, OverlayTrigger, Popover, Tooltip} from "react-bootstrap";
+import {Button, Col, Row, Form, OverlayTrigger, Popover, Tooltip} from "react-bootstrap";
 import 'reactflow/dist/style.css';
 import {buildNodeByUid, getNodeSpec, hasNodeSpecFlag, interactivityNodeSpecs, propagateGraphGroupTypes, propagateNodeGroupTypes, resolveOutputSocketType, standardTypes, toInteractivityDeclaration} from "../authoring/spec/nodes";
 import { IInteractivityEvent, IInteractivityVariable } from '../BasicBehaveEngine/types/InteractivityGraph';
@@ -116,6 +116,13 @@ const IconSearch = () => (
     </svg>
 );
 
+const IconFrame = () => (
+    <svg {...iconProps}>
+        <polyline points="4 9 4 4 9 4"/><polyline points="15 4 20 4 20 9"/>
+        <polyline points="20 15 20 20 15 20"/><polyline points="9 20 4 20 4 15"/>
+    </svg>
+);
+
 const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void}) => (
     <button
         id={props.id}
@@ -128,6 +135,31 @@ const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string,
 );
 
 const MenuBarDivider = () => <div className="graph-menu-bar-divider"/>;
+
+// shared chrome for every in-graph overlay editor (Add Node, JSON View, Variables, ...): one card
+// look, one close affordance, and sizing that follows the graph panel rather than the viewport
+// (see .graph-overlay in flowNodes.css). `maxWidth` caps how wide the card may grow.
+const GraphOverlayPanel = (props: {
+    id: string;
+    title: string;
+    maxWidth: string;
+    onClose: () => void;
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+}) => (
+    <Panel id={props.id} position={"top-center"} className={"graph-overlay"}>
+        <div className={"graph-overlay__card"} style={{ maxWidth: props.maxWidth }}>
+            <div className={"graph-overlay__header"}>
+                <h3 className={"graph-overlay__title"}>{props.title}</h3>
+                <Button variant={"outline-danger"} size={"sm"} onClick={props.onClose}>Close</Button>
+            </div>
+            <div className={"graph-overlay__body"}>
+                {props.children}
+            </div>
+            {props.footer !== undefined && <div className={"graph-overlay__footer"}>{props.footer}</div>}
+        </div>
+    </Panel>
+);
 
 // Stand-in box for a node reactflow has not measured yet (i.e. one culling has never mounted),
 // used only to compute the graph bounds in frameGraph. Matches the LOD box in flowNodes.css.
@@ -1140,12 +1172,64 @@ export const AuthoringComponent = () => {
     }, [edges, ancestorEdgeIds]);
 
     return (
-        <div style={{width: "100%", height: "100%", textAlign: "center", padding: 16, display: "flex", flexDirection: "column", boxSizing: "border-box"}}>
-            <h2 style={{padding: 8, margin: 0}}>Interactivity Graph Authoring</h2>
-            <p style={{margin: "0 0 8px"}}>You can inspect and adjust the Interactivity Graph here.</p>
+        <div className={"panel"}>
+            {/* the graph's own toolbar: same height/treatment as the engine panel's toolbar, so
+                both halves of the workspace start on the same line */}
+            <div className={"panel__toolbar graph-menu-bar"}>
+                <MenuBarButton
+                    id={"variables-btn"}
+                    icon={<IconVariables/>}
+                    label={"Variables"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
+                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.VARIABLES)}
+                />
+                <MenuBarButton
+                    id={"custom-events-btn"}
+                    icon={<IconCustomEvents/>}
+                    label={"Custom Events"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
+                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.CUSTOM_EVENTS)}
+                />
+                <MenuBarDivider/>
+                <MenuBarButton
+                    id={"show-json-btn"}
+                    icon={<IconJsonView/>}
+                    label={"JSON View"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
+                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.JSON_VIEW)}
+                />
+                <MenuBarButton
+                    id={"show-node-list-btn"}
+                    icon={<IconNodeTypes/>}
+                    label={"Node Types"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
+                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
+                />
+                <span className={"panel__toolbar-spacer"}/>
+                {/* view actions live on the right of the bar, ahead of the status indicators */}
+                <MenuBarButton
+                    id={"search-graph-btn"}
+                    icon={<IconSearch/>}
+                    label={"Search Graph"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
+                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
+                />
+                <button
+                    id={"graph-frame-btn"}
+                    data-testid={"graph-frame-btn"}
+                    className={"graph-menu-bar-btn"}
+                    title={"Fit the whole graph in the view"}
+                    onClick={() => frameGraph(300)}
+                >
+                    <IconFrame/>
+                    Auto Frame
+                </button>
+                <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
+                <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
+            </div>
             <div
                 ref={reactFlowRef}
-                style={{width: "100%", flex: 1, minHeight: 0, border: "1px solid black", margin: "0 auto"}}
+                className={"panel__body"}
                 data-testid={"authoring-view"}
                 onContextMenuCapture={suppressBrowserContextMenu}
                 onContextMenu={suppressBrowserContextMenu}
@@ -1186,9 +1270,8 @@ export const AuthoringComponent = () => {
                     deleteKeyCode="Delete"
                     fitView
                 >
-                    {/* the built-in fit-view handler is a no-op on a partly-culled graph, so the
-                        button's real behaviour comes from onFitView (see frameGraph) */}
-                    <Controls onFitView={() => frameGraph(300)} />
+                    {/* no <Controls/>: zoom/fit/lock are covered by scroll-to-zoom, the minimap's
+                        Frame button and the shortcuts in the footer bar below */}
                     <Background />
                     <GraphMiniMap />
 
@@ -1230,73 +1313,32 @@ export const AuthoringComponent = () => {
                         to the container's right edge (roughly half the real width), so the bar came out
                         mis-sized and off-center. Overriding to a full-width, pointer-events:none wrapper
                         (transform cleared) lets the inner bar center itself normally via margin auto. */}
-                    <Panel position={"top-center"} style={{ left: 0, right: 0, transform: 'none', boxSizing: 'border-box', padding: '10px 16px 0', pointerEvents: 'none' }}>
-                        <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", pointerEvents: 'auto' }}>
-                            <div className="graph-menu-bar">
-                                <MenuBarButton
-                                    id={"variables-btn"}
-                                    icon={<IconVariables/>}
-                                    label={"Variables"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
-                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.VARIABLES)}
-                                />
-                                <MenuBarDivider/>
-                                <MenuBarButton
-                                    id={"custom-events-btn"}
-                                    icon={<IconCustomEvents/>}
-                                    label={"Custom Events"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
-                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.CUSTOM_EVENTS)}
-                                />
-                                <MenuBarDivider/>
-                                <MenuBarButton
-                                    id={"show-json-btn"}
-                                    icon={<IconJsonView/>}
-                                    label={"JSON View"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
-                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.JSON_VIEW)}
-                                />
-                                <MenuBarButton
-                                    id={"search-graph-btn"}
-                                    icon={<IconSearch/>}
-                                    label={"Search Graph"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
-                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
-                                />
-                                <MenuBarButton
-                                    id={"show-node-list-btn"}
-                                    icon={<IconNodeTypes/>}
-                                    label={"Node Types"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
-                                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
-                                />
-                                <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
-                                <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
-                            </div>
+                    <Panel position={"top-center"} style={{ left: 0, right: 0, transform: 'none', boxSizing: 'border-box', padding: 'var(--sp-3)', pointerEvents: 'none' }}>
+                        <div style={{ width: "100%", maxWidth: "44rem", margin: "0 auto", pointerEvents: 'auto' }}>
                             <LoadingProgressBar />
                         </div>
                     </Panel>
-
-                    <Panel position={"bottom-center"} style={{ left: 0, right: 0, transform: 'none', display: 'flex', justifyContent: 'center', boxSizing: 'border-box', padding: '0 90px', pointerEvents: 'none' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 14px', background: 'rgba(255,255,255,0.88)', border: '1px solid #ccc', borderRadius: 8, padding: '5px 14px', marginBottom: 6, fontSize: 11, color: '#000', userSelect: 'none', backdropFilter: 'blur(4px)', maxWidth: '100%', pointerEvents: 'auto' }}>
-                            {([
-                                ['Right-click', 'Add node'],
-                                ['Drop wire on canvas', 'Add & connect node'],
-                                ['Right-drag', 'Pan'],
-                                ['Left-drag', 'Multi-select'],
-                                ['Scroll', 'Zoom'],
-                                ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
-                                ['Ctrl+D', 'Duplicate'],
-                                ['Del', 'Delete selected'],
-                            ] as [string, string][]).map(([key, label]) => (
-                                <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                                    <kbd style={{ background: '#f0f0f0', border: '1px solid #bbb', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace', boxShadow: '0 1px 0 #aaa', lineHeight: '16px', color: '#000' }}>{key}</kbd>
-                                    <span>{label}</span>
-                                </span>
-                            ))}
-                        </div>
-                    </Panel>
                 </ReactFlow>
+            </div>
+
+            {/* key mapping: a real footer bar on the panel rather than a canvas overlay, so it
+                never covers nodes and never collides with the minimap */}
+            <div className={"graph-keymap"}>
+                {([
+                    ['Right-click', 'Add node'],
+                    ['Drop wire on canvas', 'Add & connect node'],
+                    ['Right-drag', 'Pan'],
+                    ['Left-drag', 'Multi-select'],
+                    ['Scroll', 'Zoom'],
+                    ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
+                    ['Ctrl+D', 'Duplicate'],
+                    ['Del', 'Delete selected'],
+                ] as [string, string][]).map(([key, label]) => (
+                    <span key={key} className={"graph-keymap__item"}>
+                        <kbd className={"graph-keymap__key"}>{key}</kbd>
+                        <span>{label}</span>
+                    </span>
+                ))}
             </div>
         </div>
     )
@@ -1419,12 +1461,12 @@ const SocketPickerComponent = (props: {
                 // keep the menu on-screen when dropped near the right/bottom edge
                 left: Math.min(props.clientX, window.innerWidth - 380),
                 top: Math.min(props.clientY, window.innerHeight - 540),
-                zIndex: 1000, background: "white", border: "1px solid gray", borderRadius: 8,
-                boxShadow: "0 6px 24px rgba(0,0,0,0.28)", minWidth: 340, maxHeight: 520,
-                overflowY: "auto", textAlign: "left",
+                zIndex: 1000, background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
+                boxShadow: "var(--shadow-lg)", minWidth: "21rem", maxHeight: "min(32rem, 70vh)",
+                overflowY: "auto", overscrollBehavior: "contain", textAlign: "left",
             }}
         >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", fontWeight: "bold", fontSize: 17, borderBottom: "1px solid #ddd", color: "#333" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--sp-3) var(--sp-4)", fontWeight: 700, fontSize: "var(--fs-lg)", borderBottom: "1px solid var(--border)", color: "var(--text)" }}>
                 <span>{props.pickingInput ? "Connect to input" : "Connect to output"}</span>
                 <span role="button" onClick={props.onClose} style={{ cursor: "pointer", color: "#999", paddingLeft: 12, fontSize: 22, lineHeight: 1 }} title={"Cancel"}>×</span>
             </div>
@@ -1473,22 +1515,17 @@ const NodePickerComponent = (props: {onAddNode: any, closeModal: any, mousePos: 
     const normalizedFilter = filter.trim().toLowerCase();
 
     return (
-        <Panel id={"node-picker-panel"} position={"top-center"} style={{border: "1px solid gray", background: "white", textAlign: "left", zIndex: 10, width: "min(820px, 75%)"}}>
-            <Container fluid style={{padding: 0}}>
-                <h3 style={{textAlign: "center", paddingTop: 8}}>
-                    Add Node
-                </h3>
-                <hr style={{ borderTop: '1px solid #777', margin: '16px 0' }} />
+        <GraphOverlayPanel id={"node-picker-panel"} title={"Add Node"} maxWidth={"52rem"} onClose={props.closeModal}>
+            <>
                 <Form.Control
                     data-testid={"node-picker-search"}
-                    style={{margin: "0 auto", width: "90%"}}
                     type="text"
                     autoFocus={true}
                     onChange={(e) => setFilter(e.target.value)}
                     value={filter}
                     placeholder="Search nodes..."
                 />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px auto 0", width: "90%" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)", marginTop: "var(--sp-3)" }}>
                     {
                         sortedNodeCategories.map(category => {
                             const categoryColor = getNodeCategoryColor(category);
@@ -1516,7 +1553,7 @@ const NodePickerComponent = (props: {onAddNode: any, closeModal: any, mousePos: 
                         })
                     }
                 </div>
-                <div ref={nodeListRef} className="nowheel" onWheel={onNodeListWheel} style={{ columnWidth: 200, columnGap: 24, maxHeight: "min(40vh, calc(100vh - 260px))", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain", marginTop: 16, padding: "0 16px 8px" }}>
+                <div ref={nodeListRef} className="nowheel" onWheel={onNodeListWheel} style={{ columnWidth: "12.5rem", columnGap: "1.5rem", maxHeight: "min(22rem, 38vh)", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain", marginTop: "var(--sp-4)" }}>
                     {
                         sortedNodeCategories.map(category => {
                             const itemsInCategory = nodePickerItemsByCategory[category].filter(item =>
@@ -1566,12 +1603,8 @@ const NodePickerComponent = (props: {onAddNode: any, closeModal: any, mousePos: 
                         })
                     }
                 </div>
-                <hr style={{ borderTop: '1px solid #777', margin: '16px 0' }} />
-                <div style={{textAlign: "center", marginBottom: 16}}>
-                    <Button variant={"outline-danger"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-            </Container>
-        </Panel>
+            </>
+        </GraphOverlayPanel>
     );
 }
 
@@ -1692,74 +1725,61 @@ const JSONViewComponent = (props: {closeModal: any}) => {
     };
 
     return (
-        <Panel id={"show-json-view-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16, width: "80vw", maxWidth: 1000}}>
-                <h3>JSON View</h3>
+        <GraphOverlayPanel
+            id={"show-json-view-panel"}
+            title={"JSON View"}
+            maxWidth={"62rem"}
+            onClose={props.closeModal}
+            footer={
+                <>
+                    <Button variant={"outline-primary"} onClick={copyToClipboard}>
+                        {copied ? 'Copied!' : 'Copy to Clipboard'}
+                    </Button>
+                    <Button
+                        variant={"outline-primary"}
+                        id={"paste-graph-btn"}
+                        title={"Replace the current graph with JSON from your clipboard"}
+                        onClick={pasteFromClipboard}
+                    >
+                        Paste from Clipboard
+                    </Button>
+                </>
+            }
+        >
+            <>
                 <div style={{
                     textAlign: "left",
                     overflow: "auto",
                     overscrollBehavior: "contain",
-                    height: "40vh",
-                    maxHeight: "calc(100vh - 220px)",
-                    border: "1px solid #ccc",
-                    borderRadius: 4,
-                    padding: 8,
-                    background: "#fafafa",
-                    fontFamily: "monospace",
-                    fontSize: 13,
+                    height: "min(24rem, 42vh)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "var(--sp-2)",
+                    background: "var(--surface-1)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "var(--fs-sm)",
                 }}>
                     <JsonTreeNode value={graph} isLast={true} />
                 </div>
                 {showPasteFallback &&
-                    <Row style={{ marginTop: 12, textAlign: "left" }}>
-                        <Col>
-                            <Form.Group>
-                                <Form.Label>Graph JSON</Form.Label>
-                                <Form.Control ref={pasteRef} as="textarea" rows={6}/>
-                            </Form.Group>
-                            <Button
-                                variant={"outline-primary"}
-                                id={"load-graph-btn"}
-                                style={{ marginTop: 8 }}
-                                onClick={() => loadGraphText(pasteRef.current?.value ?? "")}
-                            >
-                                Load
-                            </Button>
-                        </Col>
-                    </Row>
-                }
-                {error !== null &&
-                    <Row style={{ marginTop: 8 }}>
-                        <Col>
-                            <div style={{ color: "#b00020", fontSize: 13, whiteSpace: "pre-wrap", textAlign: "left" }}>{error}</div>
-                        </Col>
-                    </Row>
-                }
-                <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={4}>
-                        <Button variant={"outline-primary"}  style={{width: "100%"}} onClick={copyToClipboard}>
-                            {copied ? 'Copied!' : 'Copy to Clipboard'}
-                        </Button>
-                    </Col>
-                    <Col xs={12} md={4}>
+                    <Form.Group style={{ marginTop: "var(--sp-3)" }}>
+                        <Form.Label>Graph JSON</Form.Label>
+                        <Form.Control ref={pasteRef} as="textarea" rows={6}/>
                         <Button
                             variant={"outline-primary"}
-                            id={"paste-graph-btn"}
-                            style={{width: "100%"}}
-                            title={"Replace the current graph with JSON from your clipboard"}
-                            onClick={pasteFromClipboard}
+                            id={"load-graph-btn"}
+                            style={{ marginTop: "var(--sp-2)" }}
+                            onClick={() => loadGraphText(pasteRef.current?.value ?? "")}
                         >
-                            Paste from Clipboard
+                            Load
                         </Button>
-                    </Col>
-                    <Col xs={12} md={4}>
-                        <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
-                            Cancel
-                        </Button>
-                    </Col>
-                </Row>
-            </Container>
-        </Panel>
+                    </Form.Group>
+                }
+                {error !== null &&
+                    <div style={{ marginTop: "var(--sp-2)", color: "var(--danger-600)", fontSize: "var(--fs-sm)", whiteSpace: "pre-wrap" }}>{error}</div>
+                }
+            </>
+        </GraphOverlayPanel>
     )
 }
 
@@ -1790,24 +1810,32 @@ const NodeListComponent = (props: {closeModal: any}) => {
     };
 
     return (
-        <Panel id={"node-list-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16}}>
-                <h3>Node List</h3>
-                <pre style={{textAlign: "left", overflow:"scroll", overscrollBehavior: "contain", height: 400, width: 400}}>{getDataString()}</pre>
-                <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-primary"}  style={{width: "100%"}} onClick={copyToClipboard}>
-                            {copied ? 'Copied!' : 'Copy to Clipboard'}
-                        </Button>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
-                            Cancel
-                        </Button>
-                    </Col>
-                </Row>
-            </Container>
-        </Panel>
+        <GraphOverlayPanel
+            id={"node-list-panel"}
+            title={"Node Types"}
+            maxWidth={"34rem"}
+            onClose={props.closeModal}
+            footer={
+                <Button variant={"outline-primary"} onClick={copyToClipboard}>
+                    {copied ? 'Copied!' : 'Copy to Clipboard'}
+                </Button>
+            }
+        >
+            <pre style={{
+                margin: 0,
+                textAlign: "left",
+                overflow: "auto",
+                overscrollBehavior: "contain",
+                height: "min(22rem, 38vh)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                padding: "var(--sp-2)",
+                background: "var(--surface-1)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--fs-sm)",
+                whiteSpace: "pre-wrap",
+            }}>{getDataString()}</pre>
+        </GraphOverlayPanel>
     )
 }
 
@@ -1860,14 +1888,8 @@ const GraphSearchComponent = (props: {
     };
 
     return (
-        <Panel id={"graph-search-panel"} position={"top-center"} style={{border: "1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16, width: 720, maxWidth: "92vw"}}>
-                <div style={{display: "flex", justifyContent: "space-between", alignItems: "center"}}>
-                    <h3 style={{margin: 0}}>Search Graph</h3>
-                    <Button variant={"outline-danger"} size={"sm"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-                <hr style={{ borderTop: "1px solid #777", margin: "12px 0" }} />
-
+        <GraphOverlayPanel id={"graph-search-panel"} title={"Search Graph"} maxWidth={"45rem"} onClose={props.closeModal}>
+            <>
                 <div style={{display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end"}}>
                     <Form.Group style={{marginBottom: 0}}>
                         <Form.Label style={{fontSize: 12, color: "#666", marginBottom: 4}}>Find by Op or config string value</Form.Label>
@@ -1892,7 +1914,7 @@ const GraphSearchComponent = (props: {
                 </div>
                 {indexError !== null && <div style={{marginTop: 6, color: "#b00020", fontSize: 12}}>{indexError}</div>}
 
-                <div style={{marginTop: 12, border: "1px solid #ddd", borderRadius: 6, maxHeight: "min(44vh, calc(100vh - 290px))", overflowY: "auto", textAlign: "left", padding: 8}}>
+                <div style={{marginTop: 12, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", maxHeight: "min(22rem, 38vh)", overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", padding: 8}}>
                     {trimmedQuery === "" && (
                         <div style={{fontSize: 13, color: "#777", padding: "8px 6px"}}>
                             Search matches node operation names and string values in node configuration (including pointer templates).
@@ -1923,8 +1945,8 @@ const GraphSearchComponent = (props: {
                         </button>
                     ))}
                 </div>
-            </Container>
-        </Panel>
+            </>
+        </GraphOverlayPanel>
     );
 };
 
@@ -1987,19 +2009,13 @@ const VariablesComponent = (props: {closeModal: any}) => {
     };
 
     return (
-        <Panel id={"variables-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", borderRadius: 8, boxShadow: "0 4px 24px rgba(0,0,0,0.15)", zIndex: 10}}>
-            <Container fluid style={{ padding: 16, width: 1080, maxWidth: "95vw" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h3 style={{ margin: 0 }}>Variables</h3>
-                    <Button variant={"outline-danger"} size={"sm"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-                <hr style={{ borderTop: '1px solid #777', margin: '12px 0' }} />
-                <div style={{ display: "flex", gap: 16, height: "min(460px, calc(100vh - 210px))" }}>
+        <GraphOverlayPanel id={"variables-panel"} title={"Variables"} maxWidth={"68rem"} onClose={props.closeModal}>
+                <div className={"graph-overlay-columns"}>
                     {/* left: editable list of variables */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                    <div className={"graph-overlay-columns__main"}>
                         {/* overflowX hidden avoids the horizontal scrollbar Bootstrap's negative
                             row gutters would otherwise trigger (overflow-y:auto forces x to auto too) */}
-                        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
+                        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
                             {variables.length === 0 && (
                                 <p style={{ color: "#888", textAlign: "center", marginTop: 32 }}>
                                     No variables yet. Add one to get started.
@@ -2063,17 +2079,13 @@ const VariablesComponent = (props: {closeModal: any}) => {
                         </Button>
                     </div>
 
-                    {/* right: live JSON view — fixed width so the extra panel width goes to the
-                        variables list on the left rather than widening the JSON pane */}
-                    <div style={{ width: 380, flexShrink: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>JSON</span>
-                        <pre style={{ flex: 1, margin: 0, overflow: "auto", overscrollBehavior: "contain", textAlign: "left", border: "1px solid #ccc", borderRadius: 4, padding: 8, background: "#f5f5f5", fontSize: 12 }}>
-                            {JSON.stringify(toGraphVariables(variables), undefined, 2)}
-                        </pre>
+                    {/* right: live JSON view (fixed width, see .graph-overlay-columns__json) */}
+                    <div className={"graph-overlay-columns__json"}>
+                        <span className={"graph-overlay-columns__json-label"}>JSON</span>
+                        <pre>{JSON.stringify(toGraphVariables(variables), undefined, 2)}</pre>
                     </div>
                 </div>
-            </Container>
-        </Panel>
+        </GraphOverlayPanel>
     )
 }
 
@@ -2164,17 +2176,11 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
     };
 
     return (
-        <Panel id={"custom-events-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", borderRadius: 8, boxShadow: "0 4px 24px rgba(0,0,0,0.15)", zIndex: 10}}>
-            <Container fluid style={{ padding: 16, width: 1100, maxWidth: "95vw" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h3 style={{ margin: 0 }}>Custom Events</h3>
-                    <Button variant={"outline-danger"} size={"sm"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-                <hr style={{ borderTop: '1px solid #777', margin: '12px 0' }} />
-                <div style={{ display: "flex", gap: 16, height: "min(460px, calc(100vh - 210px))" }}>
+        <GraphOverlayPanel id={"custom-events-panel"} title={"Custom Events"} maxWidth={"69rem"} onClose={props.closeModal}>
+                <div className={"graph-overlay-columns"}>
                     {/* left: editable list of events */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
+                    <div className={"graph-overlay-columns__main"}>
+                        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
                             {events.length === 0 && (
                                 <p style={{ color: "#888", textAlign: "center", marginTop: 32 }}>
                                     No custom events yet. Add one to get started.
@@ -2260,16 +2266,13 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
                         </Button>
                     </div>
 
-                    {/* right: live JSON view */}
-                    <div style={{ flex: 0.8, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>JSON</span>
-                        <pre style={{ flex: 1, margin: 0, overflow: "auto", overscrollBehavior: "contain", textAlign: "left", border: "1px solid #ccc", borderRadius: 4, padding: 8, background: "#f5f5f5", fontSize: 12 }}>
-                            {JSON.stringify(toGraphEvents(events), undefined, 2)}
-                        </pre>
+                    {/* right: live JSON view (fixed width, see .graph-overlay-columns__json) */}
+                    <div className={"graph-overlay-columns__json"}>
+                        <span className={"graph-overlay-columns__json-label"}>JSON</span>
+                        <pre>{JSON.stringify(toGraphEvents(events), undefined, 2)}</pre>
                     </div>
                 </div>
-            </Container>
-        </Panel>
+        </GraphOverlayPanel>
     )
 }
 

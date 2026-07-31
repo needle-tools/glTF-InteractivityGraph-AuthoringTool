@@ -4,8 +4,6 @@ import {EngineType} from "./components/engineViews/EngineType";
 import {RenderIf} from "./components/RenderIf";
 import {LoggingEngineComponent} from "./components/engineViews/LoggingEngineComponent";
 import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComponent";
-import {Tab, Tabs} from "react-bootstrap";
-import {Spacer} from "./components/Spacer";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
 import { SampleSidebar } from './components/SampleSidebar';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
@@ -160,20 +158,21 @@ export const App = () => {
 
   return (
     <InteractivityGraphProvider>
-        <div style={{width: "100vw", height: "100vh"}}>
+      <div className={"app-shell"}>
+        <AppHeader
+          setEngineType={handleEngineTypeChange}
+          currentEngineType={engineType}
+          onSelectModel={handleModelUrlChange}
+        />
 
-        <EngineSelector setEngineType={handleEngineTypeChange} currentEngineType={engineType} />
-
-        <SampleSidebar onSelectModel={handleModelUrlChange} />
-
+        {/* renders nothing (and takes no space) while there are no diagnostics */}
         <DiagnosticsPanel />
-
-        <Spacer width={0} height={32}/>
 
         {/* side-by-side, resizable: 3D/logging engine view on the left, graph authoring on the
             right, with a draggable divider controlling the split (see startSplitDrag) */}
-        <div ref={splitRowRef} style={{display: "flex", flexDirection: "row", width: "100vw", height: "85vh", boxSizing: "border-box", padding: "0 16px"}}>
-            <div style={{flexGrow: splitRatio, flexShrink: 1, flexBasis: 0, minWidth: 0, height: "100%"}}>
+        <main className={"app-main"}>
+          <div ref={splitRowRef} className={"app-split"}>
+            <div className={"app-split__pane"} style={{flexGrow: splitRatio}}>
                 <RenderIf shouldShow={engineType === EngineType.LOGGING}>
                      <LoggingEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
@@ -182,32 +181,23 @@ export const App = () => {
                 </RenderIf>
             </div>
             <div
+                role={"separator"}
+                aria-orientation={"vertical"}
                 onMouseDown={startSplitDrag}
                 onMouseEnter={() => setDividerHovered(true)}
                 onMouseLeave={() => setDividerHovered(false)}
                 title={"Drag to resize"}
-                style={{
-                    flex: "0 0 12px", height: "100%", cursor: "col-resize",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: dividerActive ? "rgba(61, 89, 135, 0.08)" : "transparent",
-                    transition: "background 120ms ease",
-                }}
+                className={`app-divider${dividerActive ? " is-active" : ""}`}
             >
-                <div style={{
-                    width: dividerActive ? 4 : 2,
-                    height: dividerActive ? 64 : 40,
-                    borderRadius: 3,
-                    background: dividerActive ? "#3d5987" : "#adb5bd",
-                    transition: "all 120ms ease",
-                }}/>
+                <div className={"app-divider__grip"}/>
             </div>
-            <div style={{flexGrow: 1 - splitRatio, flexShrink: 1, flexBasis: 0, minWidth: 0, height: "100%"}}>
+            <div className={"app-split__pane"} style={{flexGrow: 1 - splitRatio}}>
                 <AuthoringComponent/>
             </div>
-        </div>
+          </div>
+        </main>
       </div>
     </InteractivityGraphProvider>
-      
   );
 }
 
@@ -216,58 +206,51 @@ interface EngineSelectorProps {
     currentEngineType: EngineType;
 }
 
-export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, currentEngineType }) => {
-    // Initialize the activeKey based on the engineType prop
-    const getInitialTabKey = () => {
-        switch (currentEngineType) {
-            case EngineType.LOGGING:
-                return '1';
-            case EngineType.BABYLON:
-                return '2';
-            default:
-                return '2'; // Default to Babylon
-        }
-    };
+// the engine tabs, kept in the order Babylon-then-Logging. Rendered as a plain <ul>/<li>
+// segmented control rather than react-bootstrap's <Tabs> so it can carry the app's own styling
+// (and so a tab is still an <li>, which the e2e spec clicks).
+const ENGINE_TABS: ReadonlyArray<{ engine: EngineType; label: string }> = [
+    { engine: EngineType.BABYLON, label: "Babylon Engine" },
+    { engine: EngineType.LOGGING, label: "Logging Engine" },
+];
 
-    const [activeKey, setActiveKey] = useState(getInitialTabKey());
-    
-    // Update tab key when engineType changes
-    useEffect(() => {
-        setActiveKey(getInitialTabKey());
-    }, [currentEngineType]);
-    
-    const handleEngineChange = (key: string | null) => {
-        if (key) {
-            let engine;
-            switch (key) {
-                case '1':
-                    engine = EngineType.LOGGING;
-                    break;
-                case '2':
-                    engine = EngineType.BABYLON;
-                    break;
-                default:
-                    throw Error("Invalid Selection")
-            }
-            setActiveKey(key);
-            setEngineType(engine);
-        }
-    };
+export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, currentEngineType }) => (
+    <div data-testid={"engine-selector"}>
+        <ul className={"app-tabs"} role={"tablist"}>
+            {ENGINE_TABS.map(({ engine, label }) => {
+                const isActive = currentEngineType === engine;
+                return (
+                    <li
+                        key={engine}
+                        role={"presentation"}
+                        className={`app-tab${isActive ? " is-active" : ""}`}
+                        onClick={() => setEngineType(engine)}
+                    >
+                        <button type={"button"} role={"tab"} aria-selected={isActive}>{label}</button>
+                    </li>
+                );
+            })}
+        </ul>
+    </div>
+);
 
-    return (
-        <div style={{width: "90vw", margin: "0 auto", textAlign: "center", marginTop: 32}}>
-            <h2>glTF Interactivity Editor and Viewer</h2>
-            <p style={{marginBottom: "0"}}>This web app allows interacting with, graph inspection and authoring of glTF files using the <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank">KHR_interactivity</a> extension.</p>
-            <p style={{marginBottom: "0"}}>You can load samples and test assets and inspect their graphs, or create your own files with the experimental graph UI.</p>
-            <div data-testid={"engine-selector"}>
-                <Tabs
-                    activeKey={activeKey}
-                    onSelect={handleEngineChange}
-                >
-                    <Tab title={"Babylon Engine"} eventKey={2}/>
-                    <Tab title={"Logging Engine (for development)"} eventKey={1}/>
-                </Tabs>
-            </div>
-        </div>
-    );
+interface AppHeaderProps extends EngineSelectorProps {
+    onSelectModel: (url: string) => void;
 }
+
+const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType, onSelectModel }) => (
+    <header className={"app-header"}>
+        <div className={"app-header__brand"}>
+            <h1 className={"app-title"}>glTF Interactivity Editor and Viewer</h1>
+            <p className={"app-subtitle"}>
+                Inspect, run and author glTF files using the{" "}
+                <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank" rel="noreferrer">KHR_interactivity</a>
+                {" "}extension — load a sample or test asset, or build your own graph.
+            </p>
+        </div>
+        <div className={"app-header__actions"}>
+            <EngineSelector setEngineType={setEngineType} currentEngineType={currentEngineType} />
+            <SampleSidebar onSelectModel={onSelectModel} />
+        </div>
+    </header>
+);

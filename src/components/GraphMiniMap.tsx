@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { Node, Panel, useReactFlow, useStoreApi } from "reactflow";
 import { getNodeCategoryColor } from "../authoring/socketColors";
+import { useDevicePixelRatio } from "../hooks/useDevicePixelRatio";
 
 // Deliberately not reactflow's <MiniMap/>: that one mounts an SVG <rect> per node and re-renders
 // the whole set through React on every node change, which is thousands of DOM nodes on the big
@@ -41,6 +42,7 @@ export const GraphMiniMap = () => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const devicePixelRatio = useDevicePixelRatio();
 
     const mapTransformRef = useRef<MapTransform>({ scale: 1, offsetX: 0, offsetY: 0 });
     // identity of the node collection the canvas was last painted from, so a pure viewport change
@@ -115,6 +117,13 @@ export const GraphMiniMap = () => {
         };
     }, [store, scheduleDraw]);
 
+    // the canvas backing store is sized in device pixels (see paintNodes), so a ratio change needs
+    // a forced repaint — nothing about the graph changed, so the normal "nodes changed" path
+    // wouldn't fire and the map would stay at the old resolution
+    useEffect(() => {
+        draw(true);
+    }, [devicePixelRatio, draw]);
+
     // click or drag anywhere on the map to move the viewport there
     const centerOnPointer = useCallback((clientX: number, clientY: number) => {
         const container = containerRef.current;
@@ -139,7 +148,7 @@ export const GraphMiniMap = () => {
     }, [centerOnPointer]);
 
     return (
-        <Panel position={"bottom-right"} className={"nodrag nopan nowheel"} style={{ margin: "0 10px 46px 0" }}>
+        <Panel position={"bottom-right"} className={"nodrag nopan nowheel graph-minimap"}>
             <div
                 ref={containerRef}
                 className={"graph-minimap__body"}

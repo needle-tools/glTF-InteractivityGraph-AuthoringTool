@@ -14,7 +14,6 @@ import {
 } from "@babylonjs/core";
 import {Scene} from "@babylonjs/core/scene";
 import "@babylonjs/loaders/glTF";
-import {Spacer} from "../Spacer";
 import {registerKHRInteractivityExtension} from "../../loaderExtensions/KHR_interactivity";
 import {BabylonDecorator} from "../../decorators/BabylonDecorator";
 import {BasicBehaveEngine} from "../../BasicBehaveEngine/BasicBehaveEngine";
@@ -28,11 +27,15 @@ import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { attachSkinLoadedMetadata, BabylonLoadedModel, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "./babylonLoadedModel";
 import { downloadInteractivityGlb } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
+import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
     NONE = "NONE"
 }
+
+/** upper bound for the device-pixel render scale (see the devicePixelRatio effect) */
+const MAX_RENDER_SCALE = 2;
 
 registerKHRInteractivityExtension();
 
@@ -54,6 +57,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     // sample/URL). modelUrl stays set in state/URL after a sample load, so resetScene needs this
     // to know which source should win the next time it (re)loads.
     const [useUploadedFile, setUseUploadedFile] = useState(false);
+    const devicePixelRatio = useDevicePixelRatio();
 
     const {getExecutableGraph, loadGraphFromJson, setDiagnosticsForCategory, setGltfObjectModel, setSupportedPointerTemplates, clearGraphDirty, registerPlayHandler} = useContext(InteractivityGraphContext);
 
@@ -72,8 +76,10 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     };
 
     useEffect(() => {
-        // Create the Babylon.js engines
-        engineRef.current = new Engine(canvasRef.current, true);
+        // Create the Babylon.js engines. adaptToDeviceRatio (4th arg) makes the very first frame
+        // render at the display's native pixels instead of CSS pixels — without it the viewport is
+        // visibly soft on any HiDPI screen. The ongoing ratio is owned by the effect below.
+        engineRef.current = new Engine(canvasRef.current, true, undefined, true);
 
         createScene();
 
@@ -99,6 +105,16 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             setSupportedPointerTemplates(null);
         };
     }, []);
+
+    // Render at the display's native pixels, capped: on a 4K/200% screen an uncapped ratio means
+    // ~4x the fragments for a viewport that is only half the window, which costs more than it
+    // visibly gains.
+    useEffect(() => {
+        const engine = engineRef.current;
+        if (!engine) { return; }
+        engine.setHardwareScalingLevel(1 / Math.min(devicePixelRatio, MAX_RENDER_SCALE));
+        engine.resize();
+    }, [devicePixelRatio]);
 
     useEffect(() => {
         const resizeEngine = () => {
@@ -333,23 +349,17 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     };
 
     return (
-        <div style={{width: "100%", height: "100%", display: "flex", flexDirection: "column"}}>
-            <div style={{background: "#3d5987", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16}}>
-                <Button variant="outline-light" onClick={() => {
-                    play(false)
-                }} disabled={fileUploaded == null}>
+        <div className={"panel"}>
+            <div className={"panel__toolbar"}>
+                <button type="button" className="btn-app btn-app--onDark" onClick={() => play(false)} disabled={fileUploaded == null}>
                     Play
-                </Button>
+                </button>
 
-                <Spacer width={16} height={0}/>
-
-                <Button variant="outline-light" onClick={() => setOpenModal(BabylonEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
+                <button type="button" className="btn-app btn-app--onDark" onClick={() => setOpenModal(BabylonEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
                     Send Custom Event
-                </Button>
+                </button>
 
-                <Spacer width={16} height={0}/>
-
-                <label className="mx-3" style={{color: "white"}}>Choose file: </label>
+                <span className={"panel__toolbar-label"}>Model</span>
                 <input className="d-none" type="file" accept=".glb" ref={fileInputRef} data-testid={"babylon-engine-file-input"} onChange={() => {
                     if (fileInputRef.current == null || fileInputRef.current.files == null || fileInputRef.current.files.length == 0) {
                         setFileUploaded(null);
@@ -358,22 +368,24 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
                     setUseUploadedFile(true);
                     setFileUploaded(fileInputRef.current.files[0].name)
                 }}/>
-                <Button variant="outline-light" onClick={() => fileInputRef.current!.click()}>
+                <button type="button" className="btn-app btn-app--onDark" onClick={() => fileInputRef.current!.click()}>
                     Upload glb
-                </Button>
+                </button>
 
-                <Spacer width={16} height={0}/>
-
-                <Button variant="outline-light" disabled={fileUploaded == null} onClick={() => exportKHRInteractivityGLB()}>
+                <button type="button" className="btn-app btn-app--onDark" disabled={fileUploaded == null} onClick={() => exportKHRInteractivityGLB()}>
                     Download glb
-                </Button>
-                <Spacer width={16} height={0}/>
-                <Button data-testid={"frame-btn"} variant="outline-light" onClick={() => autoFrame()}>
+                </button>
+
+                <span className={"panel__toolbar-spacer"}/>
+
+                <button type="button" data-testid={"frame-btn"} className="btn-app btn-app--onDark" onClick={() => autoFrame()}>
                     Auto Frame
-                </Button>
+                </button>
             </div>
 
-            <canvas ref={canvasRef} style={{ width: '100%', flex: 1, minHeight: 0 }} data-testid={"babylon-engine-canvas"} />
+            <div className={"panel__body"}>
+                <canvas ref={canvasRef} style={{ width: '100%', flex: 1, minHeight: 0 }} data-testid={"babylon-engine-canvas"} />
+            </div>
 
             <Modal size="lg" show={openModal === BabylonEngineModal.CUSTOM_EVENT} onHide={() => setOpenModal(BabylonEngineModal.NONE)}>
                 <Container style={{padding: 16}}>
