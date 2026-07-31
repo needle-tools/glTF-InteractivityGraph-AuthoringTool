@@ -1,8 +1,10 @@
 import {
     AnimationAction,
+    AnimationClip,
     Camera,
     Intersection,
     Object3D,
+    PropertyBinding,
     Raycaster,
     Vector2,
 } from "three";
@@ -215,6 +217,7 @@ export class ThreeDecorator extends ADecorator {
             return;
         }
         this.stopThreeAnimation(animationIndex);
+        this.releaseSettledActions(clip);
         const action = this.model.mixer.clipAction(clip);
         action.reset();
         action.enabled = true;
@@ -232,12 +235,49 @@ export class ThreeDecorator extends ADecorator {
         if (!active) {
             return;
         }
-        active.action.paused = true;
+        this.releaseAction(active.action);
         this.threeAnimations.delete(animationIndex);
         if (this.threeAnimations.size === 0) {
             this.stopAnimationTimer();
         }
     };
+
+    private releaseSettledActions(clip: AnimationClip): void {
+        const trackNames = new Set(clip.tracks.map((track) => track.name));
+        const driven = new Set([...this.threeAnimations.values()].map((active) => active.action.getClip()));
+        for (const other of this.model.animations) {
+            if (other === clip || driven.has(other)) {
+                continue;
+            }
+            if (other.tracks.some((track) => trackNames.has(track.name))) {
+                const action = this.model.mixer.existingAction(other);
+                if (action) this.releaseAction(action);
+            }
+        }
+    }
+
+    // Deactivating the last action on a binding makes the mixer restore the value it captured when
+    // the binding was first bound - the rest pose - but both animation/stop and a superseded clip
+    // have to leave the properties where they were. So snapshot them and write them back; anything
+    // the incoming clip drives is overwritten by the next sample anyway.
+    private releaseAction(action: AnimationAction): void {
+        const root = this.model.mixer.getRoot();
+        const frozen: Array<{ binding: PropertyBinding; values: Float32Array }> = [];
+        for (const track of action.getClip().tracks) {
+            const binding = PropertyBinding.create(root, track.name) as PropertyBinding;
+            binding.bind();
+            if (!binding.node) {
+                continue;
+            }
+            const values = new Float32Array(track.getValueSize());
+            binding.getValue(values, 0);
+            frozen.push({ binding, values });
+        }
+        action.stop();
+        for (const { binding, values } of frozen) {
+            binding.setValue(values, 0);
+        }
+    }
 
     private stopThreeAnimationAt = (animationIndex: number, stopTime: number, callback: () => void): void => {
         const active = this.threeAnimations.get(animationIndex);
