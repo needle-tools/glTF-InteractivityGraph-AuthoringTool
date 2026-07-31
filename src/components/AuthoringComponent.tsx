@@ -7,14 +7,14 @@ import ReactFlow, {
     EdgeTypes,
     NodeTypes, Panel, useEdgesState, useNodesState, useReactFlow, XYPosition
 } from 'reactflow';
-import {AuthoringGraphNode} from "../authoring/AuthoringGraphNode";
+import {AuthoringGraphNode, LOD_ZOOM_THRESHOLD} from "../authoring/AuthoringGraphNode";
 import {DeletableEdge} from "../authoring/DeletableEdge";
 import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
 import {v4 as uuidv4} from "uuid";
 import {RenderIf} from "./RenderIf";
 import {Button, Col, Container, Row, Form, OverlayTrigger, Popover, Tooltip} from "react-bootstrap";
 import 'reactflow/dist/style.css';
-import {hasNodeSpecFlag, interactivityNodeSpecs, propagateGraphGroupTypes, propagateNodeGroupTypes, resolveOutputSocketType, standardTypes, toInteractivityDeclaration} from "../authoring/spec/nodes";
+import {buildNodeByUid, getNodeSpec, hasNodeSpecFlag, interactivityNodeSpecs, propagateGraphGroupTypes, propagateNodeGroupTypes, resolveOutputSocketType, standardTypes, toInteractivityDeclaration} from "../authoring/spec/nodes";
 import { IInteractivityEvent, IInteractivityVariable } from '../BasicBehaveEngine/types/InteractivityGraph';
 import { AuthoredGraph, AuthoredNode, AuthoredValue, NodeSpecFlag } from '../authoring/spec/AuthoredGraph';
 import { InteractivityGraphContext, initialGraph } from '../InteractivityGraphContext';
@@ -372,7 +372,7 @@ export const AuthoringComponent = () => {
         // flow/sequence and flow/multiGate add their output flow sockets dynamically, so a
         // freshly-added output handle won't exist in flows.output yet even though it is a flow
         // socket; treat those nodes' outputs as flow regardless.
-        const isDynamicFlowSourceNode = hasNodeSpecFlag(interactivityNodeSpecs.find(n => n.op === sourceNode.op), NodeSpecFlag.DynamicFlowOutputs);
+        const isDynamicFlowSourceNode = hasNodeSpecFlag(getNodeSpec(sourceNode.op), NodeSpecFlag.DynamicFlowOutputs);
 
         // if one is flow and one isn't then do not connect
         const sourceIsFlow = sourceNode.flows?.output?.[vals.sourceHandle!] !== undefined || isDynamicFlowSourceNode;
@@ -421,7 +421,7 @@ export const AuthoringComponent = () => {
             // recoverable from the static spec later, which left the socket typeless ("?") once
             // disconnected again
             const existingTarget = targetNode.values?.input?.[vals.targetHandle!];
-            const specTarget = interactivityNodeSpecs.find(n => n.op === targetNode.op)?.values?.input?.[vals.targetHandle!];
+            const specTarget = getNodeSpec(targetNode.op)?.values?.input?.[vals.targetHandle!];
             const targetGroup = existingTarget?.typeGroup ?? specTarget?.typeGroup;
             const targetDescription = existingTarget?.description ?? specTarget?.description;
             const targetType = existingTarget?.type ?? specTarget?.type;
@@ -470,24 +470,32 @@ export const AuthoringComponent = () => {
     // recolor a node's outgoing value edges to match its current output socket types
     // (called by nodes when a type changes, e.g. via the type dropdown or Pointer Type config)
     const recolorEdges = useCallback((nodeId: string) => {
-        setEdges((eds: Edge[]) => eds.map((edge) => {
-            if (edge.source !== nodeId) {
-                return edge;
-            }
+        setEdges((eds: Edge[]) => {
             const sourceNode = graph.nodes.find(n => n.uid === nodeId);
             if (sourceNode === undefined) {
-                return edge;
+                return eds;
             }
-            // flow edges keep the flow color
-            if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) {
-                return edge;
-            }
-            const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
-            if ((edge.style as any)?.stroke === stroke) {
-                return edge;
-            }
-            return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
-        }));
+            // Every node's mount reconcile calls this, so on a large graph it runs once per node
+            // over the full edge list. Keep the array identity when no color actually changed, so
+            // reactflow re-renders its edges only for a real recolor rather than on every mount.
+            let changed = false;
+            const next = eds.map((edge) => {
+                if (edge.source !== nodeId) {
+                    return edge;
+                }
+                // flow edges keep the flow color
+                if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) {
+                    return edge;
+                }
+                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
+                if ((edge.style as any)?.stroke === stroke) {
+                    return edge;
+                }
+                changed = true;
+                return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
+            });
+            return changed ? next : eds;
+        });
     }, [graph]);
 
     // when a dynamic flow output socket (flow/sequence, flow/multiGate) is renamed, retarget any
@@ -534,7 +542,7 @@ export const AuthoringComponent = () => {
                 // type/typeOptions/typeGroup/description the socket itself carried while it was
                 // connected (preserved there by onConnect) rather than leaving it typeless ("?").
                 const existing = targetNode.values?.input?.[edge.targetHandle!];
-                const spec = interactivityNodeSpecs.find(n => n.op === targetNode.op);
+                const spec = getNodeSpec(targetNode.op);
                 const specDefault = spec?.values?.input?.[edge.targetHandle!];
                 const source = specDefault ?? existing;
                 // a socket restricted to bool alone renders as a checkbox, which always shows as
@@ -579,7 +587,7 @@ export const AuthoringComponent = () => {
             data: {events: graph.events, variables: graph.variables, types: standardTypes, uid: uid, op: nodeType, recolorEdges: recolorEdges, renameFlowSocket: renameFlowSocket}
         };
 
-        const spec = interactivityNodeSpecs.find(node => node.op === nodeType)!;
+        const spec = getNodeSpec(nodeType)!;
         let interactivityNode: AuthoredNode = JSON.parse(JSON.stringify(spec));
         interactivityNode.declaration = addDeclaration(toInteractivityDeclaration(spec));
         interactivityNode.uid = uid;
@@ -687,7 +695,7 @@ export const AuthoringComponent = () => {
         if (!fromNode || !newNode) { return []; }
         const candidates: WireSocketCandidate[] = [];
         if (from.handleType === "source") {
-            const isDynFlow = hasNodeSpecFlag(interactivityNodeSpecs.find(n => n.op === fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
+            const isDynFlow = hasNodeSpecFlag(getNodeSpec(fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
             const fromIsFlow = fromNode.flows?.output?.[from.handleId] !== undefined || isDynFlow;
             if (fromIsFlow) {
                 for (const socket of Object.keys(newNode.flows?.input ?? {})) {
@@ -730,7 +738,7 @@ export const AuthoringComponent = () => {
         const fromNode = graph.nodes.find(n => n.uid === from.nodeId);
         if (!fromNode) { return null; }
         if (from.handleType === "source") {
-            const isDynFlow = hasNodeSpecFlag(interactivityNodeSpecs.find(n => n.op === fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
+            const isDynFlow = hasNodeSpecFlag(getNodeSpec(fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
             const fromIsFlow = fromNode.flows?.output?.[from.handleId] !== undefined || isDynFlow;
             if (fromIsFlow) { return { kind: "flow", direction: "input" }; }
             return { kind: "valueInput", fromType: resolveOutputSocketType(fromNode, from.handleId, graph.nodes) };
@@ -796,7 +804,7 @@ export const AuthoringComponent = () => {
             {
                 const reconciled = reconcileNodeSockets({
                     op: newGn.op,
-                    isNoOp: interactivityNodeSpecs.find(s => s.op === newGn.op) === undefined,
+                    isNoOp: getNodeSpec(newGn.op) === undefined,
                     configuration: newGn.configuration ?? {},
                     inputValues: newGn.values?.input ?? {},
                     outputValues: newGn.values?.output ?? {},
@@ -819,7 +827,7 @@ export const AuthoringComponent = () => {
 
         for (const gn of newGraphNodes) {
             if (gn.op) {
-                const spec = interactivityNodeSpecs.find(n => n.op === gn.op);
+                const spec = getNodeSpec(gn.op);
                 if (spec) addDeclaration(toInteractivityDeclaration(spec));
             }
             addNode(gn);
@@ -891,29 +899,46 @@ export const AuthoringComponent = () => {
             const result = getAuthorGraph(graph, { deferTypes: true });
             const loadedNodes: Node[] = result[0];
             const loadedEdges: Edge[] = result[1];
+            // one uid index for the position writeback below; a .find per node made this loop
+            // O(n²) and it runs synchronously, freezing the main thread on a large graph
+            const modelByUid = buildNodeByUid(graph.nodes);
             for (const node of loadedNodes) {
                 node.data.op = node.type;
                 node.data.recolorEdges = recolorEdges;
                 node.data.renameFlowSocket = renameFlowSocket;
-                const isKnownOp = interactivityNodeSpecs.some(spec => spec.op === node.data.op);
-                if (!isKnownOp) {
+                if (getNodeSpec(node.data.op) === undefined) {
                     node.type = "NoOp";
                 }
                 // seed the model with the (possibly auto-laid-out) positions immediately, so an
                 // export right after load carries them instead of waiting for a drag (the old 5s
                 // position timer used to backfill these)
-                const graphNode = graph.nodes.find(graphNode => graphNode.uid === node.id);
+                const graphNode = modelByUid.get(node.id);
                 if (graphNode !== undefined) {
                     graphNode.metadata = {positionX: node.position.x, positionY: node.position.y};
                 }
             }
 
             // "Rendering": mount nodes in frame-budgeted batches so a big graph never blocks the main
-            // thread in one reconcile. fitView (after edges) zooms out, so most batches paint cheaply.
-            // Each AuthoringGraphNode registers its own handles via updateNodeInternals on mount, so
-            // by the time all batches are in the handles exist for the edges below.
+            // thread in one reconcile. Handles are registered by reactflow's own ResizeObserver as
+            // each node element is observed on mount (see the handlesMeasuredRef note in
+            // AuthoringGraphNode), so by the time all batches have settled the handles exist for the
+            // edges below.
+            //
+            // Every node genuinely has to mount once here — that mount is what registers its
+            // handles, and an edge whose endpoint has none is dropped — so this pass can't be culled
+            // away. What it *can* avoid is mounting each node with its full socket/editor UI: the
+            // default viewport sits at zoom 1, which is above LOD_ZOOM_THRESHOLD, so a fresh load
+            // used to build the complete detail DOM for every node (sockets, handles, dropdowns,
+            // tooltips) only to zoom out and discard it a moment later at fitView. Dropping the
+            // viewport below the LOD threshold first makes each of those mounts the flat LOD box,
+            // which still carries a handle per socket id. fitView below sets the real viewport.
+            reactFlowInstance?.setViewport({ x: 0, y: 0, zoom: LOD_ZOOM_THRESHOLD / 2 });
             setLoadingState({ active: true, step: "Rendering", progress: 0.82 });
-            const NODE_BATCH = 250;
+            await nextFrame();
+            if (cancelled) { return; }
+            // Each batch costs a full frame *and* an O(total nodes) reactflow store rebuild, so
+            // small batches paid that rebuild dozens of times for no benefit.
+            const NODE_BATCH = 1000;
             if (loadedNodes.length === 0) {
                 setNodes([]);
             }
@@ -932,9 +957,11 @@ export const AuthoringComponent = () => {
 
             // "Connecting": let React commit the nodes and reactflow synthesize their custom handles
             // before wiring edges. Replaces the old fixed 1000ms setTimeout (a handle-race hack) with
-            // a short rAF settle — the nodes' own updateNodeInternals(uid) on mount does the actual
-            // handle registration; we just wait a couple frames for it to land.
+            // a short rAF settle. Handle registration rides on reactflow's ResizeObserver, whose
+            // callback index.tsx defers by one frame, so wait three: commit, observer delivery,
+            // and a spare so a commit that slips a frame can't leave edges unattachable.
             setLoadingState({ active: true, step: "Connecting", progress: 0.9 });
+            await nextFrame();
             await nextFrame();
             await nextFrame();
             if (cancelled) { return; }
@@ -948,15 +975,14 @@ export const AuthoringComponent = () => {
             await nextFrame();
             if (cancelled) { return; }
             propagateGraphGroupTypes(graph.nodes, true);
-            const nodeByUid = new Map<string, AuthoredNode>();
-            graph.nodes.forEach(n => { if (n.uid !== undefined) { nodeByUid.set(n.uid, n); } });
+            const nodeByUid = modelByUid;
             setEdges(eds => eds.map((edge) => {
                 const sourceNode = nodeByUid.get(edge.source);
                 if (sourceNode === undefined) { return edge; }
                 // flow wires already carry the flow color from getAuthorGraph; only value wires were
                 // painted gray and need resolving
                 if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) { return edge; }
-                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
+                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes, nodeByUid));
                 if ((edge.style as any)?.stroke === stroke) { return edge; }
                 return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
             }));
@@ -1032,24 +1058,33 @@ export const AuthoringComponent = () => {
     // then repeat from each source found, so the whole upstream hierarchy is collected — not
     // just its direct predecessors. Also collects the edges walked along the way, so the wires
     // connecting that hierarchy can be highlighted too.
+    // incoming edges per target, so the walk below visits only a node's own predecessors instead of
+    // rescanning every edge in the graph for each node it reaches (O(ancestors x edges) per click)
+    const edgesByTarget = React.useMemo(() => {
+        const byTarget = new Map<string, Edge[]>();
+        for (const edge of edges) {
+            const existing = byTarget.get(edge.target);
+            if (existing === undefined) { byTarget.set(edge.target, [edge]); } else { existing.push(edge); }
+        }
+        return byTarget;
+    }, [edges]);
+
     const getAncestors = useCallback((nodeId: string): { nodeIds: Set<string>, edgeIds: Set<string> } => {
         const visitedNodes = new Set<string>();
         const visitedEdges = new Set<string>();
         const stack = [nodeId];
         while (stack.length > 0) {
             const current = stack.pop()!;
-            for (const edge of edges) {
-                if (edge.target === current && !visitedNodes.has(edge.source)) {
+            for (const edge of edgesByTarget.get(current) ?? []) {
+                visitedEdges.add(edge.id);
+                if (!visitedNodes.has(edge.source)) {
                     visitedNodes.add(edge.source);
-                    visitedEdges.add(edge.id);
                     stack.push(edge.source);
-                } else if (edge.target === current) {
-                    visitedEdges.add(edge.id);
                 }
             }
         }
         return { nodeIds: visitedNodes, edgeIds: visitedEdges };
-    }, [edges]);
+    }, [edgesByTarget]);
 
     // recompute the highlighted ancestor set whenever selection changes; only meaningful for a
     // single selected node, so multi-select or an empty selection clears the highlight
@@ -1318,7 +1353,7 @@ type PickerConstraint =
 // can always gain an output flow even though the spec lists none.
 const nodeTypeMatchesConstraint = (nodeType: string, constraint: PickerConstraint): boolean => {
     if (!constraint) { return true; }
-    const spec = interactivityNodeSpecs.find(n => n.op === nodeType);
+    const spec = getNodeSpec(nodeType);
     if (!spec) { return false; }
     if (constraint.kind === "flow") {
         if (constraint.direction === "output" && hasNodeSpecFlag(spec, NodeSpecFlag.DynamicFlowOutputs)) { return true; }

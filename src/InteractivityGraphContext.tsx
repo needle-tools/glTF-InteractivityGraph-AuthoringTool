@@ -1,7 +1,7 @@
 import { createContext, useCallback, useMemo, useRef, useState } from 'react';
 import { IInteractivityDeclaration, IInteractivityEvent, IInteractivityGraph, IInteractivityVariable } from './BasicBehaveEngine/types/InteractivityGraph';
 import { AuthoredGraph, AuthoredNode, AuthoredValue, NodeSpecFlag } from './authoring/spec/AuthoredGraph';
-import { createNoOpNode, hasNodeSpecFlag, interactivityNodeSpecs, resolveOutputSocketType, standardTypes } from './authoring/spec/nodes';
+import { buildNodeByUid, createNoOpNode, getNodeSpec, hasNodeSpecFlag, resolveOutputSocketType, standardTypes } from './authoring/spec/nodes';
 import { reconcileNodeSockets } from './authoring/socketReconciler';
 import { buildNodeByUidMap, computeNodeLiveWarnings } from './authoring/validation';
 import { v4 as uuidv4 } from 'uuid';
@@ -65,6 +65,9 @@ interface InteractivityGraphContextType {
     // don't trigger a context re-render — the reactflow canvas owns its own visual state); a graph
     // *load* replaces its identity via setGraph, which is what drives the canvas rebuild.
     graph: AuthoredGraph,
+    // uid -> node index over graph.nodes, kept in sync by addNode/removeNode. Every mounted node
+    // resolves its own model entry through this; a .find per node was O(n²) across a big canvas.
+    nodeByUid: ReadonlyMap<string, AuthoredNode>,
     diagnostics: IGraphDiagnostic[],
     setDiagnosticsForCategory: (category: DiagnosticCategory, diagnostics: IGraphDiagnostic[]) => void,
     clearDiagnostics: () => void,
@@ -72,6 +75,9 @@ interface InteractivityGraphContextType {
     // type-group conflicts), so the DiagnosticsPanel/DiagnosticsCounter reflect problems
     // introduced by editing the graph in the UI, not just ones found at load time
     allDiagnostics: IGraphDiagnostic[],
+    // load-time 'node'-category diagnostics indexed by node uid. Each mounted node needs only its
+    // own; filtering the whole list per node per render was O(nodes x diagnostics) on a big graph.
+    diagnosticsByNodeUid: ReadonlyMap<string, IGraphDiagnostic[]>,
     // Live per-node socket warnings keyed by node uid, computed whole-graph from the model by
     // runLiveValidation (computeNodeLiveWarnings in validation.ts) — never from what happens to be
     // mounted on the canvas, so viewport culling/LOD/mount order cannot change the counts. Nodes
@@ -82,9 +88,14 @@ interface InteractivityGraphContextType {
     // The canvas rebuild awaits this in its final "Checking" phase; interactive edits instead go
     // through the debounced trigger wired into markGraphDirty.
     runLiveValidation: () => Promise<boolean>,
-    // Progress of the current chunked load (null when idle). Drives the LoadingProgressBar.
-    loadingState: LoadingState | null,
+    // Progress of the current chunked load, published through an external store rather than React
+    // state: it ticks once per frame-budget yield, and as part of the context value each tick
+    // re-rendered every consumer — the canvas and all its mounted nodes included. Only the
+    // LoadingProgressBar subscribes (via useSyncExternalStore), so ticks are now free for everyone
+    // else. Both accessors are stable, so they never invalidate the context value.
     setLoadingState: (state: LoadingState | null) => void,
+    subscribeLoadingState: (listener: () => void) => () => void,
+    getLoadingState: () => LoadingState | null,
     gltfObjectModel: GltfObjectModel | null,
     setGltfObjectModel: (model: GltfObjectModel | null) => void,
     supportedPointerTemplates: ReadonlySet<string> | null,
@@ -128,14 +139,17 @@ export const initialGraph: AuthoredGraph = {
 
 const initialContext: InteractivityGraphContextType = {
     graph: initialGraph,
+    nodeByUid: new Map(),
     diagnostics: [],
     setDiagnosticsForCategory: () => {return null},
     clearDiagnostics: () => {return null},
     allDiagnostics: [],
+    diagnosticsByNodeUid: new Map(),
     nodeWarnings: {},
     runLiveValidation: async () => false,
-    loadingState: null,
     setLoadingState: () => {return null},
+    subscribeLoadingState: () => () => {return undefined},
+    getLoadingState: () => null,
     gltfObjectModel: null,
     setGltfObjectModel: () => {return null},
     supportedPointerTemplates: null,
@@ -207,14 +221,20 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // nodes made the counts depend on the viewport (culling unmounted a node -> warnings vanished).
     const [nodeWarnings, setNodeWarnings] = useState<Record<string, IGraphDiagnostic[]>>({});
 
-    const [loadingState, setLoadingStateState] = useState<LoadingState | null>(null);
-    // mirrored into a ref so the stable scheduleLiveValidation callback can see "a load is in
-    // flight" without being recreated per loading tick
+    // See setLoadingState on the context type: the current phase/progress lives here, outside React
+    // state, and is pushed to subscribers. scheduleLiveValidation reads the ref directly to tell
+    // whether a load is in flight.
     const loadingStateRef = useRef<LoadingState | null>(null);
+    const loadingListenersRef = useRef(new Set<() => void>());
     const setLoadingState = useCallback((state: LoadingState | null) => {
         loadingStateRef.current = state;
-        setLoadingStateState(state);
+        loadingListenersRef.current.forEach((listener) => listener());
     }, []);
+    const subscribeLoadingState = useCallback((listener: () => void) => {
+        loadingListenersRef.current.add(listener);
+        return () => { loadingListenersRef.current.delete(listener); };
+    }, []);
+    const getLoadingState = useCallback(() => loadingStateRef.current, []);
 
     // identity mirror of `graph` so the stable validation callbacks always validate the current
     // model (interactive edits mutate the object in place; only a load swaps identity)
@@ -279,6 +299,20 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         [diagnostics, nodeWarnings]
     );
 
+    const diagnosticsByNodeUid = useMemo(() => {
+        const byUid = new Map<string, IGraphDiagnostic[]>();
+        for (const diagnostic of diagnostics) {
+            if (diagnostic.category !== 'node' || diagnostic.nodeUid === undefined) { continue; }
+            const existing = byUid.get(diagnostic.nodeUid);
+            if (existing === undefined) { byUid.set(diagnostic.nodeUid, [diagnostic]); } else { existing.push(diagnostic); }
+        }
+        return byUid;
+    }, [diagnostics]);
+
+    // rebuilt only when a load swaps the graph's identity; interactive add/remove keep it current
+    // in place (they mutate graph.nodes without a setGraph, so the memo never re-runs for them)
+    const nodeByUid = useMemo(() => buildNodeByUid(graph.nodes), [graph]);
+
     const [gltfObjectModel, setGltfObjectModel] = useState<GltfObjectModel | null>(null);
     const [supportedPointerTemplates, setSupportedPointerTemplates] = useState<ReadonlySet<string> | null>(null);
 
@@ -308,6 +342,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 ? Number(interactivityNode.metadata?.positionY)
                 : 0,
             },
+            // Deliberately no width/height here. Reactflow treats a node it has not measured yet as
+            // visible, which is what makes every node of a freshly loaded graph mount once even
+            // with viewport culling on — and that first mount is the only thing that registers the
+            // node's handles. Pre-seeding an estimated box lets culling skip nodes before they ever
+            // mount, and an edge whose endpoint has no registered handleBounds is silently dropped,
+            // so large graphs came up missing their connections. The cost of that full first mount
+            // is handled by mounting at a zoomed-out (LOD) viewport instead — see AuthoringComponent.
             data: {} as { [key: string]: any },
           };
           nodes.push(node);
@@ -338,7 +379,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 let edgeColor = UNKNOWN_COLOR;
                 if (!deferTypes) {
                   const sourceNode = nodeByUid.get(String(value.node));
-                  edgeColor = getColorForTypeIndex(resolveOutputSocketType(sourceNode, value.socket!, graph.nodes));
+                  edgeColor = getColorForTypeIndex(resolveOutputSocketType(sourceNode, value.socket!, graph.nodes, nodeByUid));
                 }
                 edges.push({
                   id: uuidv4(),
@@ -402,20 +443,24 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
       
           const visited: Record<string, boolean> = {};
           const disjointGraphs: string[][] = [];
+          // one buffer for every component, walked with a head index — Array.shift() on a queue
+          // holding thousands of nodes is O(n) per dequeue, i.e. O(n²) for the whole traversal
           const queue: string[] = [];
-      
+
           // Traverse graph and assign disjointGraphs
           nodes.forEach((node) => {
             const { id } = node;
             if (!visited[id]) {
               visited[id] = true;
               const disjointGraph: string[] = [];
+              queue.length = 0;
               queue.push(id);
-      
-              while (queue.length > 0) {
-                const currentNode = queue.shift() as string;
+              let head = 0;
+
+              while (head < queue.length) {
+                const currentNode = queue[head++];
                 disjointGraph.push(currentNode);
-      
+
                 if (adjacencyList[currentNode]) {
                   adjacencyList[currentNode].forEach((neighbor) => {
                     if (!visited[neighbor]) {
@@ -425,7 +470,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                   });
                 }
               }
-      
+
               disjointGraphs.push(disjointGraph);
             }
           });
@@ -455,7 +500,11 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
               nextLayer = [...new Set(nextLayer)];
 
               let xOffset = 0;
-              while (nextLayer.length > 0) {
+              // the walk has no visited set (a node reachable at several depths is deliberately
+              // re-placed at the deepest one), so bound it by the component size: a graph with a
+              // cycle would otherwise spin here forever instead of just laying out oddly
+              let layerBudget = disjointGraph.length;
+              while (nextLayer.length > 0 && layerBudget-- > 0) {
                 lastLayer = nextLayer;
                 for (let i = 0; i < lastLayer.length; i++) {
                   const node = nodeById.get(lastLayer[i])!;
@@ -609,7 +658,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
             }
             const nodeOp = declaration.op;
             let isNoOp = false;
-            let templateNode: AuthoredNode | undefined = interactivityNodeSpecs.find((schema: AuthoredNode) => schema.op === nodeOp);
+            let templateNode: AuthoredNode | undefined = getNodeSpec(nodeOp);
             if (templateNode === undefined) {
                 templateNode = createNoOpNode(declaration);
                 isNoOp = true;
@@ -713,7 +762,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         //   after that one propagation pass — type resolution is mount-order-independent.
         setLoadingState({ active: true, step: "Building nodes", progress: 0.45 });
         await runChunked(loadedNodes, (loadedNode) => {
-            const isNoOp = interactivityNodeSpecs.find((schema: AuthoredNode) => schema.op === loadedNode.op) === undefined;
+            const isNoOp = getNodeSpec(loadedNode.op) === undefined;
             const reconciled = reconcileNodeSockets({
                 op: loadedNode.op,
                 isNoOp,
@@ -828,10 +877,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     const topologicalSort = (nodes: any[]) => {
         const sortedList = [];
     
-        // create degree map
+        // create degree map. nodeById indexes the same list so the two lookups below aren't linear
+        // scans — they run once per value link and once per dequeued edge, i.e. O(n²) without it.
         const nodeIdToInDegree = new Map();
+        const nodeById = new Map<any, any>();
         for (const node of nodes) {
             nodeIdToInDegree.set(node.id, 0);
+            nodeById.set(node.id, node);
             node.fakeLinks = [];
         }
     
@@ -852,7 +904,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 // create fakeLinks so we know to decrement the link in degree when we remove it
                 for (const valueBackRefNodeId of valueBackRefNodeIds) {
                     nodeIdToInDegree.set(node.id, nodeIdToInDegree.get(node.id) + 1);
-                    const referencedNode = nodes.find(n => n.id === valueBackRefNodeId);
+                    const referencedNode = nodeById.get(valueBackRefNodeId);
                     referencedNode.fakeLinks.push(node.id);
                 }
             }
@@ -880,7 +932,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
             for (const outId of outIds) {
                 nodeIdToInDegree.set(outId, nodeIdToInDegree.get(outId) - 1);
                 if (nodeIdToInDegree.get(outId) === 0) {
-                    const nodeToPush: Node = nodes.find(node => node.id === outId)!;
+                    const nodeToPush: Node = nodeById.get(outId)!;
                     queue.push(nodeToPush);
                 }
             }
@@ -959,11 +1011,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     const addNode = (node: AuthoredNode) => {
         graph.nodes.push(node);
+        if (node.uid !== undefined) { nodeByUid.set(node.uid, node); }
         markGraphDirty();
     };
 
     const removeNode = (uid: string) => {
         graph.nodes = graph.nodes.filter(node => node.uid !== uid);
+        nodeByUid.delete(uid);
         // load-time 'node' diagnostics (e.g. "Invalid declaration reference") are keyed by nodeUid
         // and only ever recomputed by a fresh load - unlike nodeWarnings (the live validation pass),
         // they aren't re-derived from the current graph, so a deleted node's entry would otherwise
@@ -974,14 +1028,17 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     const context: InteractivityGraphContextType = {
         graph: graph,
+        nodeByUid: nodeByUid,
         diagnostics: diagnostics,
         setDiagnosticsForCategory: setDiagnosticsForCategory,
         clearDiagnostics: clearDiagnostics,
         allDiagnostics: allDiagnostics,
+        diagnosticsByNodeUid: diagnosticsByNodeUid,
         nodeWarnings: nodeWarnings,
         runLiveValidation: runLiveValidation,
-        loadingState: loadingState,
         setLoadingState: setLoadingState,
+        subscribeLoadingState: subscribeLoadingState,
+        getLoadingState: getLoadingState,
         gltfObjectModel: gltfObjectModel,
         setGltfObjectModel: setGltfObjectModel,
         supportedPointerTemplates: supportedPointerTemplates,

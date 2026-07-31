@@ -1,6 +1,6 @@
 import { IInteractivityFlow, IInteractivityConfigurationValue, IInteractivityEvent, IInteractivityVariable, InteractivityValueType } from "../BasicBehaveEngine/types/InteractivityGraph";
 import { AuthoredNode, AuthoredValue, NodeSpecFlag } from "./spec/AuthoredGraph";
-import { anyType, hasNodeSpecFlag, interactivityNodeSpecs, standardTypes } from "./spec/nodes";
+import { anyType, getNodeSpec, hasNodeSpecFlag, standardTypes } from "./spec/nodes";
 import { buildPointerSlotValue, getMessageTemplateSocketIds, getPathTemplateSockets, getRefSlotPointerPrefix } from "./pathTemplate";
 
 const getStandardTypeIndex = (signature: InteractivityValueType): number => {
@@ -359,7 +359,7 @@ export function reconcileNodeSockets(params: {
     variables: IInteractivityVariable[];
 }): ReconciledNodeSockets {
     const { op, isNoOp, configuration, inputValues, outputValues, inputFlows, outputFlows, events, variables } = params;
-    const nodeSpec: AuthoredNode | undefined = interactivityNodeSpecs.find((n) => n.op === op);
+    const nodeSpec: AuthoredNode | undefined = getNodeSpec(op);
 
     // ops with a fixed (non-configuration-driven) socket set fully rely on the spec/config-key
     // lists below to decide what still exists; ops carrying this flag instead own their current
