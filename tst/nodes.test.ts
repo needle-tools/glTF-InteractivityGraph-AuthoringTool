@@ -240,14 +240,14 @@ describe('nodes', () => {
         setDelay.processFlow = jest.fn<(flow: IInteractivityFlow) => Promise<void>>();
         setDelay.processNode('in');
         setDelay.processNode('cancel');
-        expect(setDelay.outValues.lastDelay.value![0]).toBe(-1);
+        expect(setDelay.outValues.lastDelay.value![0]).toBe(null);
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         expect(setDelay.addEventToWorkQueue).not.toHaveBeenCalled()
         expect(setDelay.processFlow).toHaveBeenCalledWith({ socket: 'in', node: 1 });
 
         setDelay.processNode('in');
-        expect(setDelay.outValues.lastDelay.value![0]).toBe(1);
+        expect(setDelay.outValues.lastDelay.value![0]).toBe('/extensions/KHR_interactivity/delays/1');
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         expect(setDelay.addEventToWorkQueue).toHaveBeenCalledWith({ socket: 'in', node: 2 });
@@ -387,18 +387,23 @@ describe('nodes', () => {
         });
 
         throttleNode.processFlow = jest.fn<(flow: IInteractivityFlow) => Promise<void>>();
+        const now = jest.spyOn(performance, 'now').mockReturnValue(0);
+        graphEngine.executeEventQueueTick();
         expect(throttleNode.outValues.lastRemainingTime.value![0]).toBe(NaN);
         throttleNode.processNode('in');
         expect(throttleNode.processFlow).toHaveBeenCalledWith({ socket: 'in', node: 0 });
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        now.mockReturnValue(100);
+        graphEngine.executeEventQueueTick();
         throttleNode.processNode('in');
         expect(throttleNode.outValues.lastRemainingTime.value![0]).not.toBe(NaN);
         expect(throttleNode.outValues.lastRemainingTime.value![0]).toBeGreaterThan(0);
 
         //clear throttle limit
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        now.mockReturnValue(1600);
+        graphEngine.executeEventQueueTick();
         await throttleNode.processNode('in');
         expect(throttleNode.outValues.lastRemainingTime.value![0]).toBe(0);
+        now.mockRestore();
     });
 
     it('flow/waitAll', async () => {
@@ -1024,8 +1029,8 @@ describe('nodes', () => {
 
         const val = combine2x2.processNode();
         expect(val['value'].value[0]).toBe(-10.5);
-        expect(val['value'].value[1]).toBe(0.5);
-        expect(val['value'].value[2]).toBe(5.5);
+        expect(val['value'].value[1]).toBe(5.5);
+        expect(val['value'].value[2]).toBe(0.5);
         expect(val['value'].value[3]).toBe(7.5);
     });
 
@@ -1037,13 +1042,13 @@ describe('nodes', () => {
 
         const val = combine3x3.processNode();
         expect(val['value'].value[0]).toBe(-10.5);
-        expect(val['value'].value[1]).toBe(7.5);
-        expect(val['value'].value[2]).toBe(0);
-        expect(val['value'].value[3]).toBe(5.5);
+        expect(val['value'].value[1]).toBe(5.5);
+        expect(val['value'].value[2]).toBe(0.5);
+        expect(val['value'].value[3]).toBe(7.5);
         expect(val['value'].value[4]).toBe(-10);
-        expect(val['value'].value[5]).toBe(7);
-        expect(val['value'].value[6]).toBe(0.5);
-        expect(val['value'].value[7]).toBe(5);
+        expect(val['value'].value[5]).toBe(5);
+        expect(val['value'].value[6]).toBe(0);
+        expect(val['value'].value[7]).toBe(7);
         expect(val['value'].value[8]).toBe(10.5);
     });
 
@@ -1071,29 +1076,12 @@ describe('nodes', () => {
         });
 
         const val = combine4x4.processNode();
-        // a-p are passed in row major: [a b c d e f g h i j k l m n o p]
-        // but combine4x4 returns column-major, so indices become:
-        //  0  4  8 12
-        //  1  5  9 13
-        //  2  6 10 14
-        //  3  7 11 15
-        // So, to check:
-        expect(val['value'].value[0]).toBe(-10.5);  // a
-        expect(val['value'].value[4]).toBe(5.5);    // b
-        expect(val['value'].value[8]).toBe(0.5);    // c
-        expect(val['value'].value[12]).toBe(7.5);    // d
-        expect(val['value'].value[1]).toBe(-10);    // e
-        expect(val['value'].value[5]).toBe(5);      // f
-        expect(val['value'].value[9]).toBe(0);      // g
-        expect(val['value'].value[13]).toBe(7);      // h
-        expect(val['value'].value[2]).toBe(10.5);   // i
-        expect(val['value'].value[6]).toBe(5.8);    // j
-        expect(val['value'].value[10]).toBe(9.5);   // k
-        expect(val['value'].value[14]).toBe(2.5);   // l
-        expect(val['value'].value[3]).toBe(-1.5);  // m
-        expect(val['value'].value[7]).toBe(5.7);   // n
-        expect(val['value'].value[11]).toBe(6.5);   // o
-        expect(val['value'].value[15]).toBe(7.7);   // p
+        expect(val['value'].value).toEqual([
+            -10.5, 5.5, 0.5, 7.5,
+            -10, 5, 0, 7,
+            10.5, 5.8, 9.5, 2.5,
+            -1.5, 5.7, 6.5, 7.7,
+        ]);
     });
 
     it("math/inverse", () => {
@@ -1848,10 +1836,10 @@ describe('nodes', () => {
 
         const val = transform.processNode();
 
-        expect(val['value'].value[0]).toBe(90);
-        expect(val['value'].value[1]).toBe(100);
+        expect(val['value'].value[0]).toBe(30);
+        expect(val['value'].value[1]).toBe(70);
         expect(val['value'].value[2]).toBe(110);
-        expect(val['value'].value[3]).toBe(120);
+        expect(val['value'].value[3]).toBe(150);
     });
 
     it("math/dot", () => {

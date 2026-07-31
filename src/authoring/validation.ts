@@ -74,6 +74,7 @@ export const resolveInputSocketType = (
 // type change.
 const getOwnSocketType = (
     node: AuthoredNode,
+    spec: AuthoredNode | undefined,
     socket: string,
     value: AuthoredValue,
     graphNodes: AuthoredNode[],
@@ -86,6 +87,13 @@ const getOwnSocketType = (
         // instead of reading the raw stored `.type`, which can be a stale spec-default placeholder
         // while the wire is correctly resolved (see resolveOutputSocketType).
         return resolveOutputSocketType(sourceNode, link.socket!, graphNodes);
+    }
+    const raw = value.value;
+    const values = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+    const hasStaticValue = values.some((entry) => entry !== undefined && entry !== "" && !(typeof entry === "number" && Number.isNaN(entry)));
+    const specType = spec?.values?.input?.[socket]?.type;
+    if (!hasStaticValue && value.type === specType) {
+        return undefined;
     }
     return value?.type;
 };
@@ -130,7 +138,7 @@ const getGroupTypeConflict = (
 ): string | undefined => {
     const group = value.typeGroup ?? spec?.values?.input?.[socket]?.typeGroup;
     if (group === undefined) { return undefined; }
-    const ownType = getOwnSocketType(node, socket, value, graphNodes, byUid);
+    const ownType = getOwnSocketType(node, spec, socket, value, graphNodes, byUid);
     if (ownType === undefined) { return undefined; }
     const inputValues = node.values?.input ?? {};
     const { inputs } = getTypeGroupMembers(spec, group);
@@ -139,7 +147,7 @@ const getGroupTypeConflict = (
         if (name === socket) { continue; }
         const siblingValue = inputValues[name];
         if (siblingValue === undefined) { continue; }
-        const siblingType = getOwnSocketType(node, name, siblingValue, graphNodes, byUid);
+        const siblingType = getOwnSocketType(node, spec, name, siblingValue, graphNodes, byUid);
         if (siblingType !== undefined && siblingType !== ownType) {
             conflicting.push(`${name}: ${getTypeLabel(siblingType)}`);
         }
