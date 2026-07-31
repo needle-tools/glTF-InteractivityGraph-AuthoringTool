@@ -594,6 +594,48 @@ export class BabylonDecorator extends ADecorator {
             anisotropy.angle = value;
         }, "float", false);
 
+        // ANISOTROPY TEXTURE TRANSFORM
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_anisotropy/anisotropyTexture/extensions/KHR_texture_transform/offset`, (path) => {
+            const parts: string[] = path.split("/");
+            const anisotropyTexture = this.world.materials[Number(parts[2])].anisotropy.texture;
+            if (anisotropyTexture == null) {
+                return [NaN, NaN];
+            }
+            return [anisotropyTexture.uOffset, anisotropyTexture.vOffset];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            const anisotropyTexture = this.world.materials[Number(parts[2])].anisotropy.texture;
+            if (anisotropyTexture != null) {
+                anisotropyTexture.uOffset = value[0];
+                anisotropyTexture.vOffset = value[1];
+            }
+        }, "float2", false);
+
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_anisotropy/anisotropyTexture/extensions/KHR_texture_transform/scale`, (path) => {
+            const parts: string[] = path.split("/");
+            const anisotropyTexture = this.world.materials[Number(parts[2])].anisotropy.texture;
+            if (anisotropyTexture == null) {
+                return [NaN, NaN];
+            }
+            return [anisotropyTexture.uScale, anisotropyTexture.vScale];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            const anisotropyTexture = this.world.materials[Number(parts[2])].anisotropy.texture;
+            if (anisotropyTexture != null) {
+                anisotropyTexture.uScale = value[0];
+                anisotropyTexture.vScale = value[1];
+            }
+        }, "float2", false);
+
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_anisotropy/anisotropyTexture/extensions/KHR_texture_transform/rotation`, (path) => {
+            const parts: string[] = path.split("/");
+            const anisotropyTexture = this.world.materials[Number(parts[2])].anisotropy.texture;
+            return BabylonDecorator.getTextureRotation(anisotropyTexture);
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            const anisotropyTexture = this.world.materials[Number(parts[2])].anisotropy.texture;
+            BabylonDecorator.setTextureRotation(anisotropyTexture, value);
+        }, "float", false);
 
         // BASE COLOR TEXTURE TRANSFORM
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/pbrMetallicRoughness/baseColorTexture/extensions/KHR_texture_transform/offset`, (path) => {
