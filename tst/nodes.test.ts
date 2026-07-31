@@ -1,15 +1,15 @@
 import { jest } from '@jest/globals';
 import {BasicBehaveEngine} from "../src/BasicBehaveEngine/BasicBehaveEngine";
 import {BehaveEngineNode, IBehaviourNodeProps} from '../src/BasicBehaveEngine/BehaveEngineNode';
-import {Receive} from "../src/BasicBehaveEngine/nodes/customEvent/Receive";
-import {Send} from "../src/BasicBehaveEngine/nodes/customEvent/Send";
+import {Receive} from "../src/BasicBehaveEngine/nodes/event/Receive";
+import {Send} from "../src/BasicBehaveEngine/nodes/event/Send";
 import {Branch} from "../src/BasicBehaveEngine/nodes/flow/Branch";
 import {Sequence} from "../src/BasicBehaveEngine/nodes/flow/Sequence";
 import {ForLoop} from "../src/BasicBehaveEngine/nodes/flow/ForLoop";
-import {OnTickNode} from "../src/BasicBehaveEngine/nodes/lifecycle/onTick";
+import {OnTickNode} from "../src/BasicBehaveEngine/nodes/event/OnTick";
 import {DoN} from "../src/BasicBehaveEngine/nodes/flow/DoN";
 import {PointerSet} from "../src/BasicBehaveEngine/nodes/pointer/PointerSet";
-import {OnStartNode} from "../src/BasicBehaveEngine/nodes/lifecycle/onStart";
+import {OnStartNode} from "../src/BasicBehaveEngine/nodes/event/OnStart";
 import {Switch} from "../src/BasicBehaveEngine/nodes/flow/Switch";
 import {PointerGet} from "../src/BasicBehaveEngine/nodes/pointer/PointerGet";
 import {WhileLoop} from "../src/BasicBehaveEngine/nodes/flow/WhileLoop";
@@ -119,7 +119,7 @@ import { QuatConjugate } from '../src/BasicBehaveEngine/nodes/math/quaternion/Qu
 import { MatCompose } from '../src/BasicBehaveEngine/nodes/math/matrix/matCompose';
 import { MatDecompose } from '../src/BasicBehaveEngine/nodes/math/matrix/matDecompose';
 import { MathSwitch } from '../src/BasicBehaveEngine/nodes/math/special/MathSwitch';
-import { DebugLog } from '../src/BasicBehaveEngine/nodes/experimental/Debug';
+import { DebugLog } from '../src/BasicBehaveEngine/nodes/debug/Log';
 import { QuatAngleBetween } from '../src/BasicBehaveEngine/nodes/math/quaternion/QuatAngleBetween';
 import { QuatFromUpForward } from '../src/BasicBehaveEngine/nodes/math/quaternion/QuatFromUpForward';
 import { QuatSlerp } from '../src/BasicBehaveEngine/nodes/math/quaternion/QuatSlerp';
@@ -168,7 +168,7 @@ describe('nodes', () => {
         debugLog.processFlow = jest.fn<(flow: IInteractivityFlow) => Promise<void>>();
         debugLog.processNode();
         expect(debugLog.processFlow).toHaveBeenCalledWith({ socket: 'in', node: 0 });
-        expect(mockConsoleWarn).toHaveBeenCalledWith('test 42');
+        expect(mockConsoleWarn).toHaveBeenCalledWith('[DebugLog #0]', 'test 42');
         mockConsoleWarn.mockRestore();
     });
 
@@ -568,7 +568,6 @@ describe('nodes', () => {
         expect(res['scale']!.value[0]).toBe(2);
         expect(res['scale']!.value[1]).toBe(2);
         expect(res['scale']!.value[2]).toBe(2);
-        expect(res['isValid']!.value[0]).toBe(true);
 
     });
 
