@@ -12,7 +12,7 @@ export const categoryLabel: Record<IGraphDiagnostic["category"], string> = {
 };
 
 export const DiagnosticsPanel: React.FC = () => {
-    const { allDiagnostics: diagnostics, clearDiagnostics } = useContext(InteractivityGraphContext);
+    const { allDiagnostics: diagnostics } = useContext(InteractivityGraphContext);
     const [collapsed, setCollapsed] = useState(false);
 
     if (!diagnostics || diagnostics.length === 0) {
@@ -35,19 +35,13 @@ export const DiagnosticsPanel: React.FC = () => {
                             <Badge bg="warning" text="dark" style={{ marginLeft: 8 }}>{warningCount} warning{warningCount > 1 ? "s" : ""}</Badge>
                         )}
                     </Alert.Heading>
-                    <div>
-                        <Button
-                            variant="outline-secondary"
-                            size="sm"
-                            onClick={() => setCollapsed(prev => !prev)}
-                            style={{ marginRight: 8 }}
-                        >
-                            {collapsed ? "Show details" : "Hide details"}
-                        </Button>
-                        <Button variant="outline-secondary" size="sm" onClick={clearDiagnostics}>
-                            Dismiss
-                        </Button>
-                    </div>
+                    <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={() => setCollapsed(prev => !prev)}
+                    >
+                        {collapsed ? "Show details" : "Hide details"}
+                    </Button>
                 </div>
 
                 {!collapsed && (
