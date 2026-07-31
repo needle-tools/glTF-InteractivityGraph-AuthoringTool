@@ -454,8 +454,11 @@ export class BasicBehaveEngine implements IBehaveEngine {
             }
         }
 
-        this.alertOnHoverOut(nodeIndex, controllerIndex, lastHoverNodeIndex, firstCommonHoverNodeIndex);
-        this.alertOnHoverIn(nodeIndex, controllerIndex, nodeIndex,  firstCommonHoverNodeIndex);
+        const lastHoverNodeRef = lastHoverNodeIndex !== undefined ? `/nodes/${lastHoverNodeIndex}` : undefined;
+        const newHoverNodeRef = nodeIndex !== undefined ? `/nodes/${nodeIndex}` : undefined;
+
+        this.alertOnHoverOut(lastHoverNodeRef, controllerIndex, lastHoverNodeIndex, firstCommonHoverNodeIndex);
+        this.alertOnHoverIn(newHoverNodeRef, controllerIndex, nodeIndex,  firstCommonHoverNodeIndex);
         
         this.lastHoveredNodeIndices.set(controllerIndex, nodeIndex);
     }
