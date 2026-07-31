@@ -542,6 +542,15 @@ export class BabylonDecorator extends ADecorator {
             (this.world.materials[Number(parts[2])] as PBRMaterial).subSurface.tintColor = new Color3(value[0], value[1], value[2]);
         }, "float3", false);
 
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_volume/attenuationDistance`, (path) => {
+            const parts: string[] = path.split("/");
+            const tintColorAtDistance = this.world.materials[Number(parts[2])].subSurface.tintColorAtDistance;
+            return tintColorAtDistance === undefined ? [NaN] : [tintColorAtDistance];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            this.world.materials[Number(parts[2])].subSurface.tintColorAtDistance = value;
+        }, "float", false);
+
         // THICKNESS TEXTURE TRANSFORM
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_volume/thicknessTexture/extensions/KHR_texture_transform/offset`, (path) => {
             const parts: string[] = path.split("/");
@@ -583,6 +592,15 @@ export class BabylonDecorator extends ADecorator {
             const parts: string[] = path.split("/");
             const thicknessTexture = this.world.materials[Number(parts[2])].subSurface.thicknessTexture;
             BabylonDecorator.setTextureRotation(thicknessTexture, value);
+        }, "float", false);
+
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_dispersion/dispersion`, (path) => {
+            const parts: string[] = path.split("/");
+            const dispersion = this.world.materials[Number(parts[2])].subSurface.dispersion;
+            return dispersion === undefined ? [NaN] : [dispersion];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            this.world.materials[Number(parts[2])].subSurface.dispersion = value;
         }, "float", false);
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_specular/specularFactor`, (path) => {
@@ -914,6 +932,33 @@ export class BabylonDecorator extends ADecorator {
             const iridescence = (this.world.materials[Number(parts[2])] as PBRMaterial).iridescence;
             iridescence.isEnabled = true;
             iridescence.intensity = value;
+        }, "float", false);
+
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_iridescence/iridescenceIor`, (path) => {
+            const parts: string[] = path.split("/");
+            const ior = this.world.materials[Number(parts[2])].iridescence.indexOfRefraction;
+            return ior === undefined ? [NaN] : [ior];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            this.world.materials[Number(parts[2])].iridescence.indexOfRefraction = value;
+        }, "float", false);
+
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_iridescence/iridescenceThicknessMinimum`, (path) => {
+            const parts: string[] = path.split("/");
+            const min = this.world.materials[Number(parts[2])].iridescence.minimumThickness;
+            return min === undefined ? [NaN] : [min];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            this.world.materials[Number(parts[2])].iridescence.minimumThickness = value;
+        }, "float", false);
+
+        this.registerJsonPointer(`/materials/${maxGlTFMaterials}/extensions/KHR_materials_iridescence/iridescenceThicknessMaximum`, (path) => {
+            const parts: string[] = path.split("/");
+            const max = this.world.materials[Number(parts[2])].iridescence.maximumThickness;
+            return max === undefined ? [NaN] : [max];
+        }, (path, value) => {
+            const parts: string[] = path.split("/");
+            this.world.materials[Number(parts[2])].iridescence.maximumThickness = value;
         }, "float", false);
 
         // IRIDESCENCE TEXTURE TRANSFORM
