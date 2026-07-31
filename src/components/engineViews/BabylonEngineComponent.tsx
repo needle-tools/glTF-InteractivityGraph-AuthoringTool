@@ -25,7 +25,7 @@ import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring
 import { computeExtensionDiagnostics } from "../../diagnostics";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
-import { BabylonLoadedModel, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "./babylonLoadedModel";
+import { attachSkinLoadedMetadata, BabylonLoadedModel, buildBabylonDecoratorWorld, buildBabylonLoadedModel } from "./babylonLoadedModel";
 import { downloadInteractivityGlb } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 
@@ -202,6 +202,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
         SceneLoader.OnPluginActivatedObservable.add( (loader) => {
             if (loader.name === "gltf") {
                 ( loader as GLTFFileLoader ).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
+                attachSkinLoadedMetadata(loader as GLTFFileLoader);
             }
         });
         const container = await SceneLoader.LoadAssetContainerAsync("", url, sceneRef.current, undefined, ".glb");
@@ -294,6 +295,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
             SceneLoader.OnPluginActivatedObservable.add((loader) => {
                 if (loader.name === "gltf") {
                     (loader as GLTFFileLoader).animationStartMode = GLTFLoaderAnimationStartMode.NONE;
+                    attachSkinLoadedMetadata(loader as GLTFFileLoader);
                 }
             });
             

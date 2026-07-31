@@ -11,13 +11,14 @@ import {
     getSampleAssetsRoot,
     readGlbJson,
     runGraphAndWait,
+    splitAssetSubTests,
     TestEventBus,
 } from "./sampleAssetHarness";
 
 jest.setTimeout(30_000);
 
 const overviewCase = loadOverviewCase();
-const subTests = getAssetSubTests(overviewCase.metadata);
+const { automatic: subTests, manual: manualSubTests } = splitAssetSubTests(getAssetSubTests(overviewCase.metadata));
 const describeIfEnabled = shouldRunOverviewSuite() ? describe : describe.skip;
 
 describeIfEnabled("KHR_interactivity Overview asset - core engine", () => {
@@ -42,13 +43,19 @@ describeIfEnabled("KHR_interactivity Overview asset - core engine", () => {
         }
     });
 
-    it.each(subTests)("$displayName", ({ subTest }) => {
-        if (runError) {
-            throw new Error(`Overview did not load or execute, so all ${subTests.length} subtest(s) fail:\n${formatError(runError)}`);
-        }
+    if (subTests.length > 0) {
+        it.each(subTests)("$displayName", ({ subTest }) => {
+            if (runError) {
+                throw new Error(`Overview did not load or execute, so all ${subTests.length} subtest(s) fail:\n${formatError(runError)}`);
+            }
 
-        assertAssetSubTest("Overview", variables, subTest);
-    });
+            assertAssetSubTest("Overview", variables, subTest);
+        });
+    }
+
+    if (manualSubTests.length > 0) {
+        it.skip.each(manualSubTests)("$displayName", () => {});
+    }
 });
 
 function shouldRunOverviewSuite(): boolean {

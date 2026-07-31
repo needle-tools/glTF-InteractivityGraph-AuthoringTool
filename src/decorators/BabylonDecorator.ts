@@ -129,9 +129,9 @@ export class BabylonDecorator extends ADecorator {
         return texture == null ? [NaN] : [-1 * texture.wAng];
     }
 
-    private static setTextureRotation(texture: {wAng: number} | null | undefined, value: number[]): void {
+    private static setTextureRotation(texture: {wAng: number} | null | undefined, value: number): void {
         if (texture != null) {
-            texture.wAng = -1 * value[0];
+            texture.wAng = -1 * value;
         }
     }
 
@@ -233,15 +233,25 @@ export class BabylonDecorator extends ADecorator {
                 return aIndex - bIndex;
             });
 
-        const skinPointerRegex = /^\/skins\/\d+$/;
+        // Babylon's glTF loader does not tag Skeleton objects with `_internalMetadata.gltf.pointers`
+        // (AddPointerMetadata is only called for transform nodes/meshes/cameras/materials/textures).
+        // Instead it names every skeleton it creates from a glTF skin `skeleton{skinIndex}` (see
+        // GLTFLoader._loadSkinAsync), so the glTF skin index is recovered from the Babylon skeleton id.
+        const skeletonIdRegex = /^skeleton(\d+)$/;
+        const getSkinIndexForSkeleton = (skeleton: any): number | undefined => {
+            const match = skeletonIdRegex.exec(skeleton.id);
+            return match === null ? undefined : Number(match[1]);
+        };
         const glTFSkeletons = this.scene.skeletons
-            .filter((s: any) => s._internalMetadata?.gltf?.pointers?.some((p: string) => skinPointerRegex.test(p)))
-            .sort((a: any, b: any) => {
-                const aIndex = Number(a._internalMetadata.gltf.pointers.find((p: string) => skinPointerRegex.test(p)).split("/").pop());
-                const bIndex = Number(b._internalMetadata.gltf.pointers.find((p: string) => skinPointerRegex.test(p)).split("/").pop());
-                return aIndex - bIndex;
-            });
+            .filter((s: any) => getSkinIndexForSkeleton(s) !== undefined)
+            .sort((a: any, b: any) => getSkinIndexForSkeleton(a)! - getSkinIndexForSkeleton(b)!);
+        // Babylon adds a Bone for every ancestor between a joint and the skin's skeleton root, not
+        // just the actual joints (GLTFLoader._loadBone recurses up the parent chain). Those extra
+        // ancestor-only bones get boneIndex -1 (skin.joints.indexOf(node.index) miss), so they must
+        // be filtered out and the rest ordered by boneIndex to match glTF's `skin.joints` order.
         const getSkeletonJointNodeIndices = (skeleton: any): number[] => skeleton.bones
+            .filter((bone: any) => bone.getIndex() !== -1)
+            .sort((a: any, b: any) => a.getIndex() - b.getIndex())
             .map((bone: any) => bone.getTransformNode()?.metadata?.nodeIndex)
             .filter((idx: number | undefined) => idx !== undefined);
         const getSkeletonRootNodeIndex = (skeleton: any): number | undefined => {
@@ -678,7 +688,7 @@ export class BabylonDecorator extends ADecorator {
         // NORMAL TEXTURE TRANSFORM
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/normalTexture/extensions/KHR_texture_transform/offset`, (path) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture == null) {
                 return [NaN, NaN];
             }
@@ -686,7 +696,7 @@ export class BabylonDecorator extends ADecorator {
             return [normalTexture.uOffset, normalTexture.vOffset]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture != null) {
                 normalTexture.uOffset = value[0];
                 normalTexture.vOffset = value[1];
@@ -695,7 +705,7 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/normalTexture/extensions/KHR_texture_transform/scale`, (path) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture == null) {
                 return [NaN, NaN];
             }
@@ -703,7 +713,7 @@ export class BabylonDecorator extends ADecorator {
             return [normalTexture.uScale, normalTexture.vScale]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             if (normalTexture != null) {
                 normalTexture.uScale = value[0];
                 normalTexture.vScale = value[1];
@@ -712,18 +722,18 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/normalTexture/extensions/KHR_texture_transform/rotation`, (path) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             return BabylonDecorator.getTextureRotation(normalTexture);
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const normalTexture = this.world.materials[Number(parts[2])].normalTexture;
+            const normalTexture = this.world.materials[Number(parts[2])].bumpTexture;
             BabylonDecorator.setTextureRotation(normalTexture, value);
         }, "float", false);
 
         // OCCLUSION TEXTURE TRANSFORM
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/occlusionTexture/extensions/KHR_texture_transform/offset`, (path) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture == null) {
                 return [NaN, NaN];
             }
@@ -731,7 +741,7 @@ export class BabylonDecorator extends ADecorator {
             return [occlusionTexture.uOffset, occlusionTexture.vOffset]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture != null) {
                 occlusionTexture.uOffset = value[0];
                 occlusionTexture.vOffset = value[1];
@@ -740,7 +750,7 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/occlusionTexture/extensions/KHR_texture_transform/scale`, (path) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture == null) {
                 return [NaN, NaN];
             }
@@ -748,7 +758,7 @@ export class BabylonDecorator extends ADecorator {
             return [occlusionTexture.uScale, occlusionTexture.vScale]
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             if (occlusionTexture != null) {
                 occlusionTexture.uScale = value[0];
                 occlusionTexture.vScale = value[1];
@@ -757,11 +767,11 @@ export class BabylonDecorator extends ADecorator {
 
         this.registerJsonPointer(`/materials/${maxGlTFMaterials}/occlusionTexture/extensions/KHR_texture_transform/rotation`, (path) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             return BabylonDecorator.getTextureRotation(occlusionTexture);
         }, (path, value) => {
             const parts: string[] = path.split("/");
-            const occlusionTexture = this.world.materials[Number(parts[2])].occlusionTexture;
+            const occlusionTexture = this.world.materials[Number(parts[2])].ambientTexture;
             BabylonDecorator.setTextureRotation(occlusionTexture, value);
         }, "float", false);
 
@@ -928,6 +938,20 @@ export class BabylonDecorator extends ADecorator {
             const parts: string[] = path.split("/");
             const nodeIndex = rootLevelNodeIndices[Number(parts[4])];
             return [nodeIndex === undefined ? null : glTFObjectReference("nodes", nodeIndex)];
+        }, (path, value) => {
+            //no-op
+        }, "ref", true);
+
+        this.registerJsonPointer(`/nodes/${maxGltfNode}/skin`, (path) => {
+            const parts: string[] = path.split("/");
+            const node = this.world.glTFNodes[Number(parts[2])];
+            // Skinned meshes are parented as a sibling of the skeleton root rather than as a child of
+            // the node's own placeholder TransformNode, so the skeleton must be recovered via the
+            // `metadata.skinnedMesh` link stashed by attachSkinLoadedMetadata() during model load.
+            const skinnedMesh = (node as any)?.metadata?.skinnedMesh ?? (node as AbstractMesh);
+            const skeleton = (skinnedMesh as AbstractMesh)?.skeleton;
+            const skinIndex = skeleton === undefined || skeleton === null ? undefined : getSkinIndexForSkeleton(skeleton);
+            return [skinIndex === undefined ? null : glTFObjectReference("skins", skinIndex)];
         }, (path, value) => {
             //no-op
         }, "ref", true);

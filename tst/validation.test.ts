@@ -3,10 +3,11 @@ import { AuthoredNode, AuthoredValue } from "../src/authoring/spec/AuthoredGraph
 import { computeGraphLiveWarnings, computeNodeLiveWarnings } from "../src/authoring/validation";
 import { IInteractivityVariable } from "../src/BasicBehaveEngine/types/InteractivityGraph";
 
-// standard type indices (see standardTypes in nodes.ts): 0 = bool, 1 = int, 2 = float
+// standard type indices (see standardTypes in nodes.ts): 0 = bool, 1 = int, 2 = float, 9 = ref
 const BOOL = 0;
 const INT = 1;
 const FLOAT = 2;
+const REF = 9;
 
 const subSpec = interactivityNodeSpecs.find(n => n.op === "math/sub")!;
 const subTypeOptions = subSpec.values!.input!.a.typeOptions;
@@ -93,6 +94,22 @@ describe("computeNodeLiveWarnings", () => {
             values: { input: { foo: { value: [undefined], type: INT } }, output: {} },
         };
         expect(computeNodeLiveWarnings(noOp, [noOp], noVariables)).toHaveLength(0);
+    });
+
+    it("does not flag an empty-string ref socket as missing (empty string is a valid null reference)", () => {
+        const node: AuthoredNode = {
+            uid: "r1",
+            op: "ref/eq",
+            declaration: -1,
+            values: {
+                input: {
+                    a: { value: [""], type: REF, typeOptions: [REF] },
+                    b: { value: [""], type: REF, typeOptions: [REF] },
+                },
+                output: { value: { type: BOOL, value: [undefined], typeOptions: [BOOL] } },
+            },
+        };
+        expect(computeNodeLiveWarnings(node, [node], noVariables)).toHaveLength(0);
     });
 
     it("labels variable/set sockets with the variable's name", () => {

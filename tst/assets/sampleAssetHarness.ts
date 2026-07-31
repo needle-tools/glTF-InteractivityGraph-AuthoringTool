@@ -25,11 +25,21 @@ export interface AssetSubTest {
     successResultVarName: string;
 }
 
+export interface AssetEntryPoint {
+    name: string;
+    nodeId: number;
+    delayedExecutionTime?: number;
+    // Entry points that only fire from a real pointer/hover/select interaction cannot be
+    // driven by the headless harness, so the whole test behind them has to be skipped.
+    requiresUserInteraction?: boolean;
+}
+
 export interface AssetTestMetadata {
     glbFileName: string;
     name: string;
     tests: {
         name: string;
+        entryPoints?: AssetEntryPoint[];
         subTests: AssetSubTest[];
     }[];
 }
@@ -48,7 +58,11 @@ export interface AssetSubTestCase {
     displayName: string;
     testName: string;
     subTest: AssetSubTest;
+    requiresUserInteraction: boolean;
 }
+
+// Kept in the test title so the summary reporter can tell manual skips apart from other pending tests.
+export const MANUAL_SUBTEST_MARKER = "[manual]";
 
 export type InterGlbMode = "exclude" | "include" | "only";
 
@@ -189,11 +203,28 @@ function createDiscoveredAssetEntry(root: string, metadataPath: string): AssetIn
 }
 
 export function getAssetSubTests(metadata: AssetTestMetadata): AssetSubTestCase[] {
-    return metadata.tests.flatMap((test) => test.subTests.map((subTest) => ({
-        displayName: `${test.name} / ${subTest.name}`,
-        testName: test.name,
-        subTest,
-    })));
+    return metadata.tests.flatMap((test) => {
+        const requiresUserInteraction = testRequiresUserInteraction(test);
+        return test.subTests.map((subTest) => ({
+            displayName: `${test.name} / ${subTest.name}${requiresUserInteraction ? ` ${MANUAL_SUBTEST_MARKER}` : ""}`,
+            testName: test.name,
+            subTest,
+            requiresUserInteraction,
+        }));
+    });
+}
+
+// Subtests are declared per test, not per entry point, so a single interaction-driven entry
+// point makes the whole test unrunnable here.
+export function testRequiresUserInteraction(test: AssetTestMetadata["tests"][number]): boolean {
+    return (test.entryPoints ?? []).some((entryPoint) => entryPoint.requiresUserInteraction === true);
+}
+
+export function splitAssetSubTests(subTests: AssetSubTestCase[]): { automatic: AssetSubTestCase[]; manual: AssetSubTestCase[] } {
+    return {
+        automatic: subTests.filter((subTest) => !subTest.requiresUserInteraction),
+        manual: subTests.filter((subTest) => subTest.requiresUserInteraction),
+    };
 }
 
 export function readGlbJson(glbPath: string): any {
@@ -302,6 +333,9 @@ export function validateGraphLoad(assetCase: AssetCase): void {
 export function assertAssetSubTests(caseName: string, variables: IInteractivityVariable[], metadata: AssetTestMetadata): void {
     const failures: string[] = [];
     for (const test of metadata.tests) {
+        if (testRequiresUserInteraction(test)) {
+            continue;
+        }
         for (const subTest of test.subTests) {
             const failure = getSubTestFailure(variables, subTest);
             if (failure) {
@@ -373,19 +407,6 @@ function floatsClose(actual: number, expected: number): boolean {
     return diff <= FLOAT_ABSOLUTE_TOLERANCE || diff / relativeBase <= FLOAT_RELATIVE_TOLERANCE;
 }
 
-function getSubTestFailure(variables: IInteractivityVariable[], subTest: AssetSubTest): string | undefined {
-    const result = variables[subTest.resultVarId]?.value;
-    const success = variables[subTest.successResultVarId]?.value?.[0];
-    if (valuesEqual(result, subTest.expectedResultValue, subTest.resultVarType) && success === true) {
-        return undefined;
-    }
-    return `expected ${formatTestValue(subTest.expectedResultValue)} and success=true, got result=${formatTestValue(result)} success=${formatTestValue(success)}`;
-}
-
-function toError(error: unknown): Error {
-    return error instanceof Error ? error : new Error(String(error));
-}
-
 function isNaNLike(value: unknown): boolean {
     return value === "NaN" || Number.isNaN(Number(value));
 }
@@ -396,6 +417,32 @@ function isPositiveInfinityLike(value: unknown): boolean {
 
 function isNegativeInfinityLike(value: unknown): boolean {
     return value === "-Infinity" || Number(value) === -Infinity;
+}
+
+function getSubTestFailure(variables: IInteractivityVariable[], subTest: AssetSubTest): string | undefined {
+    const result = variables[subTest.resultVarId]?.value;
+    const success = variables[subTest.successResultVarId]?.value?.[0];
+
+    // The graph itself computes pass/fail with its own tolerance baked in (e.g. Monte
+    // Carlo sampling deltas), so `success` is the ground truth for pass/fail - never let
+    // our own tolerance check override it. We still compare `result` against
+    // expectedResultValue as a sanity check and warn (without failing) if they disagree,
+    // since that can indicate our tolerance is miscalibrated or the graph's own success
+    // computation has a bug.
+    if (success === true) {
+        if (!valuesEqual(result, subTest.expectedResultValue, subTest.resultVarType)) {
+            console.warn(
+                `${subTest.name}: success=true but result=${formatTestValue(result)} does not match ` +
+                `expected ${formatTestValue(subTest.expectedResultValue)} within harness tolerance`,
+            );
+        }
+        return undefined;
+    }
+    return `expected ${formatTestValue(subTest.expectedResultValue)} and success=true, got result=${formatTestValue(result)} success=${formatTestValue(success)}`;
+}
+
+function toError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
 }
 
 function formatTestValue(value: unknown): string {

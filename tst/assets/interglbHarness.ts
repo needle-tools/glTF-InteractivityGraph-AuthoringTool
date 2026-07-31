@@ -6,6 +6,7 @@ import {
     getAssetSubTests,
     loadAssetCases,
     runGraphsAndWait,
+    splitAssetSubTests,
 } from "./sampleAssetHarness";
 
 export const interGlbPairCases = loadInterGlbPairCases();
@@ -57,15 +58,21 @@ export async function runInterGlbPair(
 
 export function assertInterGlbPairSubTests(state: InterGlbRunState): void {
     describe.each(interGlbPairCases)("$entry.name", (assetCase) => {
-        const subTests = getAssetSubTests(assetCase.metadata);
+        const { automatic: subTests, manual: manualSubTests } = splitAssetSubTests(getAssetSubTests(assetCase.metadata));
 
-        it.each(subTests)("$displayName", ({ subTest }) => {
-            if (state.runError) {
-                throw new Error(`InterGlb pair did not load or execute, so all ${totalInterGlbSubTests()} subtest(s) fail:\n${formatError(state.runError)}`);
-            }
+        if (subTests.length > 0) {
+            it.each(subTests)("$displayName", ({ subTest }) => {
+                if (state.runError) {
+                    throw new Error(`InterGlb pair did not load or execute, so all ${totalInterGlbSubTests()} subtest(s) fail:\n${formatError(state.runError)}`);
+                }
 
-            assertAssetSubTest(assetCase.entry.name, state.variablesByAsset.get(assetCase.entry.name) ?? [], subTest);
-        });
+                assertAssetSubTest(assetCase.entry.name, state.variablesByAsset.get(assetCase.entry.name) ?? [], subTest);
+            });
+        }
+
+        if (manualSubTests.length > 0) {
+            it.skip.each(manualSubTests)("$displayName", () => {});
+        }
     });
 }
 
@@ -81,5 +88,5 @@ function loadInterGlbPairCases() {
 }
 
 function totalInterGlbSubTests(): number {
-    return interGlbPairCases.reduce((sum, assetCase) => sum + getAssetSubTests(assetCase.metadata).length, 0);
+    return interGlbPairCases.reduce((sum, assetCase) => sum + splitAssetSubTests(getAssetSubTests(assetCase.metadata)).automatic.length, 0);
 }

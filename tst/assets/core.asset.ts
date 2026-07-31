@@ -7,6 +7,7 @@ import {
     getAssetSubTests,
     loadAssetCases,
     runGraphAndWait,
+    splitAssetSubTests,
     TestEventBus,
 } from "./sampleAssetHarness";
 
@@ -21,7 +22,7 @@ describe("KHR_interactivity sample assets - core engine", () => {
     }
 
     describe.each(cases)("$entry.name", (assetCase) => {
-        const subTests = getAssetSubTests(assetCase.metadata);
+        const { automatic: subTests, manual: manualSubTests } = splitAssetSubTests(getAssetSubTests(assetCase.metadata));
         let variables: BasicBehaveEngine["variables"] = [];
         let runError: Error | undefined;
 
@@ -43,12 +44,18 @@ describe("KHR_interactivity sample assets - core engine", () => {
             }
         });
 
-        it.each(subTests)("$displayName", ({ subTest }) => {
-            if (runError) {
-                throw new Error(`${assetCase.entry.name} did not load or execute, so all ${subTests.length} subtest(s) fail:\n${formatError(runError)}`);
-            }
+        if (subTests.length > 0) {
+            it.each(subTests)("$displayName", ({ subTest }) => {
+                if (runError) {
+                    throw new Error(`${assetCase.entry.name} did not load or execute, so all ${subTests.length} subtest(s) fail:\n${formatError(runError)}`);
+                }
 
-            assertAssetSubTest(assetCase.entry.name, variables, subTest);
-        });
+                assertAssetSubTest(assetCase.entry.name, variables, subTest);
+            });
+        }
+
+        if (manualSubTests.length > 0) {
+            it.skip.each(manualSubTests)("$displayName", () => {});
+        }
     });
 });
