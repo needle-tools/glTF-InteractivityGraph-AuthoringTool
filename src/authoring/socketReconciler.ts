@@ -260,11 +260,19 @@ export function mergeValueSockets(params: {
         const pointerSlotKindChanged = pointerSlotType !== undefined && existingSocket !== undefined && existingSocket.type !== pointerSlotType;
 
         if (existingHasData && !pointerSlotKindChanged) {
-            // the loaded/wired socket may predate the spec's `description` (e.g. loaded from a
-            // glTF file, which has no such field) — backfill it without touching value/connection
-            result[key] = existingSocket.description === undefined && specDefaults[key]?.description !== undefined
-                ? { ...existingSocket, description: specDefaults[key].description }
-                : existingSocket;
+            // description/typeOptions/typeGroup/objectPicker are declaration-derived, never authored:
+            // a graph file carries none of them (they're stripped on export), so a socket loaded with
+            // a static value arrives with only value+type and a single-entry typeOptions guess. Take
+            // them from the generated/spec definition so the socket keeps its full type choice and
+            // stays a member of its type group; only value/node/socket/type come from the file.
+            const declared = generated[key] ?? specDefaults[key];
+            result[key] = declared === undefined ? existingSocket : {
+                ...existingSocket,
+                ...(declared.description !== undefined ? { description: declared.description } : {}),
+                ...(declared.typeOptions !== undefined ? { typeOptions: declared.typeOptions } : {}),
+                ...(declared.typeGroup !== undefined ? { typeGroup: declared.typeGroup } : {}),
+                ...(declared.objectPicker !== undefined ? { objectPicker: declared.objectPicker } : {}),
+            };
         } else if (!existingHasData && !generatedKeys.has(key) && specDefaults[key] !== undefined) {
             // A grouped socket the file/model left without a static value or wire still carries a
             // resolved group type (propagated across connections on load, or set by an earlier

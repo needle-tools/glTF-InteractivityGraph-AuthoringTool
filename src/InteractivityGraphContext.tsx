@@ -570,9 +570,15 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // oldType is undefined when the file's numeric type index is out of bounds of its own `types`
     // array (a malformed/hand-edited file) - treat that the same as any other unsupported type
     // (-1) rather than throwing, since every call site already guards against -1.
-    const getUpdatedTypeIndex = (oldType: {signature: string, extensions?: any} | undefined): number => {
+    const getUpdatedTypeIndex = (oldType: {signature: string, extensions?: any} | string | undefined): number => {
       if (oldType == null) { return -1; }
-      const oldTypeSignature = oldType.signature;
+      // a `types` entry is spec'd as {signature}, but graphs written by other tools abbreviate it to
+      // the bare signature string or only carry the display `name` - all three name the same type,
+      // so accept them rather than mapping the whole graph to -1 (every socket "unsupported")
+      if (typeof oldType === "string") {
+        return standardTypes.findIndex(type => type.signature === oldType);
+      }
+      const oldTypeSignature = oldType.signature ?? (oldType as {name?: string}).name;
       if (oldTypeSignature === "custom") {
         const typeExtensions = JSON.stringify(Object.keys(oldType.extensions || {}).sort())
         return standardTypes.findIndex(type => type.signature === "custom" && JSON.stringify(Object.keys(type.extensions).sort()) == typeExtensions)
@@ -582,12 +588,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     }
 
     // human-readable label for a graph type entry (custom types are identified by their extension key)
-    const getTypeLabel = (type: {signature: string, extensions?: any}): string => {
+    const getTypeLabel = (type: {signature: string, name?: string, extensions?: any} | string): string => {
+      if (typeof type === "string") { return type; }
       if (type.signature === "custom") {
         const extensionKeys = Object.keys(type.extensions || {});
         return extensionKeys.length > 0 ? extensionKeys.join(", ") : "custom";
       }
-      return type.signature;
+      return type.signature ?? type.name ?? "unknown";
     }
     // Cancellation token for the in-flight chunked load. A second load flips the previous token's
     // `current` to true so runChunked bails at its next item boundary, then installs a fresh token —
@@ -974,36 +981,42 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         }
     
         // a cycle leaves some nodes unreachable. return a status instead of throwing so the JSON
-        // view / export don't crash - callers surface a diagnostic and keep the un-sorted graph.
+        // view / export don't crash - callers surface a diagnostic and keep the graph in its
+        // original (non-execution) order.
         const hasCycle = sortedList.length !== nodes.length;
 
-        if (!hasCycle) {
-            const oldIdToTopologicalId = new Map();
-            for (let i = 0; i < sortedList.length; i++) {
-                oldIdToTopologicalId.set(sortedList[i].id, i);
-            }
-
-            // change nodeIds in graph
-            for (const node of nodes) {
-                node.id = Number(`${oldIdToTopologicalId.get(node.id)}`);
-                if (node.flows !== undefined) {
-                    Object.values(node.flows).forEach((flow: any) => {
-                        if (flow.node !== undefined && oldIdToTopologicalId.get(flow.node) !== undefined) {
-                            flow.node = Number(`${oldIdToTopologicalId.get(flow.node)}`);
-                        }
-                    })
-                }
-                if (node.values !== undefined) {
-                    Object.values(node.values).forEach((val: any) => {
-                        if (val.node !== undefined && oldIdToTopologicalId.get(val.node) !== undefined) {
-                            val.node = Number(`${oldIdToTopologicalId.get(val.node)}`);
-                        }
-                    })
-                }
-            }
-
-            nodes.sort((a, b) => {return a.id - b.id});
+        // Rewrite every uid to its exported array index. A cycle only means we can't put the nodes in
+        // execution order - the ids still have to become indices, since that is the only node
+        // reference an interactivity graph has (there is no `id` field to fall back on: it's deleted
+        // below). Leaving uuids in here made a cyclic graph's JSON unloadable: every flow/value link
+        // resolved to `uuids[<uuid string>]` === undefined on re-import, silently dropping all wires
+        // and snapping the orphaned sockets back to their spec placeholder types.
+        const order = hasCycle ? nodes : sortedList;
+        const oldIdToTopologicalId = new Map();
+        for (let i = 0; i < order.length; i++) {
+            oldIdToTopologicalId.set(order[i].id, i);
         }
+
+        // change nodeIds in graph
+        for (const node of nodes) {
+            node.id = Number(`${oldIdToTopologicalId.get(node.id)}`);
+            if (node.flows !== undefined) {
+                Object.values(node.flows).forEach((flow: any) => {
+                    if (flow.node !== undefined && oldIdToTopologicalId.get(flow.node) !== undefined) {
+                        flow.node = Number(`${oldIdToTopologicalId.get(flow.node)}`);
+                    }
+                })
+            }
+            if (node.values !== undefined) {
+                Object.values(node.values).forEach((val: any) => {
+                    if (val.node !== undefined && oldIdToTopologicalId.get(val.node) !== undefined) {
+                        val.node = Number(`${oldIdToTopologicalId.get(val.node)}`);
+                    }
+                })
+            }
+        }
+
+        nodes.sort((a, b) => {return a.id - b.id});
 
         // remove fake Links (always, so the returned nodes are clean whether or not we sorted)
         for (const node of nodes) {

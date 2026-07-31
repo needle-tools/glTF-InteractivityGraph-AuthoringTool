@@ -871,8 +871,18 @@ export const AuthoringComponent = () => {
             if (newGn.values?.input) {
                 for (const key of Object.keys(newGn.values.input)) {
                     const ref = newGn.values.input[key];
-                    if (ref.node && copiedIds.has(String(ref.node))) ref.node = uidMap.get(String(ref.node))!;
-                    else newGn.values.input[key] = {};
+                    // an unwired socket carries the user's static value + its resolved type - clearing
+                    // it here dropped both and let the reconcile below snap the socket back to the
+                    // spec's placeholder type
+                    if (ref.node === undefined) continue;
+                    if (copiedIds.has(String(ref.node))) {
+                        ref.node = uidMap.get(String(ref.node))!;
+                    } else {
+                        // wired to a node outside the copied set: sever the link but keep the socket's
+                        // type/typeOptions/typeGroup so it doesn't lose its resolved type
+                        const {node: _node, socket: _socket, ...rest} = ref;
+                        newGn.values.input[key] = {...rest, value: [undefined]};
+                    }
                 }
             }
             // reconcile now instead of leaving the severed `{}` link stubs above for the mount
