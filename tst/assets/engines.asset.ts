@@ -79,7 +79,7 @@ describe("KHR_interactivity sample assets - Three engine", () => {
     }
 
     describe.each(cases)("$entry.name", (assetCase) => {
-        const subTests = getAssetSubTests(assetCase.metadata);
+        const { automatic: subTests, manual: manualSubTests } = splitAssetSubTests(getAssetSubTests(assetCase.metadata));
         let variables: BasicBehaveEngine["variables"] = [];
         let runError: Error | undefined;
 
@@ -112,12 +112,18 @@ describe("KHR_interactivity sample assets - Three engine", () => {
             }
         });
 
-        it.each(subTests)("$displayName", ({ subTest }) => {
-            if (runError) {
-                throw new Error(`${assetCase.entry.name} did not load or execute, so all ${subTests.length} subtest(s) fail:\n${formatError(runError)}`);
-            }
-            assertAssetSubTest(assetCase.entry.name, variables, subTest);
-        });
+        if (subTests.length > 0) {
+            it.each(subTests)("$displayName", ({ subTest }) => {
+                if (runError) {
+                    throw new Error(`${assetCase.entry.name} did not load or execute, so all ${subTests.length} subtest(s) fail:\n${formatError(runError)}`);
+                }
+                assertAssetSubTest(assetCase.entry.name, variables, subTest);
+            });
+        }
+
+        if (manualSubTests.length > 0) {
+            it.skip.each(manualSubTests)("$displayName", () => {});
+        }
     });
 });
 
