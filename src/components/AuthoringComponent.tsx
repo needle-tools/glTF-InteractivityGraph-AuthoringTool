@@ -24,6 +24,7 @@ import { FLOW_COLOR, getColorForTypeIndex, getNodeCategoryColor } from '../autho
 import { TypedValueInput } from '../authoring/TypedValueInput';
 import { NodeInfoTooltip, buildNodeTypeTooltipSections } from '../authoring/NodeInfoTooltip';
 import { LoadingProgressBar } from './LoadingProgressBar';
+import { GraphMiniMap } from './GraphMiniMap';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
