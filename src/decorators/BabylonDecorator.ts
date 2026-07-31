@@ -16,7 +16,7 @@ import {
 } from "@babylonjs/core";
 import {Vector3} from "@babylonjs/core/Maths/math.vector";
 import {Scene} from "@babylonjs/core/scene";
-import {OnSelect} from "../BasicBehaveEngine/nodes/experimental/OnSelect";
+import {OnSelect} from "../BasicBehaveEngine/nodes/event/OnSelect";
 import {trackSceneInteraction} from "../utils/analytics";
 import {KHR_materials_variants} from "@babylonjs/loaders/glTF/2.0";
 import {Nullable} from "@babylonjs/core/types.js";
