@@ -166,6 +166,9 @@ const GraphOverlayPanel = (props: {
 const UNMEASURED_NODE_WIDTH = 280;
 const UNMEASURED_NODE_HEIGHT = 120;
 
+const FRAME_MIN_ZOOM = 0.05;
+const FRAME_PADDING = 0.1;
+
 const IconReload = () => (
     <svg {...iconProps}>
         <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
@@ -339,10 +342,26 @@ export const AuthoringComponent = () => {
             maxX = Math.max(maxX, x + (flowNode.width ?? UNMEASURED_NODE_WIDTH));
             maxY = Math.max(maxY, y + (flowNode.height ?? UNMEASURED_NODE_HEIGHT));
         }
-        reactFlowInstance.fitBounds(
-            { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
-            { padding: 0.1, duration },
-        );
+        const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+        // Predict the zoom fitBounds would choose and, if it is below the floor, center on the graph
+        // at the floor instead of fitting it (see FRAME_MIN_ZOOM).
+        const canvas = reactFlowRef.current?.getBoundingClientRect();
+        if (canvas && bounds.width > 0 && bounds.height > 0) {
+            const fitZoom = Math.min(
+                canvas.width / (bounds.width * (1 + FRAME_PADDING)),
+                canvas.height / (bounds.height * (1 + FRAME_PADDING)),
+            );
+            if (fitZoom < FRAME_MIN_ZOOM) {
+                reactFlowInstance.setCenter(
+                    bounds.x + bounds.width / 2,
+                    bounds.y + bounds.height / 2,
+                    { zoom: FRAME_MIN_ZOOM, duration },
+                );
+                return;
+            }
+        }
+        reactFlowInstance.fitBounds(bounds, { padding: FRAME_PADDING, duration });
     }, [reactFlowInstance]);
 
     // pan/select a node by id from the diagnostics counter popover
