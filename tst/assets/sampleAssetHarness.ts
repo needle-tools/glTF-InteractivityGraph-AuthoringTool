@@ -25,11 +25,21 @@ export interface AssetSubTest {
     successResultVarName: string;
 }
 
+export interface AssetEntryPoint {
+    name: string;
+    nodeId: number;
+    delayedExecutionTime?: number;
+    // Entry points that only fire from a real pointer/hover/select interaction cannot be
+    // driven by the headless harness, so the whole test behind them has to be skipped.
+    requiresUserInteraction?: boolean;
+}
+
 export interface AssetTestMetadata {
     glbFileName: string;
     name: string;
     tests: {
         name: string;
+        entryPoints?: AssetEntryPoint[];
         subTests: AssetSubTest[];
     }[];
 }
@@ -48,7 +58,11 @@ export interface AssetSubTestCase {
     displayName: string;
     testName: string;
     subTest: AssetSubTest;
+    requiresUserInteraction: boolean;
 }
+
+// Kept in the test title so the summary reporter can tell manual skips apart from other pending tests.
+export const MANUAL_SUBTEST_MARKER = "[manual]";
 
 export type InterGlbMode = "exclude" | "include" | "only";
 
@@ -189,11 +203,28 @@ function createDiscoveredAssetEntry(root: string, metadataPath: string): AssetIn
 }
 
 export function getAssetSubTests(metadata: AssetTestMetadata): AssetSubTestCase[] {
-    return metadata.tests.flatMap((test) => test.subTests.map((subTest) => ({
-        displayName: `${test.name} / ${subTest.name}`,
-        testName: test.name,
-        subTest,
-    })));
+    return metadata.tests.flatMap((test) => {
+        const requiresUserInteraction = testRequiresUserInteraction(test);
+        return test.subTests.map((subTest) => ({
+            displayName: `${test.name} / ${subTest.name}${requiresUserInteraction ? ` ${MANUAL_SUBTEST_MARKER}` : ""}`,
+            testName: test.name,
+            subTest,
+            requiresUserInteraction,
+        }));
+    });
+}
+
+// Subtests are declared per test, not per entry point, so a single interaction-driven entry
+// point makes the whole test unrunnable here.
+export function testRequiresUserInteraction(test: AssetTestMetadata["tests"][number]): boolean {
+    return (test.entryPoints ?? []).some((entryPoint) => entryPoint.requiresUserInteraction === true);
+}
+
+export function splitAssetSubTests(subTests: AssetSubTestCase[]): { automatic: AssetSubTestCase[]; manual: AssetSubTestCase[] } {
+    return {
+        automatic: subTests.filter((subTest) => !subTest.requiresUserInteraction),
+        manual: subTests.filter((subTest) => subTest.requiresUserInteraction),
+    };
 }
 
 export function readGlbJson(glbPath: string): any {
@@ -302,6 +333,9 @@ export function validateGraphLoad(assetCase: AssetCase): void {
 export function assertAssetSubTests(caseName: string, variables: IInteractivityVariable[], metadata: AssetTestMetadata): void {
     const failures: string[] = [];
     for (const test of metadata.tests) {
+        if (testRequiresUserInteraction(test)) {
+            continue;
+        }
         for (const subTest of test.subTests) {
             const failure = getSubTestFailure(variables, subTest);
             if (failure) {

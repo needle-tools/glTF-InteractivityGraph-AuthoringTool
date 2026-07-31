@@ -2,6 +2,8 @@ const path = require("path");
 const fs = require("fs");
 
 const ENGINE_ORDER = ["Core", "Babylon", "Three"];
+// Mirrors MANUAL_SUBTEST_MARKER in sampleAssetHarness.ts.
+const MANUAL_SUBTEST_MARKER = "[manual]";
 const CATEGORY_ORDER = [
     "pointer",
     "math",
@@ -21,7 +23,8 @@ class AssetSummaryReporter {
         const rows = collectRows(results);
         const validation = collectValidation(results);
         const failures = collectFailures(results);
-        if (rows.size === 0 && validation.totalAssets === 0) {
+        const manual = collectManualSubTests(results);
+        if (rows.size === 0 && validation.totalAssets === 0 && manual.total === 0) {
             return;
         }
 
@@ -68,6 +71,14 @@ class AssetSummaryReporter {
             }
             process.stdout.write("\n\n");
         } else {
+            process.stdout.write("\n");
+        }
+
+        if (manual.total > 0) {
+            process.stdout.write(`Skipped (entryPoints requiresUserInteraction): ${manual.total} subtest(s)\n`);
+            for (const [asset, count] of [...manual.byAsset].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+                process.stdout.write(`- ${asset}: ${count}\n`);
+            }
             process.stdout.write("\n");
         }
 
@@ -204,6 +215,26 @@ function collectFailures(results) {
         .sort((a, b) => engineRank(a.engine) - engineRank(b.engine)
             || b.failed - a.failed
             || a.asset.localeCompare(b.asset));
+}
+
+// Subtests whose test has an entry point flagged requiresUserInteraction are registered as
+// skipped by the harness, so they show up here as pending assertions carrying the marker.
+function collectManualSubTests(results) {
+    const byAsset = new Map();
+    let total = 0;
+    for (const testResult of results.testResults) {
+        for (const assertion of testResult.testResults ?? []) {
+            if (assertion.status === "passed" || assertion.status === "failed" || !(assertion.title ?? "").includes(MANUAL_SUBTEST_MARKER)) {
+                continue;
+            }
+
+            const engine = getEngine(testResult.testFilePath, assertion.ancestorTitles);
+            const key = `${engine} ${getAssetName(testResult.testFilePath, assertion)}`;
+            byAsset.set(key, (byAsset.get(key) ?? 0) + 1);
+            total += 1;
+        }
+    }
+    return { total, byAsset };
 }
 
 function collectEngines(rows) {

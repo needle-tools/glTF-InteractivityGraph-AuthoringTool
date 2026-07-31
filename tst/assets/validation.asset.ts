@@ -4,6 +4,7 @@ import {
     getAssetSubTests,
     loadAssetCases,
     loadOverviewAssetCase,
+    splitAssetSubTests,
     validateGraphLoad,
 } from "./sampleAssetHarness";
 
@@ -38,7 +39,8 @@ function loadValidationCases() {
 function withSubTestCount<T extends { metadata: any }>(assetCase: T): T & { subTestCount: number } {
     return {
         ...assetCase,
-        subTestCount: getAssetSubTests(assetCase.metadata).length,
+        // Only the automatically runnable subtests, so this lines up with the executed totals.
+        subTestCount: splitAssetSubTests(getAssetSubTests(assetCase.metadata)).automatic.length,
     };
 }
 
