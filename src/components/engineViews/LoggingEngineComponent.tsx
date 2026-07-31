@@ -6,6 +6,7 @@ import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { DOMEventBus } from "../../BasicBehaveEngine/eventBuses/DOMEventBus";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
 import { createGlTFObjectModelFromGltf, readGlbJsonFromArrayBuffer } from "../../objectModel/glTFObjectModel";
+import { IconJsonFile, IconPlay, IconSendEvent } from "../toolbarIcons";
 
 enum LoggingEngineModal {
     OBJECT_MODEL = "OBJECT_MODEL",
@@ -104,13 +105,16 @@ export const LoggingEngineComponent: React.FC<LoggingEngineComponentProps> = ({ 
     return (
         <div className={"panel"}>
             <div className={"panel__toolbar"}>
-                <button type="button" className="btn-app btn-app--onDark" data-testid={"logging-engine-play-btn"} onClick={play}>
+                <button type="button" className="panel__toolbar-btn" data-testid={"logging-engine-play-btn"} onClick={play}>
+                    <IconPlay/>
                     Play
                 </button>
-                <button type="button" className="btn-app btn-app--onDark" onClick={() => setOpenModal(LoggingEngineModal.OBJECT_MODEL)}>
+                <button type="button" className="panel__toolbar-btn" onClick={() => setOpenModal(LoggingEngineModal.OBJECT_MODEL)}>
+                    <IconJsonFile/>
                     Upload object model JSON
                 </button>
-                <button type="button" className="btn-app btn-app--onDark" onClick={() => setOpenModal(LoggingEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
+                <button type="button" className="panel__toolbar-btn" onClick={() => setOpenModal(LoggingEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
+                    <IconSendEvent/>
                     Send Custom Event
                 </button>
             </div>

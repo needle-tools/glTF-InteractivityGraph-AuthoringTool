@@ -28,6 +28,7 @@ import { GraphMiniMap } from './GraphMiniMap';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
+import { IconCustomEvents, IconFrame, IconJsonView, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
@@ -74,55 +75,6 @@ enum AuthoringComponentModelType {
     NONE
 }
 
-// small stroke-style icons for the top menu bar (kept inline to avoid pulling in an icon library
-// for five glyphs); viewBox/props mirror the Feather icon set for a consistent stroke weight
-const iconProps = {
-    width: 16, height: 16, viewBox: "0 0 24 24", fill: "none",
-    stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
-};
-
-const IconVariables = () => (
-    <svg {...iconProps}>
-        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-        <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-        <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-        <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
-    </svg>
-);
-
-const IconCustomEvents = () => (
-    <svg {...iconProps}>
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-    </svg>
-);
-
-const IconJsonView = () => (
-    <svg {...iconProps}>
-        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-    </svg>
-);
-
-const IconNodeTypes = () => (
-    <svg {...iconProps}>
-        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-    </svg>
-);
-
-const IconSearch = () => (
-    <svg {...iconProps}>
-        <circle cx="11" cy="11" r="7"/>
-        <line x1="20" y1="20" x2="16.6" y2="16.6"/>
-    </svg>
-);
-
-const IconFrame = () => (
-    <svg {...iconProps}>
-        <polyline points="4 9 4 4 9 4"/><polyline points="15 4 20 4 20 9"/>
-        <polyline points="20 15 20 20 15 20"/><polyline points="9 20 4 20 4 15"/>
-    </svg>
-);
-
 const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void}) => (
     <button
         id={props.id}
@@ -168,13 +120,6 @@ const UNMEASURED_NODE_HEIGHT = 120;
 
 const FRAME_MIN_ZOOM = 0.05;
 const FRAME_PADDING = 0.1;
-
-const IconReload = () => (
-    <svg {...iconProps}>
-        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-    </svg>
-);
 
 // nudges the user that node/socket/wiring edits don't auto-propagate to the running scene — the
 // engine only (re)reads the graph when Play/Reload is pressed (see requestPlay in

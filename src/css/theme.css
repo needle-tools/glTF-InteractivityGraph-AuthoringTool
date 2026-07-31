@@ -371,17 +371,60 @@ body {
     color: #fff;
 }
 
-/* on the navy toolbar */
-.btn-app--onDark {
+/* the button style for anything sitting on a .panel__toolbar — both workspace halves use it, so
+   the engine bar and the graph editor's menu bar are one control set. Borderless at rest (the
+   toolbar itself is the frame); the outline only appears on hover/focus. .graph-menu-bar-btn is
+   the graph editor's historical name for the same thing and is kept as an alias. */
+.panel__toolbar-btn,
+.graph-menu-bar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: var(--control-h);
+    border: 1px solid transparent;
     background: transparent;
-    border-color: rgba(255, 255, 255, 0.55);
+    border-radius: var(--radius-sm);
+    padding: 0 var(--sp-3);
+    font-family: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.88);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.panel__toolbar-btn:hover:not(:disabled),
+.graph-menu-bar-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.5);
     color: #fff;
 }
 
-.btn-app--onDark:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.16);
+/* toggle buttons that open an overlay editor read as pressed while it is open */
+.panel__toolbar-btn.is-active,
+.graph-menu-bar-btn.is-active {
+    background: #fff;
     border-color: #fff;
-    color: #fff;
+    color: var(--brand-ink);
+}
+
+.panel__toolbar-btn:focus-visible,
+.graph-menu-bar-btn:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+.panel__toolbar-btn:disabled,
+.graph-menu-bar-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.panel__toolbar-btn svg,
+.graph-menu-bar-btn svg {
+    flex-shrink: 0;
 }
 
 .btn-app--icon {
@@ -397,20 +440,48 @@ body {
 /* the in-graph editors still use react-bootstrap controls; re-point their
    colors at the tokens above so nothing reads as "default bootstrap blue" */
 
+/* bootstrap's own "primary" (blue) still drives links, list groups, focus rings and anything else
+   we don't restyle by hand — most visibly the Samples and Tests offcanvas. Re-point it at the brand
+   green at the root so those components follow along without per-component overrides. */
+:root {
+    --bs-primary: #2c882c;
+    --bs-primary-rgb: 44, 136, 44;
+    --bs-link-color: var(--brand-ink);
+    --bs-link-color-rgb: 37, 111, 37;
+    --bs-link-hover-color: var(--brand-900);
+    --bs-link-hover-color-rgb: 22, 69, 22;
+    --bs-focus-ring-color: var(--brand-glow);
+}
+
 .btn {
     --bs-btn-font-size: var(--fs-sm);
     --bs-btn-font-weight: 600;
     --bs-btn-border-radius: var(--radius-sm);
+    /* the focus halo is set per-variant from the blue, so it needs its own override */
+    --bs-btn-focus-shadow-rgb: 44, 136, 44;
 }
 
+/* sample/test lists in the offcanvas: selection and hover in the brand green */
+.list-group {
+    --bs-list-group-active-bg: var(--brand-600);
+    --bs-list-group-active-border-color: var(--brand-600);
+    --bs-list-group-action-hover-bg: var(--brand-50);
+    --bs-list-group-action-active-bg: var(--brand-100);
+    --bs-list-group-border-color: var(--border);
+}
+
+/* also the checked state of a <ToggleButton> (btn-check + outline-primary), e.g. the GLB / glTF
+   selector in the offcanvas — hence the active colors staying at the brand green rather than
+   dropping to the near-black step */
 .btn-outline-primary {
     --bs-btn-color: var(--brand-ink);
     --bs-btn-border-color: var(--border-strong);
     --bs-btn-hover-color: #fff;
     --bs-btn-hover-bg: var(--brand-600);
     --bs-btn-hover-border-color: var(--brand-600);
-    --bs-btn-active-bg: var(--brand-900);
-    --bs-btn-active-border-color: var(--brand-900);
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: var(--brand-600);
+    --bs-btn-active-border-color: var(--brand-600);
 }
 
 .btn-primary {
@@ -470,6 +541,47 @@ textarea::placeholder {
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
+}
+
+/* ------------------------------------------- samples & tests offcanvas --- */
+
+/* the GLB / glTF marker on each entry: a brand-tinted chip, since it says something about the
+   asset you are about to load */
+.sample-variant-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: var(--sp-2);
+    padding: 1px 7px;
+    border: 1px solid var(--brand-200);
+    border-radius: var(--radius-pill);
+    background: var(--brand-50);
+    color: var(--brand-ink);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+/* content tags (interactivity, showcase, ...): neutral, they are metadata rather than an action */
+.sample-tag {
+    display: inline-flex;
+    align-items: center;
+    margin: 2px 4px 0 0;
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+}
+
+/* anything still rendering bootstrap's secondary badge (e.g. the node marker in the diagnostics
+   strip) — its default gray is noticeably blue-tinted next to the rest of the palette */
+.badge.bg-secondary {
+    --bs-secondary-rgb: 226, 231, 237;
+    color: var(--text-muted);
 }
 
 /* --------------------------------------------------------------- misc ---- */

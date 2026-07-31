@@ -28,6 +28,7 @@ import { attachSkinLoadedMetadata, BabylonLoadedModel, buildBabylonDecoratorWorl
 import { downloadInteractivityGlb } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
+import { IconDownload, IconFrame, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
@@ -351,11 +352,13 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     return (
         <div className={"panel"}>
             <div className={"panel__toolbar"}>
-                <button type="button" className="btn-app btn-app--onDark" onClick={() => play(false)} disabled={fileUploaded == null}>
+                <button type="button" className="panel__toolbar-btn" onClick={() => play(false)} disabled={fileUploaded == null}>
+                    <IconPlay/>
                     Play
                 </button>
 
-                <button type="button" className="btn-app btn-app--onDark" onClick={() => setOpenModal(BabylonEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
+                <button type="button" className="panel__toolbar-btn" onClick={() => setOpenModal(BabylonEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
+                    <IconSendEvent/>
                     Send Custom Event
                 </button>
 
@@ -368,17 +371,20 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
                     setUseUploadedFile(true);
                     setFileUploaded(fileInputRef.current.files[0].name)
                 }}/>
-                <button type="button" className="btn-app btn-app--onDark" onClick={() => fileInputRef.current!.click()}>
+                <button type="button" className="panel__toolbar-btn" onClick={() => fileInputRef.current!.click()}>
+                    <IconUpload/>
                     Upload glb
                 </button>
 
-                <button type="button" className="btn-app btn-app--onDark" disabled={fileUploaded == null} onClick={() => exportKHRInteractivityGLB()}>
+                <button type="button" className="panel__toolbar-btn" disabled={fileUploaded == null} onClick={() => exportKHRInteractivityGLB()}>
+                    <IconDownload/>
                     Download glb
                 </button>
 
                 <span className={"panel__toolbar-spacer"}/>
 
-                <button type="button" data-testid={"frame-btn"} className="btn-app btn-app--onDark" onClick={() => autoFrame()}>
+                <button type="button" data-testid={"frame-btn"} className="panel__toolbar-btn" onClick={() => autoFrame()}>
+                    <IconFrame/>
                     Auto Frame
                 </button>
             </div>

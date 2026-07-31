@@ -252,7 +252,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                         {model.tags.map((tag, tagIndex) => (
                           <span 
                             key={tagIndex} 
-                            className="badge bg-secondary me-1"
+                            className="sample-tag"
                           >
                             {tag}
                           </span>
@@ -286,7 +286,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                         {model.tags.map((tag, tagIndex) => (
                           <span 
                             key={tagIndex} 
-                            className="badge bg-secondary me-1"
+                            className="sample-tag"
                           >
                             {tag}
                           </span>
@@ -321,7 +321,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                         {model.tags.map((tag, tagIndex) => (
                           <span 
                             key={tagIndex} 
-                            className="badge bg-secondary me-1"
+                            className="sample-tag"
                           >
                             {tag}
                           </span>
@@ -355,5 +355,5 @@ export function buildSampleUrl(model: Sample, isTestModel: boolean, variant: Sam
 const VariantBadge: React.FC<{ model: Sample; preferredVariant: SampleVariant }> = ({ model, preferredVariant }) => {
   const variant = resolveSampleVariant(model, preferredVariant);
   const label = SAMPLE_VARIANTS.find(({ key }) => key === variant)?.label;
-  return label ? <span className="badge bg-secondary ms-2">{label}</span> : null;
+  return label ? <span className="sample-variant-badge">{label}</span> : null;
 };

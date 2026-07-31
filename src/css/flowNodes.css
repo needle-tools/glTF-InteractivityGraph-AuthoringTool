@@ -219,45 +219,7 @@
     color: #333;
 }
 
-.graph-menu-bar-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    height: var(--control-h);
-    border: 1px solid transparent;
-    background: transparent;
-    border-radius: var(--radius-sm);
-    padding: 0 var(--sp-3);
-    font-family: inherit;
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    line-height: 1;
-    color: rgba(255, 255, 255, 0.88);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-
-.graph-menu-bar-btn:hover {
-    background: rgba(255, 255, 255, 0.16);
-    color: #fff;
-}
-
-.graph-menu-bar-btn.is-active {
-    background: #fff;
-    border-color: #fff;
-    color: var(--brand-ink);
-}
-
-.graph-menu-bar-btn:focus-visible {
-    outline: 2px solid #fff;
-    outline-offset: 2px;
-}
-
-.graph-menu-bar-btn svg {
-    flex-shrink: 0;
-}
-
+/* base style lives in theme.css (.panel__toolbar-btn), shared with the engine panel's bar */
 .graph-menu-bar-btn--reload {
     background: var(--warn-100);
     border-color: var(--warn-100);
@@ -265,7 +227,8 @@
     margin-left: var(--sp-2);
 }
 
-.graph-menu-bar-btn--reload:hover {
+/* the amber hover has to out-specify the shared :hover:not(:disabled) rule in theme.css */
+.graph-menu-bar-btn--reload:hover:not(:disabled) {
     background: #fbe6ba;
     border-color: #fbe6ba;
     color: var(--warn-700);
