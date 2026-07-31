@@ -4,6 +4,7 @@ import { BasicBehaveEngine } from "../src/BasicBehaveEngine/BasicBehaveEngine";
 import { DOMEventBus } from "../src/BasicBehaveEngine/eventBuses/DOMEventBus";
 import { buildThreeLoadedModel, disposeThreeLoadedModel } from "../src/components/engineViews/threeLoadedModel";
 import { ThreeDecorator } from "../src/decorators/ThreeDecorator";
+import { completeGltfMaterial, schemaMaterialPointers } from "./materialPointerFixture";
 
 describe("ThreeDecorator", () => {
     it("maps extension state and live pointers onto loaded Three objects", () => {
@@ -201,6 +202,51 @@ describe("ThreeDecorator", () => {
         }
     });
 
+    it("implements every schema-defined material pointer for the shared Three and Needle runtime", () => {
+        const scene = new Group();
+        const material = completePhysicalMaterial();
+        const mesh = new Mesh(new BufferGeometry(), material);
+        scene.add(mesh);
+        const gltfMaterial = completeGltfMaterial();
+        const result = {
+            scene,
+            scenes: [scene],
+            animations: [],
+            cameras: [],
+            parser: {
+                json: {
+                    scene: 0,
+                    scenes: [{ nodes: [0] }],
+                    nodes: [{ mesh: 0 }],
+                    meshes: [{ primitives: [{ material: 0 }] }],
+                    materials: [gltfMaterial],
+                },
+                associations: new Map<object, { materials?: number; meshes?: number; primitives?: number; nodes?: number }>([
+                    [material, { materials: 0 }],
+                    [mesh, { meshes: 0, primitives: 0, nodes: 0 }],
+                ]),
+            },
+        } as unknown as GLTF;
+
+        const model = buildThreeLoadedModel(result);
+        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        try {
+            const expected = schemaMaterialPointers();
+            const registered = new Set(decorator.getRegisteredJsonPointers());
+            const missing = [...expected.keys()].filter((path) => !registered.has(path));
+
+            expect(missing).toEqual([]);
+            for (const [path, definition] of expected) {
+                expect(decorator.getPathTypeName(path)).toBe(definition.typeName);
+                expect(decorator.isReadOnly(path)).toBe(definition.readOnly);
+                expect(decorator.getPathValue(path)).toBeDefined();
+            }
+        } finally {
+            decorator.dispose();
+            disposeThreeLoadedModel(model);
+        }
+    });
+
     it("implements glTF and active camera pointers on Three cameras", () => {
         const scene = new Group();
         scene.position.set(1, 0, 0);
@@ -241,3 +287,31 @@ describe("ThreeDecorator", () => {
         }
     });
 });
+
+function completePhysicalMaterial(): MeshPhysicalMaterial {
+    const material = new MeshPhysicalMaterial();
+    const textureProperties = [
+        "map",
+        "metalnessMap",
+        "roughnessMap",
+        "normalMap",
+        "aoMap",
+        "emissiveMap",
+        "anisotropyMap",
+        "clearcoatMap",
+        "clearcoatRoughnessMap",
+        "clearcoatNormalMap",
+        "iridescenceMap",
+        "iridescenceThicknessMap",
+        "sheenColorMap",
+        "sheenRoughnessMap",
+        "specularIntensityMap",
+        "specularColorMap",
+        "transmissionMap",
+        "thicknessMap",
+    ] as const;
+    for (const property of textureProperties) {
+        (material as any)[property] = new Texture();
+    }
+    return material;
+}
