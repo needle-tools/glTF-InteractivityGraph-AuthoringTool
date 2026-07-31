@@ -15,6 +15,11 @@ import { getExecutableDeclarationIndex, toExecutableConfigurationValue, toExecut
 
 const edgeStyle = (color: string) => ({ stroke: color, strokeWidth: 2 });
 
+// Auto-layout spacing (used when a loaded graph carries no node positions): the grid pitch between
+// nodes, and the gap left between two disjoint components once they are packed.
+const NODE_SPACING = 500;
+const COMPONENT_GAP = 800;
+
 // how long after the last model edit the whole-graph live validation re-runs (see
 // scheduleLiveValidation) — long enough to coalesce a burst of edits, short enough that the
 // ⚠/panel feedback still feels immediate
@@ -475,22 +480,21 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
             }
           });
       
-            // Y layer additive reflects the Y to start each new graph at. Should start with 0, and then on a subsequent disjoint graph, add some padding + the last max y.
-            let layerYAdditive = 0;
-            let lastMaxY = 0;
-      
+            // Each disjoint component is laid out on its own at the origin, then the components are
+            // packed into a roughly square canvas below. They used to be stacked in one vertical
+            // column, which on a graph with hundreds of components (Overview has 243, mathtests 398)
+            // produced a canvas over a million units tall but only ~150k wide — an aspect ratio no
+            // viewport can usefully frame, so "fit the graph" showed under 1% of it and exploring
+            // meant scrolling down a near-empty corridor.
+            const componentBoxes: { nodeIds: string[], minX: number, minY: number, width: number, height: number }[] = [];
+
             disjointGraphs.forEach((disjointGraph) => {
               // Each layer is a vertical column of a disjoint graph. Since we start at the leftmost column where x = -500 (starting point).
               let lastLayer: string[] = disjointGraph.filter(nodeId => !targetIds.has(nodeId));
-              let y = 0;
               for (let i = 0; i < lastLayer.length; i++) {
                 const node = nodeById.get(lastLayer[i])!;
                 node.position.x = -500;
-                y = 500 * i + layerYAdditive;
-                node.position.y = y;
-                if (y > lastMaxY) {
-                  lastMaxY = y;
-                }
+                node.position.y = 500 * i;
               }
 
               let nextLayer: string[] = [];
@@ -509,11 +513,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 for (let i = 0; i < lastLayer.length; i++) {
                   const node = nodeById.get(lastLayer[i])!;
                   node.position.x = xOffset;
-                  y = 500 * i + layerYAdditive;
-                  node.position.y = y;
-                  if (y > lastMaxY) {
-                    lastMaxY = y;
-                  }
+                  node.position.y = 500 * i;
                 }
 
                 nextLayer = [];
@@ -523,10 +523,45 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 nextLayer = [...new Set(nextLayer)];
                 xOffset += 500;
               }
-              layerYAdditive = 800 + lastMaxY;
+
+              // this component's own bounds, so the packing below can place it as one block
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const nodeId of disjointGraph) {
+                const { x, y } = nodeById.get(nodeId)!.position;
+                minX = Math.min(minX, x); minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+              }
+              componentBoxes.push({
+                nodeIds: disjointGraph,
+                minX, minY,
+                width: maxX - minX + NODE_SPACING,
+                height: maxY - minY + NODE_SPACING,
+              });
           });
-      
-      
+
+          // Shelf-pack the components into rows, wrapping at a width derived from their total area
+          // so the finished canvas comes out roughly square and can actually be framed.
+          const totalArea = componentBoxes.reduce((sum, box) => sum + box.width * box.height, 0);
+          const rowWidthLimit = Math.sqrt(totalArea) * 1.3;
+          let cursorX = 0;
+          let cursorY = 0;
+          let rowHeight = 0;
+          for (const box of componentBoxes) {
+            if (cursorX > 0 && cursorX + box.width > rowWidthLimit) {
+              cursorX = 0;
+              cursorY += rowHeight + COMPONENT_GAP;
+              rowHeight = 0;
+            }
+            const offsetX = cursorX - box.minX;
+            const offsetY = cursorY - box.minY;
+            for (const nodeId of box.nodeIds) {
+              const position = nodeById.get(nodeId)!.position;
+              position.x += offsetX;
+              position.y += offsetY;
+            }
+            cursorX += box.width + COMPONENT_GAP;
+            rowHeight = Math.max(rowHeight, box.height);
+          }
         }
       
         return [nodes, edges, events, variables];

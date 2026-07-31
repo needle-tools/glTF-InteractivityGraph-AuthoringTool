@@ -128,6 +128,11 @@ const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string,
 
 const MenuBarDivider = () => <div className="graph-menu-bar-divider"/>;
 
+// Stand-in box for a node reactflow has not measured yet (i.e. one culling has never mounted),
+// used only to compute the graph bounds in frameGraph. Matches the LOD box in flowNodes.css.
+const UNMEASURED_NODE_WIDTH = 280;
+const UNMEASURED_NODE_HEIGHT = 120;
+
 const IconReload = () => (
     <svg {...iconProps}>
         <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
@@ -279,6 +284,33 @@ export const AuthoringComponent = () => {
     // (setGraph), which is the signal to rebuild — interactive edits mutate the same object in
     // place and leave identity untouched, so they never retrigger a rebuild
     const lastSyncedGraphRef = useRef<AuthoredGraph | null>(null);
+
+    // Frame the whole graph in the viewport.
+    //
+    // Not reactflow's fitView: that one refuses to do anything at all unless *every* node has been
+    // measured (`nodes.every(n => n.width && n.height)` — otherwise it returns false and leaves the
+    // viewport untouched, with no error). Viewport culling means the nodes off-screen at load never
+    // mount and so never get measured, which silently broke both the post-load framing and the
+    // Controls "fit view" button on any graph bigger than one screenful. Compute the bounds from the
+    // node positions we already have, substituting the LOD box for anything reactflow hasn't
+    // measured, and hand them to fitBounds, which carries no such precondition.
+    const frameGraph = useCallback((duration = 0) => {
+        if (!reactFlowInstance) { return; }
+        const flowNodes: Node[] = reactFlowInstance.getNodes();
+        if (flowNodes.length === 0) { return; }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const flowNode of flowNodes) {
+            const { x, y } = flowNode.position;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + (flowNode.width ?? UNMEASURED_NODE_WIDTH));
+            maxY = Math.max(maxY, y + (flowNode.height ?? UNMEASURED_NODE_HEIGHT));
+        }
+        reactFlowInstance.fitBounds(
+            { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+            { padding: 0.1, duration },
+        );
+    }, [reactFlowInstance]);
 
     // pan/select a node by id from the diagnostics counter popover
     const jumpToNode = useCallback((nodeUid: string) => {
@@ -959,7 +991,7 @@ export const AuthoringComponent = () => {
             await nextFrame();
             if (cancelled) { return; }
             setEdges(loadedEdges);
-            reactFlowInstance?.fitView();
+            frameGraph();
 
             // "Resolving types": now that the canvas is on-screen, run the deferred O(n²) type-group
             // fixpoint (mutates the model in place), then recolor the gray value wires to their
@@ -1133,7 +1165,12 @@ export const AuthoringComponent = () => {
                     onSelectionChange={onSelectionChange}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
-                    minZoom={0.1}
+                    // Framing a large graph is a zoom-out problem: 5000 nodes on a 500-unit grid
+                    // span a couple of hundred thousand units, which needs a zoom around 0.003 to
+                    // fit a viewport. The old 0.1 floor made that arithmetically impossible, so
+                    // "fit view" clamped and left you parked in the middle of the canvas looking at
+                    // the gap between two components — which is what made the Frame button look dead.
+                    minZoom={0.001}
                     // Viewport culling: only mount nodes/edges intersecting the viewport (+ overscan)
                     // so frame cost tracks the visible window, not the whole graph. Reactflow culls by
                     // node width/height, so nodes carry explicit dimensions (see .flow-node in flowNodes.css).
@@ -1148,8 +1185,11 @@ export const AuthoringComponent = () => {
                     deleteKeyCode="Delete"
                     fitView
                 >
-                    <Controls />
+                    {/* the built-in fit-view handler is a no-op on a partly-culled graph, so the
+                        button's real behaviour comes from onFitView (see frameGraph) */}
+                    <Controls onFitView={() => frameGraph(300)} />
                     <Background />
+                    <GraphMiniMap />
 
                     <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}>
                         <NodePickerComponent closeModal={closeNodePicker} onAddNode={handlePickNode} mousePos={mousePosRef.current} constraint={getPendingPickerConstraint()}/>
