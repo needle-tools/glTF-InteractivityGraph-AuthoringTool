@@ -10,9 +10,9 @@ import { ADecorator } from "../BasicBehaveEngine/ADecorator";
 import { BehaveEngineNode } from "../BasicBehaveEngine/BehaveEngineNode";
 import { IBehaveEngine } from "../BasicBehaveEngine/IBehaveEngine";
 import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGraph";
-import { OnHoverIn } from "../BasicBehaveEngine/nodes/experimental/OnHoverIn";
-import { OnHoverOut } from "../BasicBehaveEngine/nodes/experimental/OnHoverOut";
-import { OnSelect } from "../BasicBehaveEngine/nodes/experimental/OnSelect";
+import { OnHoverIn } from "../BasicBehaveEngine/nodes/event/OnHoverIn";
+import { OnHoverOut } from "../BasicBehaveEngine/nodes/event/OnHoverOut";
+import { OnSelect } from "../BasicBehaveEngine/nodes/event/OnSelect";
 import { trackSceneInteraction } from "../utils/analytics";
 import type { ThreeLoadedModel } from "../integrations/ThreeLoadedModel";
 import { attachPointerTap } from "../integrations/pointerTap";
@@ -158,10 +158,9 @@ export class ThreeDecorator extends ADecorator {
         this.behaveEngine.isValidJsonPtr = this.isValidJsonPtrExact;
         this.behaveEngine.isReadOnly = this.isReadOnlyExact;
         this.behaveEngine.getPathValue = this.getPathValueExact;
-        this.behaveEngine.getPathtypeName = this.getPathTypeNameExact;
+        this.behaveEngine.getPathTypeName = this.getPathTypeNameExact;
         this.behaveEngine.setPathValue = this.setPathValueExact;
         this.behaveEngine.getRegisteredJsonPointers = () => [...this.pointerBindings.keys()].sort();
-        this.behaveEngine.resolveRef = this.resolveRef;
     }
 
     private isValidJsonPtrExact = (path: string): boolean => this.pointerBindings.has(path) || this.isActiveDelayRef(path);
