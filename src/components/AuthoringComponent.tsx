@@ -2105,6 +2105,15 @@ const VariablesComponent = (props: {closeModal: any}) => {
     // seed the editor from the current graph once; from here on the editor owns the state and
     // pushes each change straight back to the graph so the rest of the app stays in sync
     const [variables, setVariables] = useState<EditableVariable[]>(() => fromGraphVariables(graph.variables));
+    // a new load replaces `graph`'s identity (interactive edits mutate it in place - see
+    // InteractivityGraphContext), so this only re-seeds the editor when a different glTF is loaded
+    // while the panel is left open, not on every keystroke
+    const loadedGraphRef = useRef(graph);
+    useEffect(() => {
+        if (graph === loadedGraphRef.current) { return; }
+        loadedGraphRef.current = graph;
+        setVariables(fromGraphVariables(graph.variables));
+    }, [graph]);
 
     // single choke point for mutations: update local state and commit the projected list to the graph
     const commit = (next: EditableVariable[]) => {
@@ -2256,6 +2265,15 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
     // seed the editor from the current graph once; from here on the editor owns the state and
     // pushes each change straight back to the graph so the rest of the app stays in sync
     const [events, setEvents] = useState<EditableEvent[]>(() => fromGraphEvents(graph.events));
+    // a new load replaces `graph`'s identity (interactive edits mutate it in place - see
+    // InteractivityGraphContext), so this only re-seeds the editor when a different glTF is loaded
+    // while the panel is left open, not on every keystroke
+    const loadedGraphRef = useRef(graph);
+    useEffect(() => {
+        if (graph === loadedGraphRef.current) { return; }
+        loadedGraphRef.current = graph;
+        setEvents(fromGraphEvents(graph.events));
+    }, [graph]);
 
     // single choke point for mutations: update local state and commit the projected list to the graph
     const commit = (next: EditableEvent[]) => {
