@@ -271,7 +271,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
 
                 <button type="button" data-testid={"needle-frame-btn"} className="panel__toolbar-btn" onClick={frameModel} disabled={!modelName}>
                     <IconFrame/>
-                    Auto Frame
+                    Fit View
                 </button>
             </div>
 

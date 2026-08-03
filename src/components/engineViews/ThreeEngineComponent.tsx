@@ -329,7 +329,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
 
                 <button type="button" data-testid={"three-frame-btn"} className="panel__toolbar-btn" onClick={() => frameModel()} disabled={!modelName}>
                     <IconFrame/>
-                    Auto Frame
+                    Fit View
                 </button>
             </div>
 
