@@ -426,8 +426,6 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
           node.data.variables = graph.variables;
           node.data.types = graph.types;
       
-          // to keep track of if there is a link for this value
-          node.data.linked = {}
           node.data.values = {}
           if (interactivityNode.values) {
             for (const [key, value] of Object.entries(interactivityNode.values.input || {})) {
@@ -448,7 +446,6 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                   targetHandle: key,
                   style: edgeStyle(edgeColor),
                 });
-                node.data.linked[key] = true;
               } else if (value.value !== undefined) {
                 // if the value is a value, we can just get it from the node json
                 node.data.values[key] = {value: value.value, type: value.type};

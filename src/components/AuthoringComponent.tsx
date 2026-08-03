@@ -414,6 +414,89 @@ export const AuthoringComponent = () => {
         setNodes((nds: Node[]) => nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data } } : n)));
     }, [setNodes]);
 
+    // recolor a node's outgoing value edges to match its current output socket types
+    // (called by nodes when a type changes, e.g. via the type dropdown or Pointer Type config)
+    const recolorEdges = useCallback((nodeId: string) => {
+        setEdges((eds: Edge[]) => {
+            const sourceNode = graph.nodes.find(n => n.uid === nodeId);
+            if (sourceNode === undefined) {
+                return eds;
+            }
+            // Every node's mount reconcile calls this, so on a large graph it runs once per node
+            // over the full edge list. Keep the array identity when no color actually changed, so
+            // reactflow re-renders its edges only for a real recolor rather than on every mount.
+            let changed = false;
+            const next = eds.map((edge) => {
+                if (edge.source !== nodeId) {
+                    return edge;
+                }
+                // flow edges keep the flow color
+                if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) {
+                    return edge;
+                }
+                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
+                if ((edge.style as any)?.stroke === stroke) {
+                    return edge;
+                }
+                changed = true;
+                return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
+            });
+            return changed ? next : eds;
+        });
+    }, [graph]);
+
+    // `nodeId`'s output types just changed (type dropdown, `type`/`pointer` config, a wire added or
+    // removed), so every node consuming them must re-resolve its own types, wire colors and render.
+    // Walks the value wires breadth-first, continuing past a consumer only when its own outputs
+    // actually moved — that stopping rule keeps an edit from cascading over the whole graph.
+    const refreshValueConsumers = useCallback((nodeId: string) => {
+        // source uid -> nodes wired to it; built per call since the model is mutated in place
+        const consumers = new Map<string, AuthoredNode[]>();
+        for (const n of graph.nodes) {
+            if (n.uid === undefined) { continue; }
+            for (const value of Object.values(n.values?.input ?? {})) {
+                if (value?.node === undefined) { continue; }
+                const key = String(value.node);
+                const list = consumers.get(key);
+                if (list === undefined) { consumers.set(key, [n]); }
+                else if (!list.includes(n)) { list.push(n); }
+            }
+        }
+        if (consumers.size === 0) { return; }
+
+        const queue = [nodeId];
+        const seen = new Set<string>([nodeId]);
+        const touched = new Set<string>();
+        while (queue.length > 0) {
+            for (const consumer of consumers.get(queue.shift()!) ?? []) {
+                const uid = consumer.uid!;
+                if (seen.has(uid)) { continue; }
+                seen.add(uid);
+                touched.add(uid);
+                // preferConnections=false: live-editor precedence, as on the connect path
+                if (propagateNodeGroupTypes(consumer, graph.nodes, false)) { queue.push(uid); }
+            }
+        }
+        if (touched.size === 0) { return; }
+
+        // one edge-list pass for all touched sources, instead of recolorEdges per node
+        setEdges((eds: Edge[]) => {
+            let changed = false;
+            const next = eds.map((edge) => {
+                if (!touched.has(edge.source)) { return edge; }
+                const sourceNode = graph.nodes.find(n => n.uid === edge.source);
+                if (sourceNode === undefined || sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) { return edge; }
+                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
+                if ((edge.style as any)?.stroke === stroke) { return edge; }
+                changed = true;
+                return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
+            });
+            return changed ? next : eds;
+        });
+        // in-place propagation doesn't change node identity, so bump `data` to force a re-read
+        setNodes((nds: Node[]) => nds.map((n) => (touched.has(n.id) ? { ...n, data: { ...n.data } } : n)));
+    }, [graph, setEdges, setNodes]);
+
     // handle creation and deletion of edges
     const onConnect = useCallback((vals: Edge<any> | Connection) => {
         const sourceNodeId = vals.source;
@@ -448,19 +531,6 @@ export const AuthoringComponent = () => {
             if (sourceValueTypes !== undefined && targetValueTypes !== undefined && !hasIntersection(sourceValueTypes, targetValueTypes)) {return}
         }
 
-        if (!targetIsFlow) {
-            const targetNode = document.querySelectorAll(`[data-id='${vals.target}']`)[0];
-            const inputField = targetNode.querySelector(`#in-${vals.targetHandle}`) as HTMLInputElement;
-            if (inputField !== null) {
-                inputField.style.display = "none";
-            }
-            const typeDropdown = targetNode.querySelector(`#typeDropDown-${vals.targetHandle}`) as HTMLInputElement;
-            if (typeDropdown !== null) {
-                typeDropdown.style.display = "none";
-            }
-        }
-
-
         if (sourceIsFlow || targetIsFlow) {
             if (sourceNode.op === "flow/sequence") {
                 // if the source node is a flow/sequence, we need to dyanmically add outflows since they are not defined in the template
@@ -492,11 +562,15 @@ export const AuthoringComponent = () => {
 
             if (targetGroup !== undefined) {
                 // re-resolve the group (a static value on a sibling still wins over this new wire)
-                // and persist it onto the followers + outputs; refresh the node + its outgoing edges
+                // and persist it onto the followers + outputs
                 propagateGroupType(targetNode, targetGroup);
-                recolorEdges(targetNodeId!);
-                bumpNodeData(targetNodeId!);
             }
+            // re-render the target for *every* value connection, not just a grouped one: hiding its
+            // value input/type dropdown and adopting the source's type are all model-driven renders.
+            // Previously done by writing style.display onto the DOM, which React never undid.
+            recolorEdges(targetNodeId!);
+            bumpNodeData(targetNodeId!);
+            refreshValueConsumers(targetNodeId!);
         }
 
         // color the wiring by the source socket type (or flow color for flow connections)
@@ -520,38 +594,7 @@ export const AuthoringComponent = () => {
             return addEdge({ ...vals, style: { stroke: edgeColor, strokeWidth: 2 } }, filtered);
         });
         markGraphDirty();
-    }, [nodes, graph, bumpNodeData]);
-
-    // recolor a node's outgoing value edges to match its current output socket types
-    // (called by nodes when a type changes, e.g. via the type dropdown or Pointer Type config)
-    const recolorEdges = useCallback((nodeId: string) => {
-        setEdges((eds: Edge[]) => {
-            const sourceNode = graph.nodes.find(n => n.uid === nodeId);
-            if (sourceNode === undefined) {
-                return eds;
-            }
-            // Every node's mount reconcile calls this, so on a large graph it runs once per node
-            // over the full edge list. Keep the array identity when no color actually changed, so
-            // reactflow re-renders its edges only for a real recolor rather than on every mount.
-            let changed = false;
-            const next = eds.map((edge) => {
-                if (edge.source !== nodeId) {
-                    return edge;
-                }
-                // flow edges keep the flow color
-                if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) {
-                    return edge;
-                }
-                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
-                if ((edge.style as any)?.stroke === stroke) {
-                    return edge;
-                }
-                changed = true;
-                return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
-            });
-            return changed ? next : eds;
-        });
-    }, [graph]);
+    }, [nodes, graph, bumpNodeData, recolorEdges, refreshValueConsumers]);
 
     // when a dynamic flow output socket (flow/sequence, flow/multiGate) is renamed, retarget any
     // edge leaving that socket so the wiring survives the rename
@@ -568,23 +611,12 @@ export const AuthoringComponent = () => {
         for (let i = 0; i < edges.length; i++) {
             const edge = edges[i];
 
-            const sourceNode = graph.nodes.find(node => node.uid === edge.source)!;
-            const targetNode = graph.nodes.find(node => node.uid === edge.target)!;
+            const sourceNode = graph.nodes.find(node => node.uid === edge.source);
+            const targetNode = graph.nodes.find(node => node.uid === edge.target);
+            // deleting a node deletes its edges, so an endpoint may already be gone from the model
+            if (sourceNode === undefined || targetNode === undefined) { continue; }
             const isFlowConnection = sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined;
-        
-            if (!isFlowConnection) {
-                // flow so we need to show the input field now
-                const targetNode = document.querySelectorAll(`[data-id='${edge.target}']`)[0];
-                const inputField = targetNode.querySelector(`#in-${edge.targetHandle}`) as HTMLInputElement;
-                if (inputField !== null) {
-                    inputField.style.display = "block";
-                }
-                const typeDropdown = targetNode.querySelector(`#typeDropDown-${edge.targetHandle}`) as HTMLInputElement;
-                if (typeDropdown !== null) {
-                    typeDropdown.style.display = "block";
-                }
-            }
-            
+
             if (isFlowConnection) {
                 // flow so we should remove the flow value from the node
                 sourceNode!.flows!.output![edge.sourceHandle!] = {};
@@ -615,13 +647,15 @@ export const AuthoringComponent = () => {
 
                 if (restored.typeGroup !== undefined) {
                     propagateGroupType(targetNode, restored.typeGroup);
-                    recolorEdges(targetNode.uid!);
                 }
+                // same model-driven re-render as the connect path above
+                recolorEdges(targetNode.uid!);
                 bumpNodeData(edge.target!);
+                refreshValueConsumers(targetNode.uid!);
             }
         }
         markGraphDirty();
-    }, [graph, bumpNodeData]);
+    }, [graph, bumpNodeData, recolorEdges, refreshValueConsumers]);
 
     const onNodesDelete = useCallback((nodes: Node[]) => {
         for (let i = 0; i < nodes.length; i++) {
@@ -639,7 +673,7 @@ export const AuthoringComponent = () => {
             id: uid,
             type: nodeType,
             position: position,
-            data: {events: graph.events, variables: graph.variables, types: standardTypes, uid: uid, op: nodeType, recolorEdges: recolorEdges, renameFlowSocket: renameFlowSocket}
+            data: {events: graph.events, variables: graph.variables, types: standardTypes, uid: uid, op: nodeType, recolorEdges: recolorEdges, refreshValueConsumers: refreshValueConsumers, renameFlowSocket: renameFlowSocket}
         };
 
         const spec = getNodeSpec(nodeType)!;
@@ -897,7 +931,7 @@ export const AuthoringComponent = () => {
                 id: newUid,
                 type: node.type,
                 position: { x: node.position.x + OFFSET, y: node.position.y + OFFSET },
-                data: { ...node.data, uid: newUid, recolorEdges, renameFlowSocket },
+                data: { ...node.data, uid: newUid, recolorEdges, refreshValueConsumers, renameFlowSocket },
             } as Node);
         }
 
@@ -940,7 +974,7 @@ export const AuthoringComponent = () => {
             }
         }
         if (newEdges.length > 0) setEdges(eds => [...eds, ...newEdges]);
-    }, [graph, nodes, addDeclaration, addNode, onNodesChange, setEdges, recolorEdges, renameFlowSocket]);
+    }, [graph, nodes, addDeclaration, addNode, onNodesChange, setEdges, recolorEdges, refreshValueConsumers, renameFlowSocket]);
 
     const duplicateSelectedNodes = useCallback(() => {
         const prev = clipboardRef.current;
@@ -981,6 +1015,7 @@ export const AuthoringComponent = () => {
             for (const node of loadedNodes) {
                 node.data.op = node.type;
                 node.data.recolorEdges = recolorEdges;
+                node.data.refreshValueConsumers = refreshValueConsumers;
                 node.data.renameFlowSocket = renameFlowSocket;
                 if (getNodeSpec(node.data.op) === undefined) {
                     node.type = "NoOp";

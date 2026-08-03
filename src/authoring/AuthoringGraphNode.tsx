@@ -301,8 +301,14 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
         const prev = node.values.output ?? {};
         const resolved = applyUpdate(next, prev);
         node.values.output = resolved;
-        // output socket types may have changed; recolor this node's outgoing wires to match
+        // output socket types may have changed: recolor this node's outgoing wires, and re-resolve
+        // everything downstream (a consumer reads its types through this node's outputs). The
+        // downstream walk is skipped for the automatic reconcile pass, which only normalises the
+        // model — an O(graph) walk per node mount would make loading quadratic.
         props.data.recolorEdges?.(props.data.uid);
+        if (!suppressDirtyRef.current) {
+            props.data.refreshValueConsumers?.(props.data.uid);
+        }
         markDirtyIfChanged();
         forceRender();
     };
@@ -559,7 +565,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
             outputValues,
             inputFlows,
             outputFlows,
-            events: props.data.events ?? {},
+            events: graph.events ?? {},
             variables: graph.variables ?? [],
         });
 
@@ -580,7 +586,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
         if (!sameRecord(inputFlows, reconciled.inputFlows, sameFlowSocket)) { setInputFlows(reconciled.inputFlows); }
         if (!sameRecord(inputValues, reconciled.inputValues, sameValueSocket)) { setInputValues(reconciled.inputValues); }
         if (!sameRecord(outputValues, reconciled.outputValues, sameValueSocket)) { setOutputValues(reconciled.outputValues); }
-    }, [inputValues, outputValues, inputFlows, outputFlows, node, configuration, graph.variables, props.data.events, props.data.isNoOp])
+    }, [inputValues, outputValues, inputFlows, outputFlows, node, configuration, graph.variables, graph.events, props.data.isNoOp])
 
     const stringToListOfNumbers = (inputString: string) => {
         const numberStrings = inputString.split(',');
@@ -700,8 +706,10 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     // interpolate nodes expose p1/p2 as the cubic-bezier easing control points; show a curve
     // preview + preset picker when both are present as inline (unwired) float2 values.
     const isInterpolateNode = node?.op === "variable/interpolate" || node?.op === "pointer/interpolate";
+    // read from the model only: a props.data mirror went stale on every connect/disconnect, and was
+    // copied verbatim onto a pasted node (leaving its value inputs permanently hidden)
     const isSocketLinked = (socket: string) =>
-        (props.data.linked && props.data.linked[socket]) || node?.values?.input?.[socket]?.node !== undefined;
+        node?.values?.input?.[socket]?.node !== undefined;
     const readControlPoint = (socket: string): ControlPoint => {
         const v = inputValues[socket]?.value;
         return [Number(v?.[0]), Number(v?.[1])];
@@ -716,7 +724,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
     const configuredEventIndex = configuration.event?.value?.[0];
     const configuredEvent: IInteractivityEvent | undefined =
         configuredEventIndex != null && Number(configuredEventIndex) >= 0
-            ? props.data.events?.[Number(configuredEventIndex)]
+            ? graph.events?.[Number(configuredEventIndex)]
             : undefined;
 
     // add a new output flow socket with a unique numeric name
@@ -906,7 +914,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                                 }} >
                                     <option key={-1} value={-1}>--NO SELECTION--</option>
                                     {
-                                        props.data.events.map((ce: any, index: number) => (
+                                        (graph.events ?? []).map((ce: any, index: number) => (
                                             <option key={index} value={index}>{ce.id}</option>
                                         ))
                                     }
@@ -1122,7 +1130,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                         {/*inputValues*/}
                         <div>
                             {Object.entries(inputValues).map(([socket, value]) => {
-                                const isLinked = (props.data.linked && props.data.linked[socket]) || node?.values?.input?.[socket]?.node !== undefined;
+                                const isLinked = isSocketLinked(socket);
                                 const isUnknown = isUnknownInputValueSocket(socket);
                                 const resolvedInputType = resolveSocketType(socket, value);
                                 // per-socket ⚠: the model-driven validator already attributed each
