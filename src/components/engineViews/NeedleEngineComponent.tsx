@@ -13,8 +13,8 @@ import { registerNeedleInteractivity } from "../../integrations/NeedleInteractiv
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { configureNeedleXR, type NeedleXRContext } from "../../integrations/NeedleXR";
-import { Spacer } from "../Spacer";
-import { downloadInteractiveModel } from "./modelExport";
+import { IconDownload, IconFrame, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { downloadInteractiveModel, ModelSource } from "./modelExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import type { NeedleContext } from "../../integrations/NeedlePointerEvents";
@@ -25,7 +25,7 @@ registerNeedleInteractivity({
     initializeWithoutExtension: true,
 });
 
-type ModelSource = { kind: "url"; url: string } | { kind: "file"; file: File };
+/** what the viewport currently shows — the same shape the glb export takes as its source */
 
 interface PendingLoad {
     authoredGraph: IInteractivityGraph;
@@ -114,13 +114,13 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
             URL.revokeObjectURL(activeObjectUrlRef.current);
             activeObjectUrlRef.current = null;
         }
-        const url = source.kind === "url" ? source.url : URL.createObjectURL(source.file);
-        if (source.kind === "file") activeObjectUrlRef.current = url;
+        const url = source.kind === "url" ? source.url : URL.createObjectURL(source.model.file);
+        if (source.kind === "files") activeObjectUrlRef.current = url;
 
         const token = ++loadTokenRef.current;
         pendingLoadRef.current = { authoredGraph, replaceAuthoringGraph, token };
         sourceRef.current = source;
-        setModelName(source.kind === "file" ? source.file.name : source.url.split("/").pop() ?? "model.glb");
+        setModelName(source.kind === "files" ? source.model.file.name : source.url.split("/").pop() ?? "model.glb");
 
         element.removeAttribute("src");
         requestAnimationFrame(() => {
@@ -187,11 +187,17 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         }
     };
 
+    // whichever glb the viewport shows gets the graph embedded — samples loaded by URL included,
+    // not only local uploads (see ModelSource)
     const downloadGlb = (): void => {
         const source = sourceRef.current;
-        if (source?.kind !== "file") return;
-        const entry = { path: source.file.name, file: source.file };
-        void downloadInteractiveModel({ kind: "files", model: entry, entries: [entry] }, getExecutableGraph(), "glb");
+        if (source === null) {
+            console.warn("No model loaded to export");
+            return;
+        }
+        trackEvent('graph_exported', { engine: 'needle' });
+        void downloadInteractiveModel(source, getExecutableGraph(), "glb")
+            .catch((error) => console.error("Failed to export glb:", error));
     };
 
     useEffect(() => {
@@ -226,12 +232,19 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
     }, []);
 
     return (
-        <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
-            <div className="engine-toolbar">
-                <Button variant="outline-light" onClick={play} disabled={!modelName}>Play</Button>
-                <Spacer width={16} height={0}/>
-                <Button variant="outline-light" onClick={() => setOpenModal(NeedleEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>Send Custom Event</Button>
-                <Spacer width={16} height={0}/>
+        <div className={"panel"}>
+            <div className={"panel__toolbar"}>
+                <button type="button" className="panel__toolbar-btn" onClick={play} disabled={!modelName}>
+                    <IconPlay/>
+                    Play
+                </button>
+
+                <button type="button" className="panel__toolbar-btn" onClick={() => setOpenModal(NeedleEngineModal.CUSTOM_EVENT)} disabled={!graphRunning}>
+                    <IconSendEvent/>
+                    Send Custom Event
+                </button>
+
+                <span className={"panel__toolbar-label"}>Model</span>
                 <input
                     className="d-none"
                     type="file"
@@ -240,17 +253,30 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
                     data-testid="needle-engine-file-input"
                     onChange={() => {
                         const file = fileInputRef.current?.files?.[0];
-                        if (file) loadSource({ kind: "file", file }, getExecutableGraph(), true);
+                        if (file) loadSource({ kind: "files", model: { path: file.name, file }, entries: [{ path: file.name, file }] }, getExecutableGraph(), true);
                     }}
                 />
-                <Button variant="outline-light" onClick={() => fileInputRef.current?.click()}>Upload glb</Button>
-                <Spacer width={16} height={0}/>
-                <Button variant="outline-light" onClick={downloadGlb} disabled={sourceRef.current?.kind !== "file"}>Download glb</Button>
-                <Spacer width={16} height={0}/>
-                <Button variant="outline-light" onClick={frameModel} disabled={!modelName}>Auto Frame</Button>
+                <button type="button" className="panel__toolbar-btn" onClick={() => fileInputRef.current?.click()}>
+                    <IconUpload/>
+                    Upload glb
+                </button>
+
+                <button type="button" className="panel__toolbar-btn" onClick={downloadGlb} disabled={!modelName}>
+                    <IconDownload/>
+                    Download glb
+                </button>
+
+                <span className={"panel__toolbar-spacer"}/>
+
+                <button type="button" data-testid={"needle-frame-btn"} className="panel__toolbar-btn" onClick={frameModel} disabled={!modelName}>
+                    <IconFrame/>
+                    Fit View
+                </button>
             </div>
 
-            <div style={{ position: "relative", flex: 1, minHeight: 0, overflow: "hidden", background: "#fff" }}>
+            {/* the needle-engine element manages its own canvas, so this pane only has to be a
+                sized, clipped box inside the panel body */}
+            <div className={"panel__body"} style={{ position: "relative", overflow: "hidden", background: "#fff" }}>
                 {React.createElement("needle-engine", {
                     ref: (element: HTMLElement | null) => engineElementRef.current = element as NeedleEngineElement | null,
                     "camera-controls": "true",
