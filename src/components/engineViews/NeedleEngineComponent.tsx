@@ -13,7 +13,9 @@ import { registerNeedleInteractivity } from "../../integrations/NeedleInteractiv
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { configureNeedleXR, type NeedleXRContext } from "../../integrations/NeedleXR";
-import { IconDownload, IconFrame, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { useFullscreen } from "../../hooks/useFullscreen";
+import { ViewportControls } from "./ViewportControls";
 import { downloadInteractivityGlb, GlbSource } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
@@ -77,6 +79,7 @@ function frameNeedleModel(context: NeedleMenuContext, objects: unknown): void {
 
 export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ modelUrl }) => {
     const engineElementRef = useRef<NeedleEngineElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
     const sourceRef = useRef<ModelSource | null>(null);
     const pendingLoadRef = useRef<PendingLoad | null>(null);
     const loadedModelRef = useRef<ThreeLoadedModel | null>(null);
@@ -87,6 +90,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
     const [modelName, setModelName] = useState<string | null>(null);
     const [graphRunning, setGraphRunning] = useState(false);
     const [openModal, setOpenModal] = useState(NeedleEngineModal.NONE);
+    const viewportFullscreen = useFullscreen(viewportRef);
 
     const {
         clearGraphDirty,
@@ -267,17 +271,14 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
                     Download glb
                 </button>
 
-                <span className={"panel__toolbar-spacer"}/>
-
-                <button type="button" data-testid={"needle-frame-btn"} className="panel__toolbar-btn" onClick={frameModel} disabled={!modelName}>
-                    <IconFrame/>
-                    Fit View
-                </button>
             </div>
 
             {/* the needle-engine element manages its own canvas, so this pane only has to be a
                 sized, clipped box inside the panel body */}
-            <div className={"panel__body"} style={{ position: "relative", overflow: "hidden", background: "#fff" }}>
+            <div
+                ref={viewportRef}
+                className={`panel__body viewport-pane${viewportFullscreen.fallback ? " viewport-pane--fullscreen-fallback" : ""}`}
+            >
                 {React.createElement("needle-engine", {
                     ref: (element: HTMLElement | null) => engineElementRef.current = element as NeedleEngineElement | null,
                     "camera-controls": "true",
@@ -288,6 +289,14 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
                     style: { position: "relative", width: "100%", height: "100%" },
                     "data-testid": "needle-engine-view",
                 })}
+                <ViewportControls
+                    onFitView={frameModel}
+                    fitDisabled={!modelName}
+                    fitTestId={"needle-frame-btn"}
+                    isFullscreen={viewportFullscreen.isFullscreen}
+                    onToggleFullscreen={() => void viewportFullscreen.toggle()}
+                    fullscreenTestId={"needle-fullscreen-btn"}
+                />
             </div>
 
             <Modal size="lg" show={openModal === NeedleEngineModal.CUSTOM_EVENT} onHide={() => setOpenModal(NeedleEngineModal.NONE)}>

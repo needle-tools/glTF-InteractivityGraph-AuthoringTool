@@ -22,7 +22,9 @@ import { registerGLTFInteractivity } from "../../integrations/GLTFInteractivityP
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
-import { IconDownload, IconFrame, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { useFullscreen } from "../../hooks/useFullscreen";
+import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { ViewportControls } from "./ViewportControls";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
 import { downloadInteractivityGlb, GlbSource } from "./glbExport";
@@ -45,6 +47,7 @@ interface ThreeEngineComponentProps {
 
 export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ modelUrl }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
     const rendererRef = useRef<WebGLRenderer | null>(null);
     const loaderRef = useRef<ReturnType<typeof createThreeLoader> | null>(null);
     const sceneRef = useRef<Scene | null>(null);
@@ -60,6 +63,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
     const [graphRunning, setGraphRunning] = useState(false);
     const [openModal, setOpenModal] = useState(ThreeEngineModal.NONE);
     const devicePixelRatio = useDevicePixelRatio();
+    const viewportFullscreen = useFullscreen(viewportRef);
 
     const {
         clearGraphDirty,
@@ -325,16 +329,21 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
                     Download glb
                 </button>
 
-                <span className={"panel__toolbar-spacer"}/>
-
-                <button type="button" data-testid={"three-frame-btn"} className="panel__toolbar-btn" onClick={() => frameModel()} disabled={!modelName}>
-                    <IconFrame/>
-                    Fit View
-                </button>
             </div>
 
-            <div className={"panel__body"}>
+            <div
+                ref={viewportRef}
+                className={`panel__body viewport-pane${viewportFullscreen.fallback ? " viewport-pane--fullscreen-fallback" : ""}`}
+            >
                 <canvas ref={canvasRef} style={{ width: "100%", flex: 1, minHeight: 0 }} data-testid="three-engine-canvas"/>
+                <ViewportControls
+                    onFitView={() => frameModel()}
+                    fitDisabled={!modelName}
+                    fitTestId={"three-frame-btn"}
+                    isFullscreen={viewportFullscreen.isFullscreen}
+                    onToggleFullscreen={() => void viewportFullscreen.toggle()}
+                    fullscreenTestId={"three-fullscreen-btn"}
+                />
             </div>
 
             <Modal size="lg" show={openModal === ThreeEngineModal.CUSTOM_EVENT} onHide={() => setOpenModal(ThreeEngineModal.NONE)}>
