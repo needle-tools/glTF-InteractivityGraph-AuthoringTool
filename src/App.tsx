@@ -280,7 +280,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType,
             <h1 className={"app-title"}>glTF Interactivity Editor and Viewer</h1>
             <p className={"app-subtitle"}>
                 Inspect, run and author glTF files using the{" "}
-                <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank" rel="noreferrer">KHR_interactivity</a>
+                <a href="https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank" rel="noreferrer">KHR_interactivity</a>
                 {" "}extension — load a sample or test asset, or build your own graph.
             </p>
         </div>
