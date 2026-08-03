@@ -1592,7 +1592,7 @@
     will-change: transform;
 }
 
-/* screen-space overlay ringing warning nodes once the LOD box's dotted border is too thin to
+/* screen-space overlay badging warning nodes once the LOD box's dotted border is too thin to
    read; see WARNING_ANNOTATION_ZOOM_THRESHOLD in NodeWarningAnnotations.tsx */
 .node-warning-annotations {
     position: absolute;
@@ -1602,4 +1602,19 @@
     height: 100%;
     pointer-events: none;
     z-index: 4;
+}
+
+/* Bubble and tail are SVG shapes (see NodeWarningAnnotations.tsx) rather than a div plus a
+   rotated pseudo-element: will-change below makes this a stacking context, so a z-index:-1 tail
+   could not paint behind the div's own background and showed up as a diamond stuck to the corner.
+   In SVG the tail just paints first and the body covers its base. */
+.node-warning-badge {
+    position: absolute;
+    top: 0;
+    left: 0;
+    line-height: 0;
+    pointer-events: none;
+    /* follows the SVG silhouette, unlike box-shadow which would trace the bounding box */
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+    will-change: transform;
 }

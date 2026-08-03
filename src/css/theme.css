@@ -204,10 +204,10 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
-/* diagnostics strip between header and workspace */
+/* diagnostics strip below the workspace */
 .app-notice {
     flex: 0 0 auto;
-    padding: var(--sp-3) var(--sp-4) 0;
+    padding: 0 var(--sp-4) var(--sp-4);
 }
 
 .app-notice .alert {
