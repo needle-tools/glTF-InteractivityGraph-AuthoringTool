@@ -1366,7 +1366,10 @@ export const AuthoringComponent = () => {
                         <ControlButton/> entries at the end of the same stack. The built-in fit
                         button has to go through frameGraph too — reactflow's own fitView is the one
                         that gives up on unmeasured (culled) nodes. */}
-                    <Controls onFitView={() => frameGraph(300)}>
+                    {/* no lock button: reactflow's only gates its own drag/select/connect, which
+                        leaves this editor's own affordances (right-click add, delete buttons, node
+                        inputs, clipboard shortcuts) live — a "locked" graph was still editable */}
+                    <Controls showInteractive={false} onFitView={() => frameGraph(300)}>
                         <ControlButton
                             data-testid={"graph-fullscreen-btn"}
                             className={graphFullscreen ? "is-active" : undefined}
