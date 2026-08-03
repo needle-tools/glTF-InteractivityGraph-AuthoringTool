@@ -392,7 +392,9 @@ export const AuthoringComponent = () => {
         const target = nodes.find((n) => n.id === nodeUid);
         if (!target || !reactFlowInstance) { return; }
         setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === nodeUid })));
-        reactFlowInstance.setCenter(target.position.x, target.position.y, { zoom: 1, duration: 500 });
+        const centerX = target.position.x + (target.width ?? UNMEASURED_NODE_WIDTH) / 2;
+        const centerY = target.position.y + (target.height ?? UNMEASURED_NODE_HEIGHT) / 2;
+        reactFlowInstance.setCenter(centerX, centerY, { zoom: 1, duration: 500 });
     }, [nodes, reactFlowInstance, setNodes]);
 
     const jumpToNodeIndex = useCallback((nodeIndex: number): boolean => {
@@ -720,8 +722,19 @@ export const AuthoringComponent = () => {
         addNode(interactivityNode);
 
         onNodesChange([{type: "add", item: nodeToAdd}]);
+
+        // below the LOD threshold the new node would render as the flat LOD box, so zoom in to it —
+        // otherwise leave the user's zoom/pan alone
+        if (reactFlowInstance && reactFlowInstance.getZoom() < LOD_ZOOM_THRESHOLD) {
+            reactFlowInstance.setCenter(
+                position.x + UNMEASURED_NODE_WIDTH / 2,
+                position.y + UNMEASURED_NODE_HEIGHT / 2,
+                { zoom: 1, duration: 500 },
+            );
+        }
+
         return uid;
-    }, [graph]);
+    }, [graph, reactFlowInstance]);
 
     // a drag-connection started from a handle: remember where, and start watching for a right-click
     // (which cancels the whole gesture — see onConnectEnd)
