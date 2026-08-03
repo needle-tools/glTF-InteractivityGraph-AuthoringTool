@@ -363,6 +363,9 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
                 loadGraphFromJson,
                 loadBehaveGraph: (graph) => babylonEngineRef.current!.loadBehaveGraph(graph),
             });
+            // this path runs the graph just like play() does, so the toolbar (Send Custom Event)
+            // has to see it as running too
+            setGraphRunning(true);
             clearGraphDirty();
         } catch (error) {
             console.error("Error loading model from URL:", error);
