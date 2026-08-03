@@ -3,6 +3,7 @@ import { InteractivityValueType } from "../BasicBehaveEngine/types/Interactivity
 import { pointerCatalogue, PointerCategory, isPointerTemplateSupported, getPointerCatalogueSearchText } from "./pointerCatalogue";
 import { getPathTemplateSockets, setPathTemplateSlotKind, PathTemplateSocketKind } from "./pathTemplate";
 import { InteractivityGraphContext } from "../InteractivityGraphContext";
+import { useLiftNodeContainment } from "./useLiftNodeContainment";
 
 export interface PointerConfigFieldProps {
     /** current pointer template string */
@@ -43,20 +44,8 @@ export const PointerConfigField: React.FC<PointerConfigFieldProps> = ({ value, a
         return () => document.removeEventListener("mousedown", handleClick);
     }, [open]);
 
-    // .flow-node uses paint containment for off-screen rendering performance. Temporarily lift
-    // that containment while this overlay is open so the catalogue can extend beyond the node.
-    useEffect(() => {
-        if (!open) return;
-        const flowNode = containerRef.current?.closest(".flow-node");
-        if (!flowNode) return;
-        const reactFlowNode = flowNode.closest(".react-flow__node");
-        flowNode.classList.add("flow-node--overlay-open");
-        reactFlowNode?.classList.add("react-flow__node--overlay-open");
-        return () => {
-            flowNode.classList.remove("flow-node--overlay-open");
-            reactFlowNode?.classList.remove("react-flow__node--overlay-open");
-        };
-    }, [open]);
+    // let the catalogue extend beyond the node instead of being clipped by its paint containment
+    useLiftNodeContainment(containerRef, open);
 
     const grouped = useMemo(() => {
         const query = search.trim().toLowerCase();

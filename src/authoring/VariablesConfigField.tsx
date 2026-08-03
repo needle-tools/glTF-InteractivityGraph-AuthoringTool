@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { IInteractivityVariable } from "../BasicBehaveEngine/types/InteractivityGraph";
 import { getColorForTypeIndex, getTypeLabel } from "./socketColors";
+import { useLiftNodeContainment } from "./useLiftNodeContainment";
 
 export interface VariablesConfigFieldProps {
     /**
@@ -38,6 +39,9 @@ export const VariablesConfigField: React.FC<VariablesConfigFieldProps> = ({ getV
         document.addEventListener("mousedown", onDocMouseDown);
         return () => document.removeEventListener("mousedown", onDocMouseDown);
     }, [open]);
+
+    // let the menu extend beyond the node instead of being clipped by its paint containment
+    useLiftNodeContainment(rootRef, open);
 
     const toggle = (id: number) => {
         if (selectedIds.includes(id)) {
