@@ -30,6 +30,7 @@ import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } fro
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
 import { trackEvent, trackEventThrottled } from '../utils/analytics';
+import { useFullscreen } from '../hooks/useFullscreen';
 import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
@@ -50,28 +51,6 @@ nodeTypes["NoOp"] = (props: any) => {
 const edgeTypes: EdgeTypes = {
     default: DeletableEdge,
 };
-
-interface WebkitFullscreenDocument extends Document {
-    webkitFullscreenElement?: Element | null;
-    webkitExitFullscreen?: () => Promise<void> | void;
-}
-
-interface WebkitFullscreenElement extends HTMLElement {
-    webkitRequestFullscreen?: () => Promise<void> | void;
-}
-
-function getFullscreenElement(): Element | null {
-    return document.fullscreenElement ?? (document as WebkitFullscreenDocument).webkitFullscreenElement ?? null;
-}
-
-async function exitFullscreen(): Promise<void> {
-    if (document.exitFullscreen) {
-        await document.exitFullscreen();
-    } else {
-        await (document as WebkitFullscreenDocument).webkitExitFullscreen?.();
-    }
-}
-
 
 // one end of a drag-connection: the node + handle it started from, and whether that handle is a
 // source (output) or target (input). Used to decide which sockets to offer on the dropped-onto node.
@@ -263,9 +242,9 @@ export const AuthoringComponent = () => {
     // Off by default: it's a reference for newcomers, opened from the control stack when wanted.
     const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
     const [coarsePointer, setCoarsePointer] = useState(false);
-    const [nativeGraphFullscreen, setNativeGraphFullscreen] = useState(false);
-    const [fullscreenFallback, setFullscreenFallback] = useState(false);
-    const graphFullscreen = nativeGraphFullscreen || fullscreenFallback;
+    const graphFullscreenState = useFullscreen(reactFlowRef);
+    const graphFullscreen = graphFullscreenState.isFullscreen;
+    const fullscreenFallback = graphFullscreenState.fallback;
 
     useEffect(() => {
         if (typeof window.matchMedia !== "function") return;
@@ -275,25 +254,6 @@ export const AuthoringComponent = () => {
         media.addEventListener?.("change", update);
         return () => media.removeEventListener?.("change", update);
     }, []);
-
-    useEffect(() => {
-        const update = () => setNativeGraphFullscreen(getFullscreenElement() === reactFlowRef.current);
-        document.addEventListener("fullscreenchange", update);
-        document.addEventListener("webkitfullscreenchange", update);
-        return () => {
-            document.removeEventListener("fullscreenchange", update);
-            document.removeEventListener("webkitfullscreenchange", update);
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!fullscreenFallback) return;
-        const closeOnEscape = (event: KeyboardEvent) => {
-            if (event.key === "Escape") setFullscreenFallback(false);
-        };
-        window.addEventListener("keydown", closeOnEscape);
-        return () => window.removeEventListener("keydown", closeOnEscape);
-    }, [fullscreenFallback]);
 
     useEffect(() => {
         if (authoringComponentModal === AuthoringComponentModelType.NONE) {
@@ -1202,28 +1162,8 @@ export const AuthoringComponent = () => {
     };
 
     const toggleGraphFullscreen = async () => {
-        const element = reactFlowRef.current;
-        if (!element) return;
         trackEvent('graph_fullscreen_toggled', { enabled: !graphFullscreen });
-        if (fullscreenFallback) {
-            setFullscreenFallback(false);
-            return;
-        }
-        if (getFullscreenElement() === element) {
-            await exitFullscreen();
-            return;
-        }
-        try {
-            if (element.requestFullscreen) {
-                await element.requestFullscreen();
-            } else if ((element as WebkitFullscreenElement).webkitRequestFullscreen) {
-                await (element as WebkitFullscreenElement).webkitRequestFullscreen!();
-            } else {
-                setFullscreenFallback(true);
-            }
-        } catch {
-            setFullscreenFallback(true);
-        }
+        await graphFullscreenState.toggle();
     };
 
     const handleLeftClick = (e: React.MouseEvent) => {

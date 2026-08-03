@@ -29,7 +29,9 @@ import { downloadInteractivityGlb, GlbSource } from "./glbExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { trackEvent } from "../../utils/analytics";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
-import { IconDownload, IconFrame, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { useFullscreen } from "../../hooks/useFullscreen";
+import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { ViewportControls } from "./ViewportControls";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",
@@ -47,6 +49,7 @@ interface BabylonEngineComponentProps {
 
 export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ modelUrl }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
     const engineRef = useRef<Engine | null>(null);
     const sceneRef = useRef<Scene>();
     const [graphRunning, setGraphRunning] = useState(false);
@@ -60,6 +63,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
     // to know which source should win the next time it (re)loads.
     const [useUploadedFile, setUseUploadedFile] = useState(false);
     const devicePixelRatio = useDevicePixelRatio();
+    const viewportFullscreen = useFullscreen(viewportRef);
 
     const {getExecutableGraph, loadGraphFromJson, setDiagnosticsForCategory, setGltfObjectModel, setSupportedPointerTemplates, clearGraphDirty, registerPlayHandler} = useContext(InteractivityGraphContext);
 
@@ -407,16 +411,20 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
                     Download glb
                 </button>
 
-                <span className={"panel__toolbar-spacer"}/>
-
-                <button type="button" data-testid={"frame-btn"} className="panel__toolbar-btn" onClick={() => autoFrame()}>
-                    <IconFrame/>
-                    Fit View
-                </button>
             </div>
 
-            <div className={"panel__body"}>
+            <div
+                ref={viewportRef}
+                className={`panel__body viewport-pane${viewportFullscreen.fallback ? " viewport-pane--fullscreen-fallback" : ""}`}
+            >
                 <canvas ref={canvasRef} style={{ width: '100%', flex: 1, minHeight: 0 }} data-testid={"babylon-engine-canvas"} />
+                <ViewportControls
+                    onFitView={() => autoFrame()}
+                    fitTestId={"frame-btn"}
+                    isFullscreen={viewportFullscreen.isFullscreen}
+                    onToggleFullscreen={() => void viewportFullscreen.toggle()}
+                    fullscreenTestId={"babylon-fullscreen-btn"}
+                />
             </div>
 
             <Modal size="lg" show={openModal === BabylonEngineModal.CUSTOM_EVENT} onHide={() => setOpenModal(BabylonEngineModal.NONE)}>
