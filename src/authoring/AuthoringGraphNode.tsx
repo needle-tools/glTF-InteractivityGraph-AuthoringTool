@@ -179,22 +179,26 @@ const getComponentTitle = (layout: { rows: number; cols: number }, row: number, 
 const LazyOptionsSelect = (props: {
     id: string;
     value: number;
-    count: number;
+    /** read at *render* time, so the list rebuilds from the live model on every open */
+    getCount: () => number;
     labelAt: (index: number) => string;
     onChange: (evt: { target: { value: any; id: string } }) => void;
 }) => {
-    const [expanded, setExpanded] = useState(false);
-    const expand = () => { if (!expanded) { setExpanded(true); } };
-    const hasSelection = props.value >= 0 && props.value < props.count;
+    // a counter rather than a boolean: variables added after the first open must still show up, and
+    // the model is mutated in place (no new graph reference), so only a re-render here refreshes it
+    const [openCount, expand] = useReducer((n: number) => n + 1, 0);
+    const expanded = openCount > 0;
+    const count = props.getCount();
+    const hasSelection = props.value >= 0 && props.value < count;
     return (
         <select
             id={props.id}
             name={props.id}
             className="nodrag"
             value={hasSelection ? props.value : -1}
-            onMouseDown={expand}
-            onFocus={expand}
-            onKeyDown={expand}
+            onMouseDown={() => expand()}
+            onFocus={() => expand()}
+            onKeyDown={() => expand()}
             onChange={(event) => {
                 if (Number(event.target.value) === -1) { return; }
                 props.onChange(event);
@@ -202,7 +206,7 @@ const LazyOptionsSelect = (props: {
         >
             <option value={-1}>--NO SELECTION--</option>
             {expanded
-                ? Array.from({ length: props.count }, (_, index) => (
+                ? Array.from({ length: count }, (_, index) => (
                     <option key={index} value={index}>{props.labelAt(index)}</option>
                 ))
                 : hasSelection && <option value={props.value}>{props.labelAt(props.value)}</option>}
@@ -894,7 +898,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                             (configuration.event !== undefined) &&
                             <div className={"flow-node-field"}>
                                 <label htmlFor="event">event</label>
-                                <select id="event" name="event" className="nodrag" defaultValue={configuration.event.value?.[0] === undefined ? -1 : configuration.event.value[0]} onChange={(event) => {
+                                <select id="event" name="event" className="nodrag" defaultValue={configuration.event.value?.[0] == null ? -1 : configuration.event.value[0]} onChange={(event) => {
                                     if (Number(event.target.value) === -1) {
                                         return
                                     }
@@ -913,10 +917,14 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                             (configuration.variable !== undefined) &&
                             <div className={"flow-node-field"}>
                                 <label htmlFor="variable">variable</label>
+                                {/* `== null`, not `=== undefined`: a freshly added node's config comes from a
+                                    JSON round-trip of the spec, which turns [undefined] into [null] — Number(null)
+                                    is 0, which showed variable #0 as selected while the reconciler (which skips
+                                    null) had left the output socket untyped */}
                                 <LazyOptionsSelect
                                     id="variable"
-                                    value={configuration.variable.value?.[0] === undefined ? -1 : Number(configuration.variable.value[0])}
-                                    count={graph.variables.length}
+                                    value={configuration.variable.value?.[0] == null ? -1 : Number(configuration.variable.value[0])}
+                                    getCount={() => graph.variables.length}
                                     labelAt={(index) => {
                                         const v = graph.variables[index] as any;
                                         const name = v?.name ?? v?.id;
@@ -932,7 +940,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                             <div className={"flow-node-field"}>
                                 <label htmlFor="variables">variables</label>
                                 <VariablesConfigField
-                                    variables={graph.variables}
+                                    getVariables={() => graph.variables}
                                     selectedIds={getSelectedVariableIds()}
                                     onChange={onChangeVariables}
                                 />
@@ -984,7 +992,7 @@ export const AuthoringGraphNode = (props: IAuthoringGraphNodeProps) => {
                             (configuration.type !== undefined) &&
                             <div className={"flow-node-field"}>
                                 <label htmlFor="type">{isPointerNode ? "Pointer Type" : "type"}</label>
-                                <select id="type" name="type" className="nodrag" key={`type-${configuration.type.value?.[0]}`} defaultValue={configuration.type.value?.[0] === undefined ? -1 : configuration.type.value[0]} onChange={(event) => {
+                                <select id="type" name="type" className="nodrag" key={`type-${configuration.type.value?.[0]}`} defaultValue={configuration.type.value?.[0] == null ? -1 : configuration.type.value[0]} onChange={(event) => {
                                     if (Number(event.target.value) === -1) {
                                         return
                                     }
