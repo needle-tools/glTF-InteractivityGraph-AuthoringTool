@@ -413,6 +413,92 @@ body {
     flex-direction: column;
 }
 
+/* ---- 3D viewport (an engine pane's body) ---- */
+
+.viewport-pane {
+    overflow: hidden;
+    background: #fff;
+}
+
+.viewport-pane:fullscreen,
+.viewport-pane:-webkit-full-screen,
+.viewport-pane--fullscreen-fallback {
+    width: 100vw !important;
+    height: 100dvh !important;
+}
+
+/* no Fullscreen API (old WebKit, or an embedding page whose permissions policy blocks it): cover
+   the viewport by hand instead. Same fallback the graph pane uses. */
+.viewport-pane--fullscreen-fallback {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+}
+
+/* fit-view / fullscreen bar, bottom-left of the viewport — deliberately the same corner, size and
+   colors as reactflow's <Controls/> on the graph side (see flowNodes.css) */
+.viewport-controls {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    margin: var(--sp-3);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+.viewport-controls__btn {
+    box-sizing: content-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 5px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--text);
+    transition: background var(--transition), color var(--transition);
+}
+
+.viewport-controls__btn:last-child {
+    border-bottom: none;
+}
+
+.viewport-controls__btn:hover:not(:disabled) {
+    background: var(--brand-50);
+    color: var(--brand-ink);
+}
+
+.viewport-controls__btn:disabled {
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.viewport-controls__btn.is-active,
+.viewport-controls__btn.is-active:hover {
+    background: var(--brand-600);
+    color: #fff;
+}
+
+/* the icons declare width/height 16 inline; match reactflow's 12px glyph size */
+.viewport-controls__btn svg {
+    width: 100%;
+    max-width: 12px;
+    max-height: 12px;
+}
+
+@media (max-width: 767.98px), (pointer: coarse) {
+    .viewport-controls__btn {
+        width: 28px;
+        height: 28px;
+    }
+}
+
 /* -------------------------------------------------------------- buttons -- */
 
 .btn-app {
