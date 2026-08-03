@@ -11,7 +11,8 @@
 
 :root {
     /* brand: --brand-600 is the exact brand green (#2C882C) and is what every brand surface uses
-       — toolbars, primary buttons, active markers. It is dark enough to carry white text (~4.5:1),
+       — primary buttons, active markers, toolbar hover/active states (the bars themselves are
+       neutral gray, so green reads as "interactive"). It is dark enough to carry white text (~4.5:1),
        so unlike a light green it needs no special-casing; the other steps are hover/tint variants
        of the same hue. --brand-ink is the slightly darker step for green *text* on white. */
     --brand-900: #164516;
@@ -300,13 +301,13 @@ body {
     flex: 0 0 auto;
     min-height: calc(var(--control-h) + var(--sp-4));
     padding: var(--sp-2) var(--sp-3);
-    background: var(--brand-600);
-    border-bottom: 1px solid var(--brand-800);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
 }
 
 .panel__toolbar-label {
     font-size: var(--fs-sm);
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--text-muted);
     margin: 0 0 0 var(--sp-2);
 }
 
@@ -373,8 +374,9 @@ body {
 
 /* the button style for anything sitting on a .panel__toolbar — both workspace halves use it, so
    the engine bar and the graph editor's menu bar are one control set. Borderless at rest (the
-   toolbar itself is the frame); the outline only appears on hover/focus. .graph-menu-bar-btn is
-   the graph editor's historical name for the same thing and is kept as an alias. */
+   toolbar itself is the frame); the outline only appears on hover/focus, and it is brand green —
+   the bar itself is neutral gray, so green is reserved for the interactive/active state.
+   .graph-menu-bar-btn is the graph editor's historical name for the same thing, kept as an alias. */
 .panel__toolbar-btn,
 .graph-menu-bar-btn {
     display: inline-flex;
@@ -389,7 +391,7 @@ body {
     font-size: var(--fs-sm);
     font-weight: 600;
     line-height: 1;
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--text);
     cursor: pointer;
     white-space: nowrap;
     transition: background var(--transition), color var(--transition), border-color var(--transition);
@@ -397,22 +399,22 @@ body {
 
 .panel__toolbar-btn:hover:not(:disabled),
 .graph-menu-bar-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.16);
-    border-color: rgba(255, 255, 255, 0.5);
-    color: #fff;
+    background: var(--brand-50);
+    border-color: var(--brand-600);
+    color: var(--brand-ink);
 }
 
 /* toggle buttons that open an overlay editor read as pressed while it is open */
 .panel__toolbar-btn.is-active,
 .graph-menu-bar-btn.is-active {
-    background: #fff;
-    border-color: #fff;
-    color: var(--brand-ink);
+    background: var(--brand-600);
+    border-color: var(--brand-600);
+    color: #fff;
 }
 
 .panel__toolbar-btn:focus-visible,
 .graph-menu-bar-btn:focus-visible {
-    outline: 2px solid #fff;
+    outline: 2px solid var(--brand-600);
     outline-offset: 2px;
 }
 

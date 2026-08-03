@@ -1,6 +1,6 @@
 import ReactFlow, {
     addEdge, Background,
-    Connection,
+    Connection, ControlButton, Controls,
     Edge,
     Node,
     NodeChange,
@@ -28,7 +28,7 @@ import { GraphMiniMap } from './GraphMiniMap';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
-import { IconCustomEvents, IconFrame, IconJsonView, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
+import { IconCustomEvents, IconFrame, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
@@ -235,6 +235,9 @@ export const AuthoringComponent = () => {
     const reactFlowRef = useRef<HTMLDivElement | null>(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const [authoringComponentModal, setAuthoringComponentModal] = useState<AuthoringComponentModelType>(AuthoringComponentModelType.NONE)
+    // the input legend is a footer bar, not a modal, so it toggles independently of the overlays.
+    // Off by default: it's a reference for newcomers, opened from the control stack when wanted.
+    const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
 
     useEffect(() => {
         if (authoringComponentModal === AuthoringComponentModelType.NONE) {
@@ -1243,9 +1246,25 @@ export const AuthoringComponent = () => {
                     preventScrolling={true}
                     deleteKeyCode="Delete"
                     fitView
+                    // drops reactflow's "React Flow" watermark from the bottom-right corner; it
+                    // otherwise overlaps the minimap. Permitted under reactflow's MIT license.
+                    proOptions={{ hideAttribution: true }}
                 >
-                    {/* no <Controls/>: zoom/fit/lock are covered by scroll-to-zoom, the minimap's
-                        Frame button and the shortcuts in the footer bar below */}
+                    {/* zoom / fit / interaction-lock, bottom-left (react-flow's default corner).
+                        <Controls/> renders its own four buttons and then any children, so app-specific
+                        toggles are added as <ControlButton/> entries at the end of the same stack. */}
+                    <Controls>
+                        <ControlButton
+                            data-testid={"toggle-input-legend-btn"}
+                            className={showInputLegend ? "is-active" : undefined}
+                            title={showInputLegend ? "Hide the input legend" : "Show the input legend"}
+                            aria-label={"Toggle input legend"}
+                            aria-pressed={showInputLegend}
+                            onClick={() => setShowInputLegend(show => !show)}
+                        >
+                            <IconLegend/>
+                        </ControlButton>
+                    </Controls>
                     <Background />
                     <GraphMiniMap />
 
@@ -1295,25 +1314,27 @@ export const AuthoringComponent = () => {
                 </ReactFlow>
             </div>
 
-            {/* key mapping: a real footer bar on the panel rather than a canvas overlay, so it
-                never covers nodes and never collides with the minimap */}
-            <div className={"graph-keymap"}>
-                {([
-                    ['Right-click', 'Add node'],
-                    ['Drop wire on canvas', 'Add & connect node'],
-                    ['Right-drag', 'Pan'],
-                    ['Left-drag', 'Multi-select'],
-                    ['Scroll', 'Zoom'],
-                    ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
-                    ['Ctrl+D', 'Duplicate'],
-                    ['Del', 'Delete selected'],
-                ] as [string, string][]).map(([key, label]) => (
-                    <span key={key} className={"graph-keymap__item"}>
-                        <kbd className={"graph-keymap__key"}>{key}</kbd>
-                        <span>{label}</span>
-                    </span>
-                ))}
-            </div>
+            {/* input legend: a real footer bar on the panel rather than a canvas overlay, so it
+                never covers nodes and never collides with the minimap. Toggled from the menu bar. */}
+            <RenderIf shouldShow={showInputLegend}>
+                <div className={"graph-keymap"}>
+                    {([
+                        ['Right-click', 'Add node'],
+                        ['Drop wire on canvas', 'Add & connect node'],
+                        ['Right-drag', 'Pan'],
+                        ['Left-drag', 'Multi-select'],
+                        ['Scroll', 'Zoom'],
+                        ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
+                        ['Ctrl+D', 'Duplicate'],
+                        ['Del', 'Delete selected'],
+                    ] as [string, string][]).map(([key, label]) => (
+                        <span key={key} className={"graph-keymap__item"}>
+                            <kbd className={"graph-keymap__key"}>{key}</kbd>
+                            <span>{label}</span>
+                        </span>
+                    ))}
+                </div>
+            </RenderIf>
         </div>
     )
 }
@@ -1982,9 +2003,11 @@ const VariablesComponent = (props: {closeModal: any}) => {
         commit(variables.filter((_, i) => i !== index));
     };
 
+    // maxWidth "none", unlike the other overlays: variable rows carry four controls each, so this
+    // one takes the graph panel's full width instead of sitting in a centred column of empty space
     return (
-        <GraphOverlayPanel id={"variables-panel"} title={"Variables"} maxWidth={"68rem"} onClose={props.closeModal}>
-                <div className={"graph-overlay-columns"}>
+        <GraphOverlayPanel id={"variables-panel"} title={"Variables"} maxWidth={"none"} onClose={props.closeModal}>
+                <div className={"graph-overlay-columns graph-overlay-columns--wide-main"}>
                     {/* left: editable list of variables */}
                     <div className={"graph-overlay-columns__main"}>
                         {/* overflowX hidden avoids the horizontal scrollbar Bootstrap's negative
@@ -1999,7 +2022,7 @@ const VariablesComponent = (props: {closeModal: any}) => {
                                 <Row style={{ marginBottom: 0, marginLeft: 0, marginRight: 0 }}>
                                     <Col style={{ flexGrow: 2 }}><span style={{ fontSize: 11, color: "#999" }}>ID</span></Col>
                                     <Col xs={2}><span style={{ fontSize: 11, color: "#999" }}>Type</span></Col>
-                                    <Col xs={4}><span style={{ fontSize: 11, color: "#999" }}>Value</span></Col>
+                                    <Col xs={5}><span style={{ fontSize: 11, color: "#999" }}>Value</span></Col>
                                     <Col style={{ width: 44, flexShrink: 0, padding: 0 }}></Col>
                                 </Row>
                             )}
@@ -2031,7 +2054,9 @@ const VariablesComponent = (props: {closeModal: any}) => {
                                                 ))}
                                             </Form.Control>
                                         </Col>
-                                        <Col xs={4}>
+                                        {/* widest of the three: a vector/matrix type renders one
+                                            number input per component in here */}
+                                        <Col xs={5}>
                                             <TypedValueInput
                                                 typeIndex={variable.type}
                                                 value={variable.value}

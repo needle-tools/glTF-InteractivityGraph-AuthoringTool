@@ -84,6 +84,23 @@ export const IconSendEvent = () => (
     </svg>
 );
 
+/** Mouse: toggles the input legend under the graph, most of which is mouse gestures. Deliberately
+ *  solid rather than stroked like the icons above — it sits in reactflow's control stack next to
+ *  the built-in +/-/frame/lock glyphs, which are filled shapes, and a 1.8px stroke reads noticeably
+ *  fainter beside them at the stack's 12px glyph size. The scroll wheel is an evenodd hole in the
+ *  body rather than a second shape, so it stays crisp when the glyph is scaled down. Body is 14 x 22
+ *  viewBox units: the ~2:3 ratio is what makes it read as a mouse — square it off and it becomes a
+ *  ball, narrow it and it becomes a pill. */
+export const IconLegend = () => (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+        <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M12 1a7 7 0 0 0-7 7v8a7 7 0 0 0 14 0V8a7 7 0 0 0-7-7zM13.25 6.25a1.25 1.25 0 0 0-2.5 0v2a1.25 1.25 0 0 0 2.5 0z"
+        />
+    </svg>
+);
+
 /** braces: the object-model JSON payload the logging engine runs against */
 export const IconJsonFile = () => (
     <svg {...iconProps}>

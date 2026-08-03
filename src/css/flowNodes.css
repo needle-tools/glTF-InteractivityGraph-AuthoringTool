@@ -239,7 +239,7 @@
     align-self: center;
     height: 1.25rem;
     margin: 0 var(--sp-1);
-    background: rgba(255, 255, 255, 0.28);
+    background: var(--border-strong);
 }
 
 /* ---- key mapping footer bar (bottom of the graph panel) ---- */
@@ -286,7 +286,12 @@
    rem max-width and the container's own width/height, so nothing overflows at any zoom level or
    split ratio. */
 
-.graph-overlay.react-flow__panel {
+/* The `.react-flow` prefix is load-bearing, not decoration: AuthoringGraphNode.tsx imports this
+   file before AuthoringComponent.tsx imports reactflow/dist/style.css, so reactflow's sheet ends up
+   *after* ours in the bundle. Without the extra class this selector ties on specificity with
+   `.react-flow__panel.center` and loses the tie-break, leaving the card pinned at left:50% —
+   i.e. half width, centred, with a wide empty gutter each side. */
+.react-flow .graph-overlay.react-flow__panel {
     left: 0;
     right: 0;
     top: 0;
@@ -363,6 +368,13 @@
     /* content-height until it hits the cap, so a short list gives a short card with the same
        padding all round rather than a fixed-height card with dead space */
     max-height: min(28rem, 46vh);
+}
+
+/* Variables: its rows pack four controls (id, type, value, delete) into the left column, so give
+   that column three quarters of the card instead of two thirds — the JSON pane only mirrors state
+   and reads fine narrower. */
+.graph-overlay-columns--wide-main .graph-overlay-columns__main {
+    flex-grow: 3;
 }
 
 /* Takes a third of the row and keeps it while the graph panel is resized: both columns grow and
@@ -1406,6 +1418,63 @@
     font-style: italic;
     color: #888;
     margin-bottom: 8px;
+}
+
+/* ---- zoom/fit/lock controls (reactflow <Controls/>, bottom-left of the canvas) ----
+   Every selector here carries the `.react-flow` prefix for the load-order reason described at
+   .graph-overlay above: reactflow's own sheet lands after this one, so a bare
+   `.react-flow__controls-button` would tie and lose. */
+
+.react-flow .react-flow__controls {
+    margin: var(--sp-3);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+/* reactflow sizes these content-box (16px box + 5px padding = 26px); keep that footprint and
+   restyle only the colors, so ours don't come out noticeably larger than the stock control stack */
+.react-flow .react-flow__controls-button {
+    box-sizing: content-box;
+    width: 16px;
+    height: 16px;
+    padding: 5px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--text);
+    transition: background var(--transition), color var(--transition);
+}
+
+.react-flow .react-flow__controls-button:last-child {
+    border-bottom: none;
+}
+
+.react-flow .react-flow__controls-button:hover {
+    background: var(--brand-50);
+    color: var(--brand-ink);
+}
+
+/* reactflow ships its own glyphs as fill-only <svg>; currentColor makes them follow the states
+   above. Excluded by the [stroke] guard: our custom ControlButton icons (toolbarIcons.tsx), which
+   are stroke-drawn and would turn into solid blobs if filled. */
+.react-flow .react-flow__controls-button svg:not([stroke]) {
+    fill: currentColor;
+}
+
+/* our icons declare width/height 16 inline; cap them at reactflow's 12px glyph size so a custom
+   button's icon matches the built-in ones */
+.react-flow .react-flow__controls-button svg {
+    width: 100%;
+    max-width: 12px;
+    max-height: 12px;
+}
+
+/* custom toggles in the control stack read as pressed the same way the menu-bar toggles do */
+.react-flow .react-flow__controls-button.is-active,
+.react-flow .react-flow__controls-button.is-active:hover {
+    background: var(--brand-600);
+    color: #fff;
 }
 
 /* ---- mini map (GraphMiniMap) ---- */
