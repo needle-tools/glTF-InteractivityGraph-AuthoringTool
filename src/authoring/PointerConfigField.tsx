@@ -85,7 +85,7 @@ export const PointerConfigField: React.FC<PointerConfigFieldProps> = ({ value, a
     };
 
     const segmentButtonStyle = (active: boolean): React.CSSProperties => ({
-        background: active ? "#3d5987" : "white",
+        background: active ? "var(--brand-600)" : "white",
         color: active ? "white" : "#555",
         border: "none",
         padding: "3px 10px",

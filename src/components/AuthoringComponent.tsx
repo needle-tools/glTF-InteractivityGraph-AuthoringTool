@@ -1,20 +1,20 @@
 import ReactFlow, {
     addEdge, Background,
-    Connection, Controls,
+    Connection, ControlButton, Controls,
     Edge,
     Node,
     NodeChange,
     EdgeTypes,
     NodeTypes, Panel, useEdgesState, useNodesState, useReactFlow, XYPosition
 } from 'reactflow';
-import {AuthoringGraphNode} from "../authoring/AuthoringGraphNode";
+import {AuthoringGraphNode, LOD_ZOOM_THRESHOLD} from "../authoring/AuthoringGraphNode";
 import {DeletableEdge} from "../authoring/DeletableEdge";
 import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
 import {v4 as uuidv4} from "uuid";
 import {RenderIf} from "./RenderIf";
-import {Button, Col, Container, Row, Form, OverlayTrigger, Popover, Tooltip} from "react-bootstrap";
+import {Button, Col, Row, Form, OverlayTrigger, Popover, Tooltip} from "react-bootstrap";
 import 'reactflow/dist/style.css';
-import {hasNodeSpecFlag, interactivityNodeSpecs, propagateGraphGroupTypes, propagateNodeGroupTypes, resolveOutputSocketType, standardTypes, toInteractivityDeclaration} from "../authoring/spec/nodes";
+import {buildNodeByUid, getNodeSpec, hasNodeSpecFlag, interactivityNodeSpecs, propagateGraphGroupTypes, propagateNodeGroupTypes, resolveOutputSocketType, standardTypes, toInteractivityDeclaration} from "../authoring/spec/nodes";
 import { IInteractivityEvent, IInteractivityVariable } from '../BasicBehaveEngine/types/InteractivityGraph';
 import { AuthoredGraph, AuthoredNode, AuthoredValue, NodeSpecFlag } from '../authoring/spec/AuthoredGraph';
 import { InteractivityGraphContext, initialGraph } from '../InteractivityGraphContext';
@@ -24,10 +24,12 @@ import { FLOW_COLOR, getColorForTypeIndex, getNodeCategoryColor } from '../autho
 import { TypedValueInput } from '../authoring/TypedValueInput';
 import { NodeInfoTooltip, buildNodeTypeTooltipSections } from '../authoring/NodeInfoTooltip';
 import { LoadingProgressBar } from './LoadingProgressBar';
+import { GraphMiniMap } from './GraphMiniMap';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
 import { trackEvent, trackEventThrottled } from '../utils/analytics';
+import { IconAddNode, IconCustomEvents, IconFrame, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
@@ -90,77 +92,10 @@ enum AuthoringComponentModelType {
     GRAPH_SEARCH,
     JSON_VIEW,
     NODE_LIST,
-    UPLOAD_GRAPH,
     CUSTOM_EVENTS,
     VARIABLES,
     NONE
 }
-
-// small stroke-style icons for the top menu bar (kept inline to avoid pulling in an icon library
-// for five glyphs); viewBox/props mirror the Feather icon set for a consistent stroke weight
-const iconProps = {
-    width: 16, height: 16, viewBox: "0 0 24 24", fill: "none",
-    stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
-};
-
-const IconVariables = () => (
-    <svg {...iconProps}>
-        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-        <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-        <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-        <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
-    </svg>
-);
-
-const IconCustomEvents = () => (
-    <svg {...iconProps}>
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-    </svg>
-);
-
-const IconJsonView = () => (
-    <svg {...iconProps}>
-        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-    </svg>
-);
-
-const IconNodeTypes = () => (
-    <svg {...iconProps}>
-        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-    </svg>
-);
-
-const IconUpload = () => (
-    <svg {...iconProps}>
-        <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
-    </svg>
-);
-
-const IconSearch = () => (
-    <svg {...iconProps}>
-        <circle cx="11" cy="11" r="7"/>
-        <line x1="20" y1="20" x2="16.6" y2="16.6"/>
-    </svg>
-);
-
-const IconAddNode = () => (
-    <svg {...iconProps}>
-        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-);
-
-const IconFullscreen = (props: { active: boolean }) => props.active ? (
-    <svg {...iconProps}>
-        <polyline points="9 3 9 9 3 9"/><polyline points="15 3 15 9 21 9"/>
-        <polyline points="9 21 9 15 3 15"/><polyline points="15 21 15 15 21 15"/>
-    </svg>
-) : (
-    <svg {...iconProps}>
-        <polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/>
-        <polyline points="8 21 3 21 3 16"/><polyline points="16 21 21 21 21 16"/>
-    </svg>
-);
 
 const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void}) => (
     <button
@@ -177,12 +112,38 @@ const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string,
 
 const MenuBarDivider = () => <div className="graph-menu-bar-divider"/>;
 
-const IconReload = () => (
-    <svg {...iconProps}>
-        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-    </svg>
+// shared chrome for every in-graph overlay editor (Add Node, JSON View, Variables, ...): one card
+// look, one close affordance, and sizing that follows the graph panel rather than the viewport
+// (see .graph-overlay in flowNodes.css). `maxWidth` caps how wide the card may grow.
+const GraphOverlayPanel = (props: {
+    id: string;
+    title: string;
+    maxWidth: string;
+    onClose: () => void;
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+}) => (
+    <Panel id={props.id} position={"top-center"} className={"graph-overlay"}>
+        <div className={"graph-overlay__card"} style={{ maxWidth: props.maxWidth }}>
+            <div className={"graph-overlay__header"}>
+                <h3 className={"graph-overlay__title"}>{props.title}</h3>
+                <Button variant={"outline-danger"} size={"sm"} onClick={props.onClose}>Close</Button>
+            </div>
+            <div className={"graph-overlay__body"}>
+                {props.children}
+            </div>
+            {props.footer !== undefined && <div className={"graph-overlay__footer"}>{props.footer}</div>}
+        </div>
+    </Panel>
 );
+
+// Stand-in box for a node reactflow has not measured yet (i.e. one culling has never mounted),
+// used only to compute the graph bounds in frameGraph. Matches the LOD box in flowNodes.css.
+const UNMEASURED_NODE_WIDTH = 280;
+const UNMEASURED_NODE_HEIGHT = 120;
+
+const FRAME_MIN_ZOOM = 0.05;
+const FRAME_PADDING = 0.1;
 
 // nudges the user that node/socket/wiring edits don't auto-propagate to the running scene — the
 // engine only (re)reads the graph when Play/Reload is pressed (see requestPlay in
@@ -298,6 +259,9 @@ export const AuthoringComponent = () => {
     const reactFlowRef = useRef<HTMLDivElement | null>(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const [authoringComponentModal, setAuthoringComponentModal] = useState<AuthoringComponentModelType>(AuthoringComponentModelType.NONE)
+    // the input legend is a footer bar, not a modal, so it toggles independently of the overlays.
+    // Off by default: it's a reference for newcomers, opened from the control stack when wanted.
+    const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
     const [coarsePointer, setCoarsePointer] = useState(false);
     const [nativeGraphFullscreen, setNativeGraphFullscreen] = useState(false);
     const [fullscreenFallback, setFullscreenFallback] = useState(false);
@@ -360,6 +324,74 @@ export const AuthoringComponent = () => {
     // (setGraph), which is the signal to rebuild — interactive edits mutate the same object in
     // place and leave identity untouched, so they never retrigger a rebuild
     const lastSyncedGraphRef = useRef<AuthoredGraph | null>(null);
+
+    // Frame the whole graph in the viewport.
+    //
+    // Not reactflow's fitView: that one refuses to do anything at all unless *every* node has been
+    // measured (`nodes.every(n => n.width && n.height)` — otherwise it returns false and leaves the
+    // viewport untouched, with no error). Viewport culling means the nodes off-screen at load never
+    // mount and so never get measured, which silently broke both the post-load framing and the
+    // Controls "fit view" button on any graph bigger than one screenful. Compute the bounds from the
+    // node positions we already have, substituting the LOD box for anything reactflow hasn't
+    // measured, and hand them to fitBounds, which carries no such precondition.
+    // set when framing was asked for while the panel had no size on screen (the graph editor is
+    // hidden — see app-split__pane--hidden); fitBounds against a zero-size canvas would compute a
+    // garbage viewport, so the request is replayed once the panel is shown again
+    const pendingFrameRef = useRef(false);
+
+    const frameGraph = useCallback((duration = 0) => {
+        if (!reactFlowInstance) { return; }
+        const rect = reactFlowRef.current?.getBoundingClientRect();
+        if (rect === undefined || rect.width === 0 || rect.height === 0) {
+            pendingFrameRef.current = true;
+            return;
+        }
+        const flowNodes: Node[] = reactFlowInstance.getNodes();
+        if (flowNodes.length === 0) { return; }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const flowNode of flowNodes) {
+            const { x, y } = flowNode.position;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + (flowNode.width ?? UNMEASURED_NODE_WIDTH));
+            maxY = Math.max(maxY, y + (flowNode.height ?? UNMEASURED_NODE_HEIGHT));
+        }
+        const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+        // Predict the zoom fitBounds would choose and, if it is below the floor, center on the graph
+        // at the floor instead of fitting it (see FRAME_MIN_ZOOM).
+        if (bounds.width > 0 && bounds.height > 0) {
+            const fitZoom = Math.min(
+                rect.width / (bounds.width * (1 + FRAME_PADDING)),
+                rect.height / (bounds.height * (1 + FRAME_PADDING)),
+            );
+            if (fitZoom < FRAME_MIN_ZOOM) {
+                reactFlowInstance.setCenter(
+                    bounds.x + bounds.width / 2,
+                    bounds.y + bounds.height / 2,
+                    { zoom: FRAME_MIN_ZOOM, duration },
+                );
+                return;
+            }
+        }
+        reactFlowInstance.fitBounds(bounds, { padding: FRAME_PADDING, duration });
+    }, [reactFlowInstance]);
+
+    // replay a frame request that was deferred because the panel was hidden, the moment it has a
+    // size again (toggling the graph editor back on)
+    useEffect(() => {
+        const container = reactFlowRef.current;
+        if (container === null || typeof ResizeObserver === "undefined") { return; }
+        const observer = new ResizeObserver(() => {
+            if (!pendingFrameRef.current) { return; }
+            const { width, height } = container.getBoundingClientRect();
+            if (width === 0 || height === 0) { return; }
+            pendingFrameRef.current = false;
+            frameGraph();
+        });
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [frameGraph]);
 
     // pan/select a node by id from the diagnostics counter popover
     const jumpToNode = useCallback((nodeUid: string) => {
@@ -446,7 +478,7 @@ export const AuthoringComponent = () => {
         // flow/sequence and flow/multiGate add their output flow sockets dynamically, so a
         // freshly-added output handle won't exist in flows.output yet even though it is a flow
         // socket; treat those nodes' outputs as flow regardless.
-        const isDynamicFlowSourceNode = hasNodeSpecFlag(interactivityNodeSpecs.find(n => n.op === sourceNode.op), NodeSpecFlag.DynamicFlowOutputs);
+        const isDynamicFlowSourceNode = hasNodeSpecFlag(getNodeSpec(sourceNode.op), NodeSpecFlag.DynamicFlowOutputs);
 
         // if one is flow and one isn't then do not connect
         const sourceIsFlow = sourceNode.flows?.output?.[vals.sourceHandle!] !== undefined || isDynamicFlowSourceNode;
@@ -495,7 +527,7 @@ export const AuthoringComponent = () => {
             // recoverable from the static spec later, which left the socket typeless ("?") once
             // disconnected again
             const existingTarget = targetNode.values?.input?.[vals.targetHandle!];
-            const specTarget = interactivityNodeSpecs.find(n => n.op === targetNode.op)?.values?.input?.[vals.targetHandle!];
+            const specTarget = getNodeSpec(targetNode.op)?.values?.input?.[vals.targetHandle!];
             const targetGroup = existingTarget?.typeGroup ?? specTarget?.typeGroup;
             const targetDescription = existingTarget?.description ?? specTarget?.description;
             const targetType = existingTarget?.type ?? specTarget?.type;
@@ -546,24 +578,32 @@ export const AuthoringComponent = () => {
     // recolor a node's outgoing value edges to match its current output socket types
     // (called by nodes when a type changes, e.g. via the type dropdown or Pointer Type config)
     const recolorEdges = useCallback((nodeId: string) => {
-        setEdges((eds: Edge[]) => eds.map((edge) => {
-            if (edge.source !== nodeId) {
-                return edge;
-            }
+        setEdges((eds: Edge[]) => {
             const sourceNode = graph.nodes.find(n => n.uid === nodeId);
             if (sourceNode === undefined) {
-                return edge;
+                return eds;
             }
-            // flow edges keep the flow color
-            if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) {
-                return edge;
-            }
-            const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
-            if ((edge.style as any)?.stroke === stroke) {
-                return edge;
-            }
-            return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
-        }));
+            // Every node's mount reconcile calls this, so on a large graph it runs once per node
+            // over the full edge list. Keep the array identity when no color actually changed, so
+            // reactflow re-renders its edges only for a real recolor rather than on every mount.
+            let changed = false;
+            const next = eds.map((edge) => {
+                if (edge.source !== nodeId) {
+                    return edge;
+                }
+                // flow edges keep the flow color
+                if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) {
+                    return edge;
+                }
+                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
+                if ((edge.style as any)?.stroke === stroke) {
+                    return edge;
+                }
+                changed = true;
+                return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
+            });
+            return changed ? next : eds;
+        });
     }, [graph]);
 
     // when a dynamic flow output socket (flow/sequence, flow/multiGate) is renamed, retarget any
@@ -610,7 +650,7 @@ export const AuthoringComponent = () => {
                 // type/typeOptions/typeGroup/description the socket itself carried while it was
                 // connected (preserved there by onConnect) rather than leaving it typeless ("?").
                 const existing = targetNode.values?.input?.[edge.targetHandle!];
-                const spec = interactivityNodeSpecs.find(n => n.op === targetNode.op);
+                const spec = getNodeSpec(targetNode.op);
                 const specDefault = spec?.values?.input?.[edge.targetHandle!];
                 const source = specDefault ?? existing;
                 // a socket restricted to bool alone renders as a checkbox, which always shows as
@@ -662,7 +702,7 @@ export const AuthoringComponent = () => {
             data: {events: graph.events, variables: graph.variables, types: standardTypes, uid: uid, op: nodeType, recolorEdges: recolorEdges, renameFlowSocket: renameFlowSocket}
         };
 
-        const spec = interactivityNodeSpecs.find(node => node.op === nodeType)!;
+        const spec = getNodeSpec(nodeType)!;
         let interactivityNode: AuthoredNode = JSON.parse(JSON.stringify(spec));
         interactivityNode.declaration = addDeclaration(toInteractivityDeclaration(spec));
         interactivityNode.uid = uid;
@@ -776,7 +816,7 @@ export const AuthoringComponent = () => {
         if (!fromNode || !newNode) { return []; }
         const candidates: WireSocketCandidate[] = [];
         if (from.handleType === "source") {
-            const isDynFlow = hasNodeSpecFlag(interactivityNodeSpecs.find(n => n.op === fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
+            const isDynFlow = hasNodeSpecFlag(getNodeSpec(fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
             const fromIsFlow = fromNode.flows?.output?.[from.handleId] !== undefined || isDynFlow;
             if (fromIsFlow) {
                 for (const socket of Object.keys(newNode.flows?.input ?? {})) {
@@ -819,7 +859,7 @@ export const AuthoringComponent = () => {
         const fromNode = graph.nodes.find(n => n.uid === from.nodeId);
         if (!fromNode) { return null; }
         if (from.handleType === "source") {
-            const isDynFlow = hasNodeSpecFlag(interactivityNodeSpecs.find(n => n.op === fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
+            const isDynFlow = hasNodeSpecFlag(getNodeSpec(fromNode.op), NodeSpecFlag.DynamicFlowOutputs);
             const fromIsFlow = fromNode.flows?.output?.[from.handleId] !== undefined || isDynFlow;
             if (fromIsFlow) { return { kind: "flow", direction: "input" }; }
             return { kind: "valueInput", fromType: resolveOutputSocketType(fromNode, from.handleId, graph.nodes) };
@@ -875,8 +915,18 @@ export const AuthoringComponent = () => {
             if (newGn.values?.input) {
                 for (const key of Object.keys(newGn.values.input)) {
                     const ref = newGn.values.input[key];
-                    if (ref.node && copiedIds.has(String(ref.node))) ref.node = uidMap.get(String(ref.node))!;
-                    else newGn.values.input[key] = {};
+                    // an unwired socket carries the user's static value + its resolved type - clearing
+                    // it here dropped both and let the reconcile below snap the socket back to the
+                    // spec's placeholder type
+                    if (ref.node === undefined) continue;
+                    if (copiedIds.has(String(ref.node))) {
+                        ref.node = uidMap.get(String(ref.node))!;
+                    } else {
+                        // wired to a node outside the copied set: sever the link but keep the socket's
+                        // type/typeOptions/typeGroup so it doesn't lose its resolved type
+                        const {node: _node, socket: _socket, ...rest} = ref;
+                        newGn.values.input[key] = {...rest, value: [undefined]};
+                    }
                 }
             }
             // reconcile now instead of leaving the severed `{}` link stubs above for the mount
@@ -885,7 +935,7 @@ export const AuthoringComponent = () => {
             {
                 const reconciled = reconcileNodeSockets({
                     op: newGn.op,
-                    isNoOp: interactivityNodeSpecs.find(s => s.op === newGn.op) === undefined,
+                    isNoOp: getNodeSpec(newGn.op) === undefined,
                     configuration: newGn.configuration ?? {},
                     inputValues: newGn.values?.input ?? {},
                     outputValues: newGn.values?.output ?? {},
@@ -908,7 +958,7 @@ export const AuthoringComponent = () => {
 
         for (const gn of newGraphNodes) {
             if (gn.op) {
-                const spec = interactivityNodeSpecs.find(n => n.op === gn.op);
+                const spec = getNodeSpec(gn.op);
                 if (spec) addDeclaration(toInteractivityDeclaration(spec));
             }
             addNode(gn);
@@ -980,29 +1030,46 @@ export const AuthoringComponent = () => {
             const result = getAuthorGraph(graph, { deferTypes: true });
             const loadedNodes: Node[] = result[0];
             const loadedEdges: Edge[] = result[1];
+            // one uid index for the position writeback below; a .find per node made this loop
+            // O(n²) and it runs synchronously, freezing the main thread on a large graph
+            const modelByUid = buildNodeByUid(graph.nodes);
             for (const node of loadedNodes) {
                 node.data.op = node.type;
                 node.data.recolorEdges = recolorEdges;
                 node.data.renameFlowSocket = renameFlowSocket;
-                const isKnownOp = interactivityNodeSpecs.some(spec => spec.op === node.data.op);
-                if (!isKnownOp) {
+                if (getNodeSpec(node.data.op) === undefined) {
                     node.type = "NoOp";
                 }
                 // seed the model with the (possibly auto-laid-out) positions immediately, so an
                 // export right after load carries them instead of waiting for a drag (the old 5s
                 // position timer used to backfill these)
-                const graphNode = graph.nodes.find(graphNode => graphNode.uid === node.id);
+                const graphNode = modelByUid.get(node.id);
                 if (graphNode !== undefined) {
                     graphNode.metadata = {positionX: node.position.x, positionY: node.position.y};
                 }
             }
 
             // "Rendering": mount nodes in frame-budgeted batches so a big graph never blocks the main
-            // thread in one reconcile. fitView (after edges) zooms out, so most batches paint cheaply.
-            // Each AuthoringGraphNode registers its own handles via updateNodeInternals on mount, so
-            // by the time all batches are in the handles exist for the edges below.
+            // thread in one reconcile. Handles are registered by reactflow's own ResizeObserver as
+            // each node element is observed on mount (see the handlesMeasuredRef note in
+            // AuthoringGraphNode), so by the time all batches have settled the handles exist for the
+            // edges below.
+            //
+            // Every node genuinely has to mount once here — that mount is what registers its
+            // handles, and an edge whose endpoint has none is dropped — so this pass can't be culled
+            // away. What it *can* avoid is mounting each node with its full socket/editor UI: the
+            // default viewport sits at zoom 1, which is above LOD_ZOOM_THRESHOLD, so a fresh load
+            // used to build the complete detail DOM for every node (sockets, handles, dropdowns,
+            // tooltips) only to zoom out and discard it a moment later at fitView. Dropping the
+            // viewport below the LOD threshold first makes each of those mounts the flat LOD box,
+            // which still carries a handle per socket id. fitView below sets the real viewport.
+            reactFlowInstance?.setViewport({ x: 0, y: 0, zoom: LOD_ZOOM_THRESHOLD / 2 });
             setLoadingState({ active: true, step: "Rendering", progress: 0.82 });
-            const NODE_BATCH = 250;
+            await nextFrame();
+            if (cancelled) { return; }
+            // Each batch costs a full frame *and* an O(total nodes) reactflow store rebuild, so
+            // small batches paid that rebuild dozens of times for no benefit.
+            const NODE_BATCH = 1000;
             if (loadedNodes.length === 0) {
                 setNodes([]);
             }
@@ -1021,14 +1088,16 @@ export const AuthoringComponent = () => {
 
             // "Connecting": let React commit the nodes and reactflow synthesize their custom handles
             // before wiring edges. Replaces the old fixed 1000ms setTimeout (a handle-race hack) with
-            // a short rAF settle — the nodes' own updateNodeInternals(uid) on mount does the actual
-            // handle registration; we just wait a couple frames for it to land.
+            // a short rAF settle. Handle registration rides on reactflow's ResizeObserver, whose
+            // callback index.tsx defers by one frame, so wait three: commit, observer delivery,
+            // and a spare so a commit that slips a frame can't leave edges unattachable.
             setLoadingState({ active: true, step: "Connecting", progress: 0.9 });
+            await nextFrame();
             await nextFrame();
             await nextFrame();
             if (cancelled) { return; }
             setEdges(loadedEdges);
-            reactFlowInstance?.fitView();
+            frameGraph();
 
             // "Resolving types": now that the canvas is on-screen, run the deferred O(n²) type-group
             // fixpoint (mutates the model in place), then recolor the gray value wires to their
@@ -1037,15 +1106,14 @@ export const AuthoringComponent = () => {
             await nextFrame();
             if (cancelled) { return; }
             propagateGraphGroupTypes(graph.nodes, true);
-            const nodeByUid = new Map<string, AuthoredNode>();
-            graph.nodes.forEach(n => { if (n.uid !== undefined) { nodeByUid.set(n.uid, n); } });
+            const nodeByUid = modelByUid;
             setEdges(eds => eds.map((edge) => {
                 const sourceNode = nodeByUid.get(edge.source);
                 if (sourceNode === undefined) { return edge; }
                 // flow wires already carry the flow color from getAuthorGraph; only value wires were
                 // painted gray and need resolving
                 if (sourceNode.flows?.output?.[edge.sourceHandle!] !== undefined) { return edge; }
-                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes));
+                const stroke = getColorForTypeIndex(resolveOutputSocketType(sourceNode, edge.sourceHandle!, graph.nodes, nodeByUid));
                 if ((edge.style as any)?.stroke === stroke) { return edge; }
                 return { ...edge, style: { ...(edge.style || {}), stroke, strokeWidth: 2 } };
             }));
@@ -1162,24 +1230,33 @@ export const AuthoringComponent = () => {
     // then repeat from each source found, so the whole upstream hierarchy is collected — not
     // just its direct predecessors. Also collects the edges walked along the way, so the wires
     // connecting that hierarchy can be highlighted too.
+    // incoming edges per target, so the walk below visits only a node's own predecessors instead of
+    // rescanning every edge in the graph for each node it reaches (O(ancestors x edges) per click)
+    const edgesByTarget = React.useMemo(() => {
+        const byTarget = new Map<string, Edge[]>();
+        for (const edge of edges) {
+            const existing = byTarget.get(edge.target);
+            if (existing === undefined) { byTarget.set(edge.target, [edge]); } else { existing.push(edge); }
+        }
+        return byTarget;
+    }, [edges]);
+
     const getAncestors = useCallback((nodeId: string): { nodeIds: Set<string>, edgeIds: Set<string> } => {
         const visitedNodes = new Set<string>();
         const visitedEdges = new Set<string>();
         const stack = [nodeId];
         while (stack.length > 0) {
             const current = stack.pop()!;
-            for (const edge of edges) {
-                if (edge.target === current && !visitedNodes.has(edge.source)) {
+            for (const edge of edgesByTarget.get(current) ?? []) {
+                visitedEdges.add(edge.id);
+                if (!visitedNodes.has(edge.source)) {
                     visitedNodes.add(edge.source);
-                    visitedEdges.add(edge.id);
                     stack.push(edge.source);
-                } else if (edge.target === current) {
-                    visitedEdges.add(edge.id);
                 }
             }
         }
         return { nodeIds: visitedNodes, edgeIds: visitedEdges };
-    }, [edges]);
+    }, [edgesByTarget]);
 
     // the single node currently selected, so onSelectionChange only reports a *new* selection
     // (it fires repeatedly for the same selection as ancestors/highlights recompute)
@@ -1220,13 +1297,81 @@ export const AuthoringComponent = () => {
     }, [edges, ancestorEdgeIds]);
 
     return (
-        <div className="authoring-shell" style={{width: "100%", height: "100%", textAlign: "center", padding: 16, display: "flex", flexDirection: "column", boxSizing: "border-box"}}>
-            <h2 className="authoring-shell__title" style={{padding: 8, margin: 0}}>Interactivity Graph Authoring</h2>
-            <p className="authoring-shell__intro" style={{margin: "0 0 8px"}}>You can inspect and adjust the Interactivity Graph here.</p>
+        <div className={"panel"}>
+            {/* the graph's own toolbar: same height/treatment as the engine panel's toolbar, so
+                both halves of the workspace start on the same line */}
+            <div className={"panel__toolbar graph-menu-bar"}>
+                <MenuBarButton
+                    id={"add-node-btn"}
+                    icon={<IconAddNode/>}
+                    label={"Add Node"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}
+                    onClick={openNodePickerAtCenter}
+                />
+                <MenuBarDivider/>
+                <MenuBarButton
+                    id={"variables-btn"}
+                    icon={<IconVariables/>}
+                    label={"Variables"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
+                    onClick={() => openPanel(AuthoringComponentModelType.VARIABLES, 'variables')}
+                />
+                <MenuBarButton
+                    id={"custom-events-btn"}
+                    icon={<IconCustomEvents/>}
+                    label={"Custom Events"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
+                    onClick={() => openPanel(AuthoringComponentModelType.CUSTOM_EVENTS, 'custom_events')}
+                />
+                <MenuBarDivider/>
+                <MenuBarButton
+                    id={"show-json-btn"}
+                    icon={<IconJsonView/>}
+                    label={"JSON View"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
+                    onClick={() => openPanel(AuthoringComponentModelType.JSON_VIEW, 'json_view')}
+                />
+                <MenuBarButton
+                    id={"show-node-list-btn"}
+                    icon={<IconNodeTypes/>}
+                    label={"Node Types"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
+                    onClick={() => openPanel(AuthoringComponentModelType.NODE_LIST, 'node_list')}
+                />
+                <span className={"panel__toolbar-spacer"}/>
+                {/* view actions live on the right of the bar, ahead of the status indicators */}
+                <MenuBarButton
+                    id={"search-graph-btn"}
+                    icon={<IconSearch/>}
+                    label={"Search Graph"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
+                    onClick={() => openPanel(AuthoringComponentModelType.GRAPH_SEARCH, 'search')}
+                />
+                <button
+                    id={"graph-frame-btn"}
+                    data-testid={"graph-frame-btn"}
+                    className={"graph-menu-bar-btn"}
+                    title={"Fit the whole graph in the view"}
+                    onClick={() => frameGraph(300)}
+                >
+                    <IconFrame/>
+                    <span className="graph-menu-bar-btn__label">Auto Frame</span>
+                </button>
+                <MenuBarButton
+                    id={"fullscreen-graph-btn"}
+                    icon={<IconFullscreen active={graphFullscreen}/>}
+                    label={graphFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                    isActive={graphFullscreen}
+                    onClick={() => void toggleGraphFullscreen()}
+                />
+                <ReloadIndicator dirty={graphDirty} onReload={() => { trackEvent('graph_reload'); requestPlay(); }}/>
+                <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
+            </div>
+            {/* .authoring-view is what the fullscreen toggle expands (see the fullscreen rules in
+                flowNodes.css); the fallback class covers browsers without the Fullscreen API */}
             <div
                 ref={reactFlowRef}
-                className={`authoring-view${fullscreenFallback ? " authoring-view--fullscreen-fallback" : ""}`}
-                style={{width: "100%", flex: 1, minHeight: 0, border: "1px solid black", margin: "0 auto"}}
+                className={`panel__body authoring-view${fullscreenFallback ? " authoring-view--fullscreen-fallback" : ""}`}
                 data-testid={"authoring-view"}
                 onContextMenuCapture={suppressBrowserContextMenu}
                 onContextMenu={suppressBrowserContextMenu}
@@ -1248,7 +1393,12 @@ export const AuthoringComponent = () => {
                     onSelectionChange={onSelectionChange}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
-                    minZoom={0.1}
+                    // Framing a large graph is a zoom-out problem: 5000 nodes on a 500-unit grid
+                    // span a couple of hundred thousand units, which needs a zoom around 0.003 to
+                    // fit a viewport. The old 0.1 floor made that arithmetically impossible, so
+                    // "fit view" clamped and left you parked in the middle of the canvas looking at
+                    // the gap between two components — which is what made the Frame button look dead.
+                    minZoom={0.001}
                     // Viewport culling: only mount nodes/edges intersecting the viewport (+ overscan)
                     // so frame cost tracks the visible window, not the whole graph. Reactflow culls by
                     // node width/height, so nodes carry explicit dimensions (see .flow-node in flowNodes.css).
@@ -1264,9 +1414,27 @@ export const AuthoringComponent = () => {
                     preventScrolling={true}
                     deleteKeyCode="Delete"
                     fitView
+                    // drops reactflow's "React Flow" watermark from the bottom-right corner; it
+                    // otherwise overlaps the minimap. Permitted under reactflow's MIT license.
+                    proOptions={{ hideAttribution: true }}
                 >
-                    <Controls />
+                    {/* zoom / fit / interaction-lock, bottom-left (react-flow's default corner).
+                        <Controls/> renders its own four buttons and then any children, so app-specific
+                        toggles are added as <ControlButton/> entries at the end of the same stack. */}
+                    <Controls>
+                        <ControlButton
+                            data-testid={"toggle-input-legend-btn"}
+                            className={showInputLegend ? "is-active" : undefined}
+                            title={showInputLegend ? "Hide the input legend" : "Show the input legend"}
+                            aria-label={"Toggle input legend"}
+                            aria-pressed={showInputLegend}
+                            onClick={() => setShowInputLegend(show => !show)}
+                        >
+                            <IconLegend/>
+                        </ControlButton>
+                    </Controls>
                     <Background />
+                    <GraphMiniMap />
 
                     <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}>
                         <NodePickerComponent closeModal={closeNodePicker} onAddNode={handlePickNode} mousePos={mousePosRef.current} constraint={getPendingPickerConstraint()}/>
@@ -1288,9 +1456,6 @@ export const AuthoringComponent = () => {
                             onJumpToIndex={jumpToNodeIndex}
                         />
                     </RenderIf>
-                    <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}>
-                        <UploadGraphComponent closeModal={() => setAuthoringComponentModal(AuthoringComponentModelType.NONE)}/>
-                    </RenderIf>
                     <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}>
                         <JSONViewComponent closeModal={() => setAuthoringComponentModal(AuthoringComponentModelType.NONE)}/>
                     </RenderIf>
@@ -1309,96 +1474,35 @@ export const AuthoringComponent = () => {
                         to the container's right edge (roughly half the real width), so the bar came out
                         mis-sized and off-center. Overriding to a full-width, pointer-events:none wrapper
                         (transform cleared) lets the inner bar center itself normally via margin auto. */}
-                    <Panel position={"top-center"} style={{ left: 0, right: 0, transform: 'none', boxSizing: 'border-box', padding: '10px 16px 0', pointerEvents: 'none' }}>
-                        <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", pointerEvents: 'auto' }}>
-                            <div className="graph-menu-bar">
-                                <MenuBarButton
-                                    id={"add-node-btn"}
-                                    icon={<IconAddNode/>}
-                                    label={"Add Node"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}
-                                    onClick={openNodePickerAtCenter}
-                                />
-                                <MenuBarDivider/>
-                                <MenuBarButton
-                                    id={"variables-btn"}
-                                    icon={<IconVariables/>}
-                                    label={"Variables"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
-                                    onClick={() => openPanel(AuthoringComponentModelType.VARIABLES, 'variables')}
-                                />
-                                <MenuBarDivider/>
-                                <MenuBarButton
-                                    id={"custom-events-btn"}
-                                    icon={<IconCustomEvents/>}
-                                    label={"Custom Events"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
-                                    onClick={() => openPanel(AuthoringComponentModelType.CUSTOM_EVENTS, 'custom_events')}
-                                />
-                                <MenuBarDivider/>
-                                <MenuBarButton
-                                    id={"show-json-btn"}
-                                    icon={<IconJsonView/>}
-                                    label={"JSON View"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
-                                    onClick={() => openPanel(AuthoringComponentModelType.JSON_VIEW, 'json_view')}
-                                />
-                                <MenuBarButton
-                                    id={"search-graph-btn"}
-                                    icon={<IconSearch/>}
-                                    label={"Search Graph"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
-                                    onClick={() => openPanel(AuthoringComponentModelType.GRAPH_SEARCH, 'search')}
-                                />
-                                <MenuBarButton
-                                    id={"show-node-list-btn"}
-                                    icon={<IconNodeTypes/>}
-                                    label={"Node Types"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
-                                    onClick={() => openPanel(AuthoringComponentModelType.NODE_LIST, 'node_list')}
-                                />
-                                <MenuBarButton
-                                    id={"upload-graph-btn"}
-                                    icon={<IconUpload/>}
-                                    label={"Upload Graph"}
-                                    isActive={authoringComponentModal === AuthoringComponentModelType.UPLOAD_GRAPH}
-                                    onClick={() => openPanel(AuthoringComponentModelType.UPLOAD_GRAPH, 'upload_graph')}
-                                />
-                                <MenuBarButton
-                                    id={"fullscreen-graph-btn"}
-                                    icon={<IconFullscreen active={graphFullscreen}/>}
-                                    label={graphFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-                                    isActive={graphFullscreen}
-                                    onClick={() => void toggleGraphFullscreen()}
-                                />
-                                <ReloadIndicator dirty={graphDirty} onReload={() => { trackEvent('graph_reload'); requestPlay(); }}/>
-                                <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
-                            </div>
+                    <Panel position={"top-center"} style={{ left: 0, right: 0, transform: 'none', boxSizing: 'border-box', padding: 'var(--sp-3)', pointerEvents: 'none' }}>
+                        <div style={{ width: "100%", maxWidth: "44rem", margin: "0 auto", pointerEvents: 'auto' }}>
                             <LoadingProgressBar />
-                        </div>
-                    </Panel>
-
-                    <Panel position={"bottom-center"} style={{ left: 0, right: 0, transform: 'none', display: 'flex', justifyContent: 'center', boxSizing: 'border-box', padding: '0 90px', pointerEvents: 'none' }}>
-                        <div className="graph-shortcuts" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 14px', background: 'rgba(255,255,255,0.88)', border: '1px solid #ccc', borderRadius: 8, padding: '5px 14px', marginBottom: 6, fontSize: 11, color: '#000', userSelect: 'none', backdropFilter: 'blur(4px)', maxWidth: '100%', pointerEvents: 'auto' }}>
-                            {([
-                                ['Right-click', 'Add node'],
-                                ['Drop wire on canvas', 'Add & connect node'],
-                                ['Right-drag', 'Pan'],
-                                ['Left-drag', 'Multi-select'],
-                                ['Scroll', 'Zoom'],
-                                ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
-                                ['Ctrl+D', 'Duplicate'],
-                                ['Del', 'Delete selected'],
-                            ] as [string, string][]).map(([key, label]) => (
-                                <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                                    <kbd style={{ background: '#f0f0f0', border: '1px solid #bbb', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace', boxShadow: '0 1px 0 #aaa', lineHeight: '16px', color: '#000' }}>{key}</kbd>
-                                    <span>{label}</span>
-                                </span>
-                            ))}
                         </div>
                     </Panel>
                 </ReactFlow>
             </div>
+
+            {/* input legend: a real footer bar on the panel rather than a canvas overlay, so it
+                never covers nodes and never collides with the minimap. Toggled from the menu bar. */}
+            <RenderIf shouldShow={showInputLegend}>
+                <div className={"graph-keymap"}>
+                    {([
+                        ['Right-click', 'Add node'],
+                        ['Drop wire on canvas', 'Add & connect node'],
+                        ['Right-drag', 'Pan'],
+                        ['Left-drag', 'Multi-select'],
+                        ['Scroll', 'Zoom'],
+                        ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
+                        ['Ctrl+D', 'Duplicate'],
+                        ['Del', 'Delete selected'],
+                    ] as [string, string][]).map(([key, label]) => (
+                        <span key={key} className={"graph-keymap__item"}>
+                            <kbd className={"graph-keymap__key"}>{key}</kbd>
+                            <span>{label}</span>
+                        </span>
+                    ))}
+                </div>
+            </RenderIf>
         </div>
     )
 }
@@ -1478,7 +1582,7 @@ type PickerConstraint =
 // can always gain an output flow even though the spec lists none.
 const nodeTypeMatchesConstraint = (nodeType: string, constraint: PickerConstraint): boolean => {
     if (!constraint) { return true; }
-    const spec = interactivityNodeSpecs.find(n => n.op === nodeType);
+    const spec = getNodeSpec(nodeType);
     if (!spec) { return false; }
     if (constraint.kind === "flow") {
         if (constraint.direction === "output" && hasNodeSpecFlag(spec, NodeSpecFlag.DynamicFlowOutputs)) { return true; }
@@ -1520,12 +1624,12 @@ const SocketPickerComponent = (props: {
                 // keep the menu on-screen when dropped near the right/bottom edge
                 left: Math.min(props.clientX, window.innerWidth - 380),
                 top: Math.min(props.clientY, window.innerHeight - 540),
-                zIndex: 1000, background: "white", border: "1px solid gray", borderRadius: 8,
-                boxShadow: "0 6px 24px rgba(0,0,0,0.28)", minWidth: 340, maxHeight: 520,
-                overflowY: "auto", textAlign: "left",
+                zIndex: 1000, background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
+                boxShadow: "var(--shadow-lg)", minWidth: "21rem", maxHeight: "min(32rem, 70vh)",
+                overflowY: "auto", overscrollBehavior: "contain", textAlign: "left",
             }}
         >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", fontWeight: "bold", fontSize: 17, borderBottom: "1px solid #ddd", color: "#333" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--sp-3) var(--sp-4)", fontWeight: 700, fontSize: "var(--fs-lg)", borderBottom: "1px solid var(--border)", color: "var(--text)" }}>
                 <span>{props.pickingInput ? "Connect to input" : "Connect to output"}</span>
                 <span role="button" onClick={props.onClose} style={{ cursor: "pointer", color: "#999", paddingLeft: 12, fontSize: 22, lineHeight: 1 }} title={"Cancel"}>×</span>
             </div>
@@ -1574,22 +1678,17 @@ const NodePickerComponent = (props: {onAddNode: any, closeModal: any, mousePos: 
     const normalizedFilter = filter.trim().toLowerCase();
 
     return (
-        <Panel id={"node-picker-panel"} position={"top-center"} style={{border: "1px solid gray", background: "white", textAlign: "left", zIndex: 10, width: "min(820px, 75%)"}}>
-            <Container fluid style={{padding: 0}}>
-                <h3 style={{textAlign: "center", paddingTop: 8}}>
-                    Add Node
-                </h3>
-                <hr style={{ borderTop: '1px solid #777', margin: '16px 0' }} />
+        <GraphOverlayPanel id={"node-picker-panel"} title={"Add Node"} maxWidth={"52rem"} onClose={props.closeModal}>
+            <>
                 <Form.Control
                     data-testid={"node-picker-search"}
-                    style={{margin: "0 auto", width: "90%"}}
                     type="text"
                     autoFocus={true}
                     onChange={(e) => setFilter(e.target.value)}
                     value={filter}
                     placeholder="Search nodes..."
                 />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px auto 0", width: "90%" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)", marginTop: "var(--sp-3)" }}>
                     {
                         sortedNodeCategories.map(category => {
                             const categoryColor = getNodeCategoryColor(category);
@@ -1617,7 +1716,7 @@ const NodePickerComponent = (props: {onAddNode: any, closeModal: any, mousePos: 
                         })
                     }
                 </div>
-                <div ref={nodeListRef} className="nowheel" onWheel={onNodeListWheel} style={{ columnWidth: 200, columnGap: 24, maxHeight: "min(40vh, calc(100vh - 260px))", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain", marginTop: 16, padding: "0 16px 8px" }}>
+                <div ref={nodeListRef} className="nowheel" onWheel={onNodeListWheel} style={{ columnWidth: "12.5rem", columnGap: "1.5rem", maxHeight: "min(22rem, 38vh)", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain", marginTop: "var(--sp-4)" }}>
                     {
                         sortedNodeCategories.map(category => {
                             const itemsInCategory = nodePickerItemsByCategory[category].filter(item =>
@@ -1667,12 +1766,8 @@ const NodePickerComponent = (props: {onAddNode: any, closeModal: any, mousePos: 
                         })
                     }
                 </div>
-                <hr style={{ borderTop: '1px solid #777', margin: '16px 0' }} />
-                <div style={{textAlign: "center", marginBottom: 16}}>
-                    <Button variant={"outline-danger"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-            </Container>
-        </Panel>
+            </>
+        </GraphOverlayPanel>
     );
 }
 
@@ -1745,7 +1840,13 @@ const JsonTreeNode = (props: {value: any, name?: string, defaultCollapsed?: bool
 
 const JSONViewComponent = (props: {closeModal: any}) => {
     const [copied, setCopied] = useState(false);
-    const {getExecutableGraph} = useContext(InteractivityGraphContext);
+    const [error, setError] = useState<string | null>(null);
+    // only shown once reading the clipboard has actually failed (Firefox exposes no readText to
+    // pages, any browser can deny the permission, and a non-secure context has no navigator.clipboard
+    // at all) — the user pastes the graph JSON in by hand instead
+    const [showPasteFallback, setShowPasteFallback] = useState(false);
+    const pasteRef = useRef<HTMLTextAreaElement>(null);
+    const {getExecutableGraph, loadGraphFromJson, markGraphDirty} = useContext(InteractivityGraphContext);
     const graph = getExecutableGraph();
     const copyToClipboard = async () => {
         const jsonString = JSON.stringify(getExecutableGraph(), undefined, '\t');
@@ -1757,39 +1858,91 @@ const JSONViewComponent = (props: {closeModal: any}) => {
         }, 2000); // Reset the copied state after 2 seconds
     };
 
+    // parse + load; closes the panel on success, otherwise leaves it open showing what went wrong.
+    // loadGraphFromJson is async, so it has to be awaited inside the try for a rejection (malformed
+    // or incomplete graph structure) to land in the catch alongside JSON.parse's syntax errors.
+    const loadGraphText = async (text: string) => {
+        if (text.trim() === "") {return}
+
+        try {
+            await loadGraphFromJson(JSON.parse(text));
+            markGraphDirty();
+        } catch (e) {
+            setError(`Could not load graph: ${e instanceof Error ? e.message : String(e)}`);
+            return;
+        }
+        setError(null);
+        props.closeModal();
+    };
+
+    const pasteFromClipboard = async () => {
+        let text: string;
+        try {
+            text = await navigator.clipboard.readText();
+        } catch {
+            setShowPasteFallback(true);
+            setError("Couldn't read the clipboard. Paste the graph JSON into the box below instead.");
+            return;
+        }
+        await loadGraphText(text);
+    };
+
     return (
-        <Panel id={"show-json-view-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16, width: "80vw", maxWidth: 1000}}>
-                <h3>JSON View</h3>
+        <GraphOverlayPanel
+            id={"show-json-view-panel"}
+            title={"JSON View"}
+            maxWidth={"62rem"}
+            onClose={props.closeModal}
+            footer={
+                <>
+                    <Button variant={"outline-primary"} onClick={copyToClipboard}>
+                        {copied ? 'Copied!' : 'Copy to Clipboard'}
+                    </Button>
+                    <Button
+                        variant={"outline-primary"}
+                        id={"paste-graph-btn"}
+                        title={"Replace the current graph with JSON from your clipboard"}
+                        onClick={pasteFromClipboard}
+                    >
+                        Paste from Clipboard
+                    </Button>
+                </>
+            }
+        >
+            <>
                 <div style={{
                     textAlign: "left",
                     overflow: "auto",
                     overscrollBehavior: "contain",
-                    height: "40vh",
-                    maxHeight: "calc(100vh - 220px)",
-                    border: "1px solid #ccc",
-                    borderRadius: 4,
-                    padding: 8,
-                    background: "#fafafa",
-                    fontFamily: "monospace",
-                    fontSize: 13,
+                    height: "min(24rem, 42vh)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "var(--sp-2)",
+                    background: "var(--surface-1)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "var(--fs-sm)",
                 }}>
                     <JsonTreeNode value={graph} isLast={true} />
                 </div>
-                <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-primary"}  style={{width: "100%"}} onClick={copyToClipboard}>
-                            {copied ? 'Copied!' : 'Copy to Clipboard'}
+                {showPasteFallback &&
+                    <Form.Group style={{ marginTop: "var(--sp-3)" }}>
+                        <Form.Label>Graph JSON</Form.Label>
+                        <Form.Control ref={pasteRef} as="textarea" rows={6}/>
+                        <Button
+                            variant={"outline-primary"}
+                            id={"load-graph-btn"}
+                            style={{ marginTop: "var(--sp-2)" }}
+                            onClick={() => loadGraphText(pasteRef.current?.value ?? "")}
+                        >
+                            Load
                         </Button>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
-                            Cancel
-                        </Button>
-                    </Col>
-                </Row>
-            </Container>
-        </Panel>
+                    </Form.Group>
+                }
+                {error !== null &&
+                    <div style={{ marginTop: "var(--sp-2)", color: "var(--danger-600)", fontSize: "var(--fs-sm)", whiteSpace: "pre-wrap" }}>{error}</div>
+                }
+            </>
+        </GraphOverlayPanel>
     )
 }
 
@@ -1820,24 +1973,32 @@ const NodeListComponent = (props: {closeModal: any}) => {
     };
 
     return (
-        <Panel id={"node-list-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16}}>
-                <h3>Node List</h3>
-                <pre style={{textAlign: "left", overflow:"scroll", overscrollBehavior: "contain", height: 400, width: 400}}>{getDataString()}</pre>
-                <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-primary"}  style={{width: "100%"}} onClick={copyToClipboard}>
-                            {copied ? 'Copied!' : 'Copy to Clipboard'}
-                        </Button>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
-                            Cancel
-                        </Button>
-                    </Col>
-                </Row>
-            </Container>
-        </Panel>
+        <GraphOverlayPanel
+            id={"node-list-panel"}
+            title={"Node Types"}
+            maxWidth={"34rem"}
+            onClose={props.closeModal}
+            footer={
+                <Button variant={"outline-primary"} onClick={copyToClipboard}>
+                    {copied ? 'Copied!' : 'Copy to Clipboard'}
+                </Button>
+            }
+        >
+            <pre style={{
+                margin: 0,
+                textAlign: "left",
+                overflow: "auto",
+                overscrollBehavior: "contain",
+                height: "min(22rem, 38vh)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                padding: "var(--sp-2)",
+                background: "var(--surface-1)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--fs-sm)",
+                whiteSpace: "pre-wrap",
+            }}>{getDataString()}</pre>
+        </GraphOverlayPanel>
     )
 }
 
@@ -1890,14 +2051,8 @@ const GraphSearchComponent = (props: {
     };
 
     return (
-        <Panel id={"graph-search-panel"} position={"top-center"} style={{border: "1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16, width: 720, maxWidth: "92vw"}}>
-                <div style={{display: "flex", justifyContent: "space-between", alignItems: "center"}}>
-                    <h3 style={{margin: 0}}>Search Graph</h3>
-                    <Button variant={"outline-danger"} size={"sm"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-                <hr style={{ borderTop: "1px solid #777", margin: "12px 0" }} />
-
+        <GraphOverlayPanel id={"graph-search-panel"} title={"Search Graph"} maxWidth={"45rem"} onClose={props.closeModal}>
+            <>
                 <div style={{display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end"}}>
                     <Form.Group style={{marginBottom: 0}}>
                         <Form.Label style={{fontSize: 12, color: "#666", marginBottom: 4}}>Find by Op or config string value</Form.Label>
@@ -1922,7 +2077,7 @@ const GraphSearchComponent = (props: {
                 </div>
                 {indexError !== null && <div style={{marginTop: 6, color: "#b00020", fontSize: 12}}>{indexError}</div>}
 
-                <div style={{marginTop: 12, border: "1px solid #ddd", borderRadius: 6, maxHeight: "min(44vh, calc(100vh - 290px))", overflowY: "auto", textAlign: "left", padding: 8}}>
+                <div style={{marginTop: 12, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", maxHeight: "min(22rem, 38vh)", overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", padding: 8}}>
                     {trimmedQuery === "" && (
                         <div style={{fontSize: 13, color: "#777", padding: "8px 6px"}}>
                             Search matches node operation names and string values in node configuration (including pointer templates).
@@ -1953,8 +2108,8 @@ const GraphSearchComponent = (props: {
                         </button>
                     ))}
                 </div>
-            </Container>
-        </Panel>
+            </>
+        </GraphOverlayPanel>
     );
 };
 
@@ -2016,20 +2171,16 @@ const VariablesComponent = (props: {closeModal: any}) => {
         commit(variables.filter((_, i) => i !== index));
     };
 
+    // maxWidth "none", unlike the other overlays: variable rows carry four controls each, so this
+    // one takes the graph panel's full width instead of sitting in a centred column of empty space
     return (
-        <Panel id={"variables-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", borderRadius: 8, boxShadow: "0 4px 24px rgba(0,0,0,0.15)", zIndex: 10}}>
-            <Container fluid style={{ padding: 16, width: 1080, maxWidth: "95vw" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h3 style={{ margin: 0 }}>Variables</h3>
-                    <Button variant={"outline-danger"} size={"sm"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-                <hr style={{ borderTop: '1px solid #777', margin: '12px 0' }} />
-                <div style={{ display: "flex", gap: 16, height: "min(460px, calc(100vh - 210px))" }}>
+        <GraphOverlayPanel id={"variables-panel"} title={"Variables"} maxWidth={"none"} onClose={props.closeModal}>
+                <div className={"graph-overlay-columns graph-overlay-columns--wide-main"}>
                     {/* left: editable list of variables */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                    <div className={"graph-overlay-columns__main"}>
                         {/* overflowX hidden avoids the horizontal scrollbar Bootstrap's negative
                             row gutters would otherwise trigger (overflow-y:auto forces x to auto too) */}
-                        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
+                        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
                             {variables.length === 0 && (
                                 <p style={{ color: "#888", textAlign: "center", marginTop: 32 }}>
                                     No variables yet. Add one to get started.
@@ -2039,7 +2190,7 @@ const VariablesComponent = (props: {closeModal: any}) => {
                                 <Row style={{ marginBottom: 0, marginLeft: 0, marginRight: 0 }}>
                                     <Col style={{ flexGrow: 2 }}><span style={{ fontSize: 11, color: "#999" }}>ID</span></Col>
                                     <Col xs={2}><span style={{ fontSize: 11, color: "#999" }}>Type</span></Col>
-                                    <Col xs={4}><span style={{ fontSize: 11, color: "#999" }}>Value</span></Col>
+                                    <Col xs={5}><span style={{ fontSize: 11, color: "#999" }}>Value</span></Col>
                                     <Col style={{ width: 44, flexShrink: 0, padding: 0 }}></Col>
                                 </Row>
                             )}
@@ -2071,7 +2222,9 @@ const VariablesComponent = (props: {closeModal: any}) => {
                                                 ))}
                                             </Form.Control>
                                         </Col>
-                                        <Col xs={4}>
+                                        {/* widest of the three: a vector/matrix type renders one
+                                            number input per component in here */}
+                                        <Col xs={5}>
                                             <TypedValueInput
                                                 typeIndex={variable.type}
                                                 value={variable.value}
@@ -2093,17 +2246,13 @@ const VariablesComponent = (props: {closeModal: any}) => {
                         </Button>
                     </div>
 
-                    {/* right: live JSON view — fixed width so the extra panel width goes to the
-                        variables list on the left rather than widening the JSON pane */}
-                    <div style={{ width: 380, flexShrink: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>JSON</span>
-                        <pre style={{ flex: 1, margin: 0, overflow: "auto", overscrollBehavior: "contain", textAlign: "left", border: "1px solid #ccc", borderRadius: 4, padding: 8, background: "#f5f5f5", fontSize: 12 }}>
-                            {JSON.stringify(toGraphVariables(variables), undefined, 2)}
-                        </pre>
+                    {/* right: live JSON view (fixed width, see .graph-overlay-columns__json) */}
+                    <div className={"graph-overlay-columns__json"}>
+                        <span className={"graph-overlay-columns__json-label"}>JSON</span>
+                        <pre>{JSON.stringify(toGraphVariables(variables), undefined, 2)}</pre>
                     </div>
                 </div>
-            </Container>
-        </Panel>
+        </GraphOverlayPanel>
     )
 }
 
@@ -2194,17 +2343,11 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
     };
 
     return (
-        <Panel id={"custom-events-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", borderRadius: 8, boxShadow: "0 4px 24px rgba(0,0,0,0.15)", zIndex: 10}}>
-            <Container fluid style={{ padding: 16, width: 1100, maxWidth: "95vw" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h3 style={{ margin: 0 }}>Custom Events</h3>
-                    <Button variant={"outline-danger"} size={"sm"} onClick={() => props.closeModal()}>Close</Button>
-                </div>
-                <hr style={{ borderTop: '1px solid #777', margin: '12px 0' }} />
-                <div style={{ display: "flex", gap: 16, height: "min(460px, calc(100vh - 210px))" }}>
+        <GraphOverlayPanel id={"custom-events-panel"} title={"Custom Events"} maxWidth={"69rem"} onClose={props.closeModal}>
+                <div className={"graph-overlay-columns"}>
                     {/* left: editable list of events */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
+                    <div className={"graph-overlay-columns__main"}>
+                        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", paddingRight: 4 }}>
                             {events.length === 0 && (
                                 <p style={{ color: "#888", textAlign: "center", marginTop: 32 }}>
                                     No custom events yet. Add one to get started.
@@ -2290,69 +2433,13 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
                         </Button>
                     </div>
 
-                    {/* right: live JSON view */}
-                    <div style={{ flex: 0.8, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>JSON</span>
-                        <pre style={{ flex: 1, margin: 0, overflow: "auto", overscrollBehavior: "contain", textAlign: "left", border: "1px solid #ccc", borderRadius: 4, padding: 8, background: "#f5f5f5", fontSize: 12 }}>
-                            {JSON.stringify(toGraphEvents(events), undefined, 2)}
-                        </pre>
+                    {/* right: live JSON view (fixed width, see .graph-overlay-columns__json) */}
+                    <div className={"graph-overlay-columns__json"}>
+                        <span className={"graph-overlay-columns__json-label"}>JSON</span>
+                        <pre>{JSON.stringify(toGraphEvents(events), undefined, 2)}</pre>
                     </div>
                 </div>
-            </Container>
-        </Panel>
+        </GraphOverlayPanel>
     )
 }
 
-const UploadGraphComponent = (props: { closeModal: any}) => {
-    const graphRef = useRef<HTMLTextAreaElement>(null);
-    const [error, setError] = useState<string | null>(null);
-    const {loadGraphFromJson, markGraphDirty} = useContext(InteractivityGraphContext);
-    const uploadGraph = () => {
-        if (graphRef.current === null || graphRef.current.value === "") {return}
-
-        try {
-            loadGraphFromJson(JSON.parse(graphRef.current.value));
-            markGraphDirty();
-        } catch (e) {
-            // covers both invalid JSON and malformed/incomplete graph structure
-            setError(`Could not load graph: ${e instanceof Error ? e.message : String(e)}`);
-            return;
-        }
-        setError(null);
-        props.closeModal();
-    }
-
-    return (
-        <Panel id={"upload-graph-panel"} position={"top-center"} style={{border:"1px solid gray", background: "white", zIndex: 10}}>
-            <Container style={{padding: 16, width: 600}}>
-                <h3>Upload graph</h3>
-                <Row style={{textAlign: "left"}}>
-                    <Col>
-                        <Form.Group>
-                            <Form.Label>Graph JSON</Form.Label>
-                            <Form.Control ref={graphRef} as="textarea" rows={10}/>
-                        </Form.Group>
-                    </Col>
-                </Row>
-                {error !== null &&
-                    <Row style={{ marginTop: 8 }}>
-                        <Col>
-                            <div style={{ color: "#b00020", fontSize: 13, whiteSpace: "pre-wrap" }}>{error}</div>
-                        </Col>
-                    </Row>
-                }
-                <hr style={{ borderTop: '1px solid #777', margin: '16px 0' }} />
-                <Row style={{ marginTop: 16 }}>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-primary"} id={"upload-graph-btn"} style={{width: "100%"}} onClick={() => {uploadGraph()}}>Load</Button>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Button variant={"outline-danger"} style={{width: "100%"}} onClick={() => props.closeModal()}>
-                            Cancel
-                        </Button>
-                    </Col>
-                </Row>
-            </Container>
-        </Panel>
-    );
-}

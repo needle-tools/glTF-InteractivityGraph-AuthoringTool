@@ -6,7 +6,6 @@ import {LoggingEngineComponent} from "./components/engineViews/LoggingEngineComp
 import {BabylonEngineComponent} from "./components/engineViews/BabylonEngineComponent";
 import {ThreeEngineComponent} from "./components/engineViews/ThreeEngineComponent";
 import {NeedleEngineComponent} from "./components/engineViews/NeedleEngineComponent";
-import {Tab, Tabs} from "react-bootstrap";
 import { InteractivityGraphProvider } from './InteractivityGraphContext';
 import { SampleSidebar } from './components/SampleSidebar';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
@@ -14,6 +13,8 @@ import { describeModelUrl, trackEvent } from './utils/analytics';
 
 // Storage key for persisting the engine type
 const ENGINE_TYPE_STORAGE_KEY = 'interactivity-graph-engine-type';
+// Storage key for persisting whether the graph authoring half is shown
+const GRAPH_EDITOR_VISIBLE_STORAGE_KEY = 'interactivity-graph-editor-visible';
 
 const engineTypeFromString = (value: string | null): EngineType | undefined => {
   switch (value?.toLowerCase()) {
@@ -35,6 +36,10 @@ const getInitialEngineType = (): EngineType => {
 export const App = () => {
   const [engineType, setEngineType] = useState<EngineType>(getInitialEngineType);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  // hides the whole graph authoring half, leaving the engine view alone in the workspace — for
+  // viewing/playing a glb without authoring. The component stays mounted (see app-split__pane
+  // --hidden) so toggling back doesn't pay for rebuilding the canvas from the model again.
+  const [showGraphEditor, setShowGraphEditor] = useState(true);
   // fraction of the split row's width given to the left (engine) panel; the divider drags this
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [dividerHovered, setDividerHovered] = useState(false);
@@ -111,7 +116,26 @@ export const App = () => {
     if (modelParam) {
       setModelUrl(modelParam);
     }
+
+    // Graph editor visibility: URL parameter wins over the stored preference, so a
+    // "?graph=hidden" link opens straight into the viewer-only layout
+    const graphParam = params.get('graph');
+    if (graphParam !== null) {
+      setShowGraphEditor(!['hidden', 'off', 'false', '0'].includes(graphParam.toLowerCase()));
+    } else {
+      const storedGraphVisible = localStorage.getItem(GRAPH_EDITOR_VISIBLE_STORAGE_KEY);
+      if (storedGraphVisible !== null) {
+        setShowGraphEditor(storedGraphVisible === 'true');
+      }
+    }
   }, []);
+
+  const toggleGraphEditor = () => {
+    setShowGraphEditor(prev => {
+      localStorage.setItem(GRAPH_EDITOR_VISIBLE_STORAGE_KEY, String(!prev));
+      return !prev;
+    });
+  };
 
   // Handle browser back/forward navigation
   useEffect(() => {
@@ -200,18 +224,25 @@ export const App = () => {
 
   return (
     <InteractivityGraphProvider>
-        <div className="app-shell">
+      <div className={"app-shell"}>
+        <AppHeader
+          setEngineType={handleEngineTypeChange}
+          currentEngineType={engineType}
+          onSelectModel={handleModelUrlChange}
+          showGraphEditor={showGraphEditor}
+          onToggleGraphEditor={toggleGraphEditor}
+        />
 
-        <EngineSelector setEngineType={handleEngineTypeChange} currentEngineType={engineType} />
-
-        <SampleSidebar onSelectModel={handleModelUrlChange} />
-
+        {/* renders nothing (and takes no space) while there are no diagnostics */}
         <DiagnosticsPanel />
 
         {/* side-by-side, resizable: 3D/logging engine view on the left, graph authoring on the
             right, with a draggable divider controlling the split (see startSplitDrag) */}
-        <div ref={splitRowRef} className="app-workspace">
-            <div className="app-engine-pane" style={{flexGrow: splitRatio}}>
+        <main className={"app-main"}>
+          <div ref={splitRowRef} className={"app-split"}>
+            {/* with the graph pane hidden the engine pane is the only flex item, and a grow factor
+                below 1 would leave the rest of the row empty — give it the full width instead */}
+            <div className={"app-split__pane"} style={{flexGrow: showGraphEditor ? splitRatio : 1}}>
                 <RenderIf shouldShow={engineType === EngineType.LOGGING}>
                      <LoggingEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
@@ -225,22 +256,29 @@ export const App = () => {
                     <NeedleEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
             </div>
+            <RenderIf shouldShow={showGraphEditor}>
+                <div
+                    role={"separator"}
+                    aria-orientation={"vertical"}
+                    onMouseDown={startSplitDrag}
+                    onMouseEnter={() => setDividerHovered(true)}
+                    onMouseLeave={() => setDividerHovered(false)}
+                    title={"Drag to resize"}
+                    className={`app-divider${dividerActive ? " is-active" : ""}`}
+                >
+                    <div className={"app-divider__grip"}/>
+                </div>
+            </RenderIf>
             <div
-                className={`app-workspace-divider${dividerActive ? " app-workspace-divider--active" : ""}`}
-                onMouseDown={startSplitDrag}
-                onMouseEnter={() => setDividerHovered(true)}
-                onMouseLeave={() => setDividerHovered(false)}
-                title={"Drag to resize"}
+                className={`app-split__pane${showGraphEditor ? "" : " app-split__pane--hidden"}`}
+                style={{flexGrow: 1 - splitRatio}}
             >
-                <div className="app-workspace-divider__handle"/>
-            </div>
-            <div className="app-graph-pane" style={{flexGrow: 1 - splitRatio}}>
                 <AuthoringComponent/>
             </div>
-        </div>
+          </div>
+        </main>
       </div>
     </InteractivityGraphProvider>
-      
   );
 }
 
@@ -249,72 +287,67 @@ interface EngineSelectorProps {
     currentEngineType: EngineType;
 }
 
-export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, currentEngineType }) => {
-    // Initialize the activeKey based on the engineType prop
-    const getInitialTabKey = () => {
-        switch (currentEngineType) {
-            case EngineType.LOGGING:
-                return '1';
-            case EngineType.BABYLON:
-                return '2';
-            case EngineType.THREE:
-                return '3';
-            case EngineType.NEEDLE:
-                return '4';
-            default:
-                return '2'; // Default to Babylon
-        }
-    };
+// the engine tabs, in the order the fork presents its runtimes (the three renderers first, the
+// logging engine last). Rendered as a plain <ul>/<li> segmented control rather than
+// react-bootstrap's <Tabs> so it can carry the app's own styling (and so a tab is still an <li>,
+// which the e2e spec clicks).
+const ENGINE_TABS: ReadonlyArray<{ engine: EngineType; label: string }> = [
+    { engine: EngineType.BABYLON, label: "Babylon Engine" },
+    { engine: EngineType.THREE, label: "Three.js" },
+    { engine: EngineType.NEEDLE, label: "Needle Engine" },
+    { engine: EngineType.LOGGING, label: "Logging Engine" },
+];
 
-    const [activeKey, setActiveKey] = useState(getInitialTabKey());
-    
-    // Update tab key when engineType changes
-    useEffect(() => {
-        setActiveKey(getInitialTabKey());
-    }, [currentEngineType]);
-    
-    const handleEngineChange = (key: string | null) => {
-        if (key) {
-            let engine;
-            switch (key) {
-                case '1':
-                    engine = EngineType.LOGGING;
-                    break;
-                case '2':
-                    engine = EngineType.BABYLON;
-                    break;
-                case '3':
-                    engine = EngineType.THREE;
-                    break;
-                case '4':
-                    engine = EngineType.NEEDLE;
-                    break;
-                default:
-                    throw Error("Invalid Selection")
-            }
-            setActiveKey(key);
-            setEngineType(engine);
-        }
-    };
+export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, currentEngineType }) => (
+    <div data-testid={"engine-selector"}>
+        <ul className={"app-tabs"} role={"tablist"}>
+            {ENGINE_TABS.map(({ engine, label }) => {
+                const isActive = currentEngineType === engine;
+                return (
+                    <li
+                        key={engine}
+                        role={"presentation"}
+                        className={`app-tab${isActive ? " is-active" : ""}`}
+                        onClick={() => setEngineType(engine)}
+                    >
+                        <button type={"button"} role={"tab"} aria-selected={isActive}>{label}</button>
+                    </li>
+                );
+            })}
+        </ul>
+    </div>
+);
 
-    return (
-        <div className="engine-selector">
-            <h1 className="engine-selector__title">glTF Interactivity Editor and Viewer</h1>
-            <div className="engine-selector__intro">
-                <p>This web app allows interacting with, graph inspection and authoring of glTF files using the <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank" rel="noreferrer">KHR_interactivity</a> extension.</p>
-                <p>You can load samples and test assets and inspect their graphs, or create your own files with the experimental graph UI.</p>
-            </div>
-            <div className="engine-selector__tabs" data-testid={"engine-selector"}>
-                <Tabs
-                    activeKey={activeKey}
-                    onSelect={handleEngineChange}
-                >
-                    <Tab title={"Babylon"} eventKey={2}/>
-                    <Tab title={"three.js"} eventKey={3}/>
-                    <Tab title={"Needle"} eventKey={4}/>
-                    <Tab title={"Debug"} eventKey={1}/>
-                </Tabs>
-            </div>
-        </div>
-    );
+interface AppHeaderProps extends EngineSelectorProps {
+    onSelectModel: (url: string) => void;
+    showGraphEditor: boolean;
+    onToggleGraphEditor: () => void;
 }
+
+const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType, onSelectModel, showGraphEditor, onToggleGraphEditor }) => (
+    <header className={"app-header"}>
+        <div className={"app-header__brand"}>
+            <h1 className={"app-title"}>glTF Interactivity Editor and Viewer</h1>
+            <p className={"app-subtitle"}>
+                Inspect, run and author glTF files using the{" "}
+                <a href="https://github.com/KhronosGroup/glTF/blob/interactivity/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc" target="_blank" rel="noreferrer">KHR_interactivity</a>
+                {" "}extension — load a sample or test asset, or build your own graph.
+            </p>
+        </div>
+        <div className={"app-header__actions"}>
+            <EngineSelector setEngineType={setEngineType} currentEngineType={currentEngineType} />
+            <button
+                type={"button"}
+                className={"btn-app"}
+                onClick={onToggleGraphEditor}
+                aria-pressed={!showGraphEditor}
+                title={showGraphEditor
+                    ? "Hide the graph authoring panel and give the whole workspace to the engine view"
+                    : "Show the graph authoring panel again"}
+            >
+                {showGraphEditor ? "Hide Graph Editor" : "Show Graph Editor"}
+            </button>
+            <SampleSidebar onSelectModel={onSelectModel} />
+        </div>
+    </header>
+);

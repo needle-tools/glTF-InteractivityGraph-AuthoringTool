@@ -1,7 +1,7 @@
 import { createContext, useCallback, useMemo, useRef, useState } from 'react';
 import { IInteractivityDeclaration, IInteractivityEvent, IInteractivityGraph, IInteractivityVariable } from './BasicBehaveEngine/types/InteractivityGraph';
 import { AuthoredGraph, AuthoredNode, AuthoredValue, NodeSpecFlag } from './authoring/spec/AuthoredGraph';
-import { createNoOpNode, hasNodeSpecFlag, interactivityNodeSpecs, resolveOutputSocketType, standardTypes } from './authoring/spec/nodes';
+import { buildNodeByUid, createNoOpNode, getNodeSpec, hasNodeSpecFlag, resolveOutputSocketType, standardTypes } from './authoring/spec/nodes';
 import { reconcileNodeSockets } from './authoring/socketReconciler';
 import { buildNodeByUidMap, computeNodeLiveWarnings } from './authoring/validation';
 import { v4 as uuidv4 } from 'uuid';
@@ -19,6 +19,11 @@ import { trackEvent } from './utils/analytics';
 const MAX_TRACKED_NODE_OPS = 60;
 
 const edgeStyle = (color: string) => ({ stroke: color, strokeWidth: 2 });
+
+// Auto-layout spacing (used when a loaded graph carries no node positions): the grid pitch between
+// nodes, and the gap left between two disjoint components once they are packed.
+const NODE_SPACING = 500;
+const COMPONENT_GAP = 800;
 
 // how long after the last model edit the whole-graph live validation re-runs (see
 // scheduleLiveValidation) — long enough to coalesce a burst of edits, short enough that the
@@ -70,6 +75,9 @@ interface InteractivityGraphContextType {
     // don't trigger a context re-render — the reactflow canvas owns its own visual state); a graph
     // *load* replaces its identity via setGraph, which is what drives the canvas rebuild.
     graph: AuthoredGraph,
+    // uid -> node index over graph.nodes, kept in sync by addNode/removeNode. Every mounted node
+    // resolves its own model entry through this; a .find per node was O(n²) across a big canvas.
+    nodeByUid: ReadonlyMap<string, AuthoredNode>,
     diagnostics: IGraphDiagnostic[],
     setDiagnosticsForCategory: (category: DiagnosticCategory, diagnostics: IGraphDiagnostic[]) => void,
     clearDiagnostics: () => void,
@@ -77,6 +85,9 @@ interface InteractivityGraphContextType {
     // type-group conflicts), so the DiagnosticsPanel/DiagnosticsCounter reflect problems
     // introduced by editing the graph in the UI, not just ones found at load time
     allDiagnostics: IGraphDiagnostic[],
+    // load-time 'node'-category diagnostics indexed by node uid. Each mounted node needs only its
+    // own; filtering the whole list per node per render was O(nodes x diagnostics) on a big graph.
+    diagnosticsByNodeUid: ReadonlyMap<string, IGraphDiagnostic[]>,
     // Live per-node socket warnings keyed by node uid, computed whole-graph from the model by
     // runLiveValidation (computeNodeLiveWarnings in validation.ts) — never from what happens to be
     // mounted on the canvas, so viewport culling/LOD/mount order cannot change the counts. Nodes
@@ -87,9 +98,14 @@ interface InteractivityGraphContextType {
     // The canvas rebuild awaits this in its final "Checking" phase; interactive edits instead go
     // through the debounced trigger wired into markGraphDirty.
     runLiveValidation: () => Promise<boolean>,
-    // Progress of the current chunked load (null when idle). Drives the LoadingProgressBar.
-    loadingState: LoadingState | null,
+    // Progress of the current chunked load, published through an external store rather than React
+    // state: it ticks once per frame-budget yield, and as part of the context value each tick
+    // re-rendered every consumer — the canvas and all its mounted nodes included. Only the
+    // LoadingProgressBar subscribes (via useSyncExternalStore), so ticks are now free for everyone
+    // else. Both accessors are stable, so they never invalidate the context value.
     setLoadingState: (state: LoadingState | null) => void,
+    subscribeLoadingState: (listener: () => void) => () => void,
+    getLoadingState: () => LoadingState | null,
     gltfObjectModel: GltfObjectModel | null,
     setGltfObjectModel: (model: GltfObjectModel | null) => void,
     supportedPointerTemplates: ReadonlySet<string> | null,
@@ -133,14 +149,17 @@ export const initialGraph: AuthoredGraph = {
 
 const initialContext: InteractivityGraphContextType = {
     graph: initialGraph,
+    nodeByUid: new Map(),
     diagnostics: [],
     setDiagnosticsForCategory: () => {return null},
     clearDiagnostics: () => {return null},
     allDiagnostics: [],
+    diagnosticsByNodeUid: new Map(),
     nodeWarnings: {},
     runLiveValidation: async () => false,
-    loadingState: null,
     setLoadingState: () => {return null},
+    subscribeLoadingState: () => () => {return undefined},
+    getLoadingState: () => null,
     gltfObjectModel: null,
     setGltfObjectModel: () => {return null},
     supportedPointerTemplates: null,
@@ -212,14 +231,20 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // nodes made the counts depend on the viewport (culling unmounted a node -> warnings vanished).
     const [nodeWarnings, setNodeWarnings] = useState<Record<string, IGraphDiagnostic[]>>({});
 
-    const [loadingState, setLoadingStateState] = useState<LoadingState | null>(null);
-    // mirrored into a ref so the stable scheduleLiveValidation callback can see "a load is in
-    // flight" without being recreated per loading tick
+    // See setLoadingState on the context type: the current phase/progress lives here, outside React
+    // state, and is pushed to subscribers. scheduleLiveValidation reads the ref directly to tell
+    // whether a load is in flight.
     const loadingStateRef = useRef<LoadingState | null>(null);
+    const loadingListenersRef = useRef(new Set<() => void>());
     const setLoadingState = useCallback((state: LoadingState | null) => {
         loadingStateRef.current = state;
-        setLoadingStateState(state);
+        loadingListenersRef.current.forEach((listener) => listener());
     }, []);
+    const subscribeLoadingState = useCallback((listener: () => void) => {
+        loadingListenersRef.current.add(listener);
+        return () => { loadingListenersRef.current.delete(listener); };
+    }, []);
+    const getLoadingState = useCallback(() => loadingStateRef.current, []);
 
     // identity mirror of `graph` so the stable validation callbacks always validate the current
     // model (interactive edits mutate the object in place; only a load swaps identity)
@@ -284,6 +309,20 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         [diagnostics, nodeWarnings]
     );
 
+    const diagnosticsByNodeUid = useMemo(() => {
+        const byUid = new Map<string, IGraphDiagnostic[]>();
+        for (const diagnostic of diagnostics) {
+            if (diagnostic.category !== 'node' || diagnostic.nodeUid === undefined) { continue; }
+            const existing = byUid.get(diagnostic.nodeUid);
+            if (existing === undefined) { byUid.set(diagnostic.nodeUid, [diagnostic]); } else { existing.push(diagnostic); }
+        }
+        return byUid;
+    }, [diagnostics]);
+
+    // rebuilt only when a load swaps the graph's identity; interactive add/remove keep it current
+    // in place (they mutate graph.nodes without a setGraph, so the memo never re-runs for them)
+    const nodeByUid = useMemo(() => buildNodeByUid(graph.nodes), [graph]);
+
     const [gltfObjectModel, setGltfObjectModel] = useState<GltfObjectModel | null>(null);
     const [supportedPointerTemplates, setSupportedPointerTemplates] = useState<ReadonlySet<string> | null>(null);
 
@@ -313,6 +352,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 ? Number(interactivityNode.metadata?.positionY)
                 : 0,
             },
+            // Deliberately no width/height here. Reactflow treats a node it has not measured yet as
+            // visible, which is what makes every node of a freshly loaded graph mount once even
+            // with viewport culling on — and that first mount is the only thing that registers the
+            // node's handles. Pre-seeding an estimated box lets culling skip nodes before they ever
+            // mount, and an edge whose endpoint has no registered handleBounds is silently dropped,
+            // so large graphs came up missing their connections. The cost of that full first mount
+            // is handled by mounting at a zoomed-out (LOD) viewport instead — see AuthoringComponent.
             data: {} as { [key: string]: any },
           };
           nodes.push(node);
@@ -343,7 +389,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 let edgeColor = UNKNOWN_COLOR;
                 if (!deferTypes) {
                   const sourceNode = nodeByUid.get(String(value.node));
-                  edgeColor = getColorForTypeIndex(resolveOutputSocketType(sourceNode, value.socket!, graph.nodes));
+                  edgeColor = getColorForTypeIndex(resolveOutputSocketType(sourceNode, value.socket!, graph.nodes, nodeByUid));
                 }
                 edges.push({
                   id: uuidv4(),
@@ -407,20 +453,24 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
       
           const visited: Record<string, boolean> = {};
           const disjointGraphs: string[][] = [];
+          // one buffer for every component, walked with a head index — Array.shift() on a queue
+          // holding thousands of nodes is O(n) per dequeue, i.e. O(n²) for the whole traversal
           const queue: string[] = [];
-      
+
           // Traverse graph and assign disjointGraphs
           nodes.forEach((node) => {
             const { id } = node;
             if (!visited[id]) {
               visited[id] = true;
               const disjointGraph: string[] = [];
+              queue.length = 0;
               queue.push(id);
-      
-              while (queue.length > 0) {
-                const currentNode = queue.shift() as string;
+              let head = 0;
+
+              while (head < queue.length) {
+                const currentNode = queue[head++];
                 disjointGraph.push(currentNode);
-      
+
                 if (adjacencyList[currentNode]) {
                   adjacencyList[currentNode].forEach((neighbor) => {
                     if (!visited[neighbor]) {
@@ -430,27 +480,26 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                   });
                 }
               }
-      
+
               disjointGraphs.push(disjointGraph);
             }
           });
       
-            // Y layer additive reflects the Y to start each new graph at. Should start with 0, and then on a subsequent disjoint graph, add some padding + the last max y.
-            let layerYAdditive = 0;
-            let lastMaxY = 0;
-      
+            // Each disjoint component is laid out on its own at the origin, then the components are
+            // packed into a roughly square canvas below. They used to be stacked in one vertical
+            // column, which on a graph with hundreds of components (Overview has 243, mathtests 398)
+            // produced a canvas over a million units tall but only ~150k wide — an aspect ratio no
+            // viewport can usefully frame, so "fit the graph" showed under 1% of it and exploring
+            // meant scrolling down a near-empty corridor.
+            const componentBoxes: { nodeIds: string[], minX: number, minY: number, width: number, height: number }[] = [];
+
             disjointGraphs.forEach((disjointGraph) => {
               // Each layer is a vertical column of a disjoint graph. Since we start at the leftmost column where x = -500 (starting point).
               let lastLayer: string[] = disjointGraph.filter(nodeId => !targetIds.has(nodeId));
-              let y = 0;
               for (let i = 0; i < lastLayer.length; i++) {
                 const node = nodeById.get(lastLayer[i])!;
                 node.position.x = -500;
-                y = 500 * i + layerYAdditive;
-                node.position.y = y;
-                if (y > lastMaxY) {
-                  lastMaxY = y;
-                }
+                node.position.y = 500 * i;
               }
 
               let nextLayer: string[] = [];
@@ -460,16 +509,16 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
               nextLayer = [...new Set(nextLayer)];
 
               let xOffset = 0;
-              while (nextLayer.length > 0) {
+              // the walk has no visited set (a node reachable at several depths is deliberately
+              // re-placed at the deepest one), so bound it by the component size: a graph with a
+              // cycle would otherwise spin here forever instead of just laying out oddly
+              let layerBudget = disjointGraph.length;
+              while (nextLayer.length > 0 && layerBudget-- > 0) {
                 lastLayer = nextLayer;
                 for (let i = 0; i < lastLayer.length; i++) {
                   const node = nodeById.get(lastLayer[i])!;
                   node.position.x = xOffset;
-                  y = 500 * i + layerYAdditive;
-                  node.position.y = y;
-                  if (y > lastMaxY) {
-                    lastMaxY = y;
-                  }
+                  node.position.y = 500 * i;
                 }
 
                 nextLayer = [];
@@ -479,10 +528,45 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 nextLayer = [...new Set(nextLayer)];
                 xOffset += 500;
               }
-              layerYAdditive = 800 + lastMaxY;
+
+              // this component's own bounds, so the packing below can place it as one block
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const nodeId of disjointGraph) {
+                const { x, y } = nodeById.get(nodeId)!.position;
+                minX = Math.min(minX, x); minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+              }
+              componentBoxes.push({
+                nodeIds: disjointGraph,
+                minX, minY,
+                width: maxX - minX + NODE_SPACING,
+                height: maxY - minY + NODE_SPACING,
+              });
           });
-      
-      
+
+          // Shelf-pack the components into rows, wrapping at a width derived from their total area
+          // so the finished canvas comes out roughly square and can actually be framed.
+          const totalArea = componentBoxes.reduce((sum, box) => sum + box.width * box.height, 0);
+          const rowWidthLimit = Math.sqrt(totalArea) * 1.3;
+          let cursorX = 0;
+          let cursorY = 0;
+          let rowHeight = 0;
+          for (const box of componentBoxes) {
+            if (cursorX > 0 && cursorX + box.width > rowWidthLimit) {
+              cursorX = 0;
+              cursorY += rowHeight + COMPONENT_GAP;
+              rowHeight = 0;
+            }
+            const offsetX = cursorX - box.minX;
+            const offsetY = cursorY - box.minY;
+            for (const nodeId of box.nodeIds) {
+              const position = nodeById.get(nodeId)!.position;
+              position.x += offsetX;
+              position.y += offsetY;
+            }
+            cursorX += box.width + COMPONENT_GAP;
+            rowHeight = Math.max(rowHeight, box.height);
+          }
         }
       
         return [nodes, edges, events, variables];
@@ -491,9 +575,15 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // oldType is undefined when the file's numeric type index is out of bounds of its own `types`
     // array (a malformed/hand-edited file) - treat that the same as any other unsupported type
     // (-1) rather than throwing, since every call site already guards against -1.
-    const getUpdatedTypeIndex = (oldType: {signature: string, extensions?: any} | undefined): number => {
+    const getUpdatedTypeIndex = (oldType: {signature: string, extensions?: any} | string | undefined): number => {
       if (oldType == null) { return -1; }
-      const oldTypeSignature = oldType.signature;
+      // a `types` entry is spec'd as {signature}, but graphs written by other tools abbreviate it to
+      // the bare signature string or only carry the display `name` - all three name the same type,
+      // so accept them rather than mapping the whole graph to -1 (every socket "unsupported")
+      if (typeof oldType === "string") {
+        return standardTypes.findIndex(type => type.signature === oldType);
+      }
+      const oldTypeSignature = oldType.signature ?? (oldType as {name?: string}).name;
       if (oldTypeSignature === "custom") {
         const typeExtensions = JSON.stringify(Object.keys(oldType.extensions || {}).sort())
         return standardTypes.findIndex(type => type.signature === "custom" && JSON.stringify(Object.keys(type.extensions).sort()) == typeExtensions)
@@ -503,12 +593,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     }
 
     // human-readable label for a graph type entry (custom types are identified by their extension key)
-    const getTypeLabel = (type: {signature: string, extensions?: any}): string => {
+    const getTypeLabel = (type: {signature: string, name?: string, extensions?: any} | string): string => {
+      if (typeof type === "string") { return type; }
       if (type.signature === "custom") {
         const extensionKeys = Object.keys(type.extensions || {});
         return extensionKeys.length > 0 ? extensionKeys.join(", ") : "custom";
       }
-      return type.signature;
+      return type.signature ?? type.name ?? "unknown";
     }
     // Cancellation token for the in-flight chunked load. A second load flips the previous token's
     // `current` to true so runChunked bails at its next item boundary, then installs a fresh token —
@@ -614,7 +705,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
             }
             const nodeOp = declaration.op;
             let isNoOp = false;
-            let templateNode: AuthoredNode | undefined = interactivityNodeSpecs.find((schema: AuthoredNode) => schema.op === nodeOp);
+            let templateNode: AuthoredNode | undefined = getNodeSpec(nodeOp);
             if (templateNode === undefined) {
                 templateNode = createNoOpNode(declaration);
                 isNoOp = true;
@@ -744,7 +835,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         //   after that one propagation pass — type resolution is mount-order-independent.
         setLoadingState({ active: true, step: "Building nodes", progress: 0.45 });
         await runChunked(loadedNodes, (loadedNode) => {
-            const isNoOp = interactivityNodeSpecs.find((schema: AuthoredNode) => schema.op === loadedNode.op) === undefined;
+            const isNoOp = getNodeSpec(loadedNode.op) === undefined;
             const reconciled = reconcileNodeSockets({
                 op: loadedNode.op,
                 isNoOp,
@@ -859,10 +950,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     const topologicalSort = (nodes: any[]) => {
         const sortedList = [];
     
-        // create degree map
+        // create degree map. nodeById indexes the same list so the two lookups below aren't linear
+        // scans — they run once per value link and once per dequeued edge, i.e. O(n²) without it.
         const nodeIdToInDegree = new Map();
+        const nodeById = new Map<any, any>();
         for (const node of nodes) {
             nodeIdToInDegree.set(node.id, 0);
+            nodeById.set(node.id, node);
             node.fakeLinks = [];
         }
     
@@ -883,7 +977,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
                 // create fakeLinks so we know to decrement the link in degree when we remove it
                 for (const valueBackRefNodeId of valueBackRefNodeIds) {
                     nodeIdToInDegree.set(node.id, nodeIdToInDegree.get(node.id) + 1);
-                    const referencedNode = nodes.find(n => n.id === valueBackRefNodeId);
+                    const referencedNode = nodeById.get(valueBackRefNodeId);
                     referencedNode.fakeLinks.push(node.id);
                 }
             }
@@ -911,43 +1005,49 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
             for (const outId of outIds) {
                 nodeIdToInDegree.set(outId, nodeIdToInDegree.get(outId) - 1);
                 if (nodeIdToInDegree.get(outId) === 0) {
-                    const nodeToPush: Node = nodes.find(node => node.id === outId)!;
+                    const nodeToPush: Node = nodeById.get(outId)!;
                     queue.push(nodeToPush);
                 }
             }
         }
     
         // a cycle leaves some nodes unreachable. return a status instead of throwing so the JSON
-        // view / export don't crash - callers surface a diagnostic and keep the un-sorted graph.
+        // view / export don't crash - callers surface a diagnostic and keep the graph in its
+        // original (non-execution) order.
         const hasCycle = sortedList.length !== nodes.length;
 
-        if (!hasCycle) {
-            const oldIdToTopologicalId = new Map();
-            for (let i = 0; i < sortedList.length; i++) {
-                oldIdToTopologicalId.set(sortedList[i].id, i);
-            }
-
-            // change nodeIds in graph
-            for (const node of nodes) {
-                node.id = Number(`${oldIdToTopologicalId.get(node.id)}`);
-                if (node.flows !== undefined) {
-                    Object.values(node.flows).forEach((flow: any) => {
-                        if (flow.node !== undefined && oldIdToTopologicalId.get(flow.node) !== undefined) {
-                            flow.node = Number(`${oldIdToTopologicalId.get(flow.node)}`);
-                        }
-                    })
-                }
-                if (node.values !== undefined) {
-                    Object.values(node.values).forEach((val: any) => {
-                        if (val.node !== undefined && oldIdToTopologicalId.get(val.node) !== undefined) {
-                            val.node = Number(`${oldIdToTopologicalId.get(val.node)}`);
-                        }
-                    })
-                }
-            }
-
-            nodes.sort((a, b) => {return a.id - b.id});
+        // Rewrite every uid to its exported array index. A cycle only means we can't put the nodes in
+        // execution order - the ids still have to become indices, since that is the only node
+        // reference an interactivity graph has (there is no `id` field to fall back on: it's deleted
+        // below). Leaving uuids in here made a cyclic graph's JSON unloadable: every flow/value link
+        // resolved to `uuids[<uuid string>]` === undefined on re-import, silently dropping all wires
+        // and snapping the orphaned sockets back to their spec placeholder types.
+        const order = hasCycle ? nodes : sortedList;
+        const oldIdToTopologicalId = new Map();
+        for (let i = 0; i < order.length; i++) {
+            oldIdToTopologicalId.set(order[i].id, i);
         }
+
+        // change nodeIds in graph
+        for (const node of nodes) {
+            node.id = Number(`${oldIdToTopologicalId.get(node.id)}`);
+            if (node.flows !== undefined) {
+                Object.values(node.flows).forEach((flow: any) => {
+                    if (flow.node !== undefined && oldIdToTopologicalId.get(flow.node) !== undefined) {
+                        flow.node = Number(`${oldIdToTopologicalId.get(flow.node)}`);
+                    }
+                })
+            }
+            if (node.values !== undefined) {
+                Object.values(node.values).forEach((val: any) => {
+                    if (val.node !== undefined && oldIdToTopologicalId.get(val.node) !== undefined) {
+                        val.node = Number(`${oldIdToTopologicalId.get(val.node)}`);
+                    }
+                })
+            }
+        }
+
+        nodes.sort((a, b) => {return a.id - b.id});
 
         // remove fake Links (always, so the returned nodes are clean whether or not we sorted)
         for (const node of nodes) {
@@ -990,11 +1090,13 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     const addNode = (node: AuthoredNode) => {
         graph.nodes.push(node);
+        if (node.uid !== undefined) { nodeByUid.set(node.uid, node); }
         markGraphDirty();
     };
 
     const removeNode = (uid: string) => {
         graph.nodes = graph.nodes.filter(node => node.uid !== uid);
+        nodeByUid.delete(uid);
         // load-time 'node' diagnostics (e.g. "Invalid declaration reference") are keyed by nodeUid
         // and only ever recomputed by a fresh load - unlike nodeWarnings (the live validation pass),
         // they aren't re-derived from the current graph, so a deleted node's entry would otherwise
@@ -1005,14 +1107,17 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     const context: InteractivityGraphContextType = {
         graph: graph,
+        nodeByUid: nodeByUid,
         diagnostics: diagnostics,
         setDiagnosticsForCategory: setDiagnosticsForCategory,
         clearDiagnostics: clearDiagnostics,
         allDiagnostics: allDiagnostics,
+        diagnosticsByNodeUid: diagnosticsByNodeUid,
         nodeWarnings: nodeWarnings,
         runLiveValidation: runLiveValidation,
-        loadingState: loadingState,
         setLoadingState: setLoadingState,
+        subscribeLoadingState: subscribeLoadingState,
+        getLoadingState: getLoadingState,
         gltfObjectModel: gltfObjectModel,
         setGltfObjectModel: setGltfObjectModel,
         supportedPointerTemplates: supportedPointerTemplates,

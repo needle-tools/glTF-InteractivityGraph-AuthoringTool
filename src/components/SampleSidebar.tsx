@@ -186,16 +186,20 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
 
   return (
     <>
-      <Button 
-        className="sample-sidebar-trigger"
-        onClick={handleShow} 
-        variant="primary" 
+      {/* lives in the app header (see AppHeader), so it flows with the other header controls
+          rather than floating over the page */}
+      <button
+        type="button"
+        className="btn-app btn-app--primary"
+        onClick={handleShow}
         aria-label="Open samples and tests"
         title="Samples and Tests"
       >
-        <span className="sample-sidebar-trigger__icon" aria-hidden="true">☰</span>
-        <span className="sample-sidebar-trigger__label">Samples and Tests</span>
-      </Button>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+        Samples and Tests
+      </button>
 
       <Offcanvas className="sample-sidebar" show={show} onHide={handleClose} placement="end">
         <Offcanvas.Header closeButton>
@@ -284,7 +288,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                         {model.tags.map((tag, tagIndex) => (
                           <span 
                             key={tagIndex} 
-                            className="badge bg-secondary me-1"
+                            className="sample-tag"
                           >
                             {tag}
                           </span>
@@ -318,7 +322,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                         {model.tags.map((tag, tagIndex) => (
                           <span 
                             key={tagIndex} 
-                            className="badge bg-secondary me-1"
+                            className="sample-tag"
                           >
                             {tag}
                           </span>
@@ -353,7 +357,7 @@ export const SampleSidebar: React.FC<SampleSidebarProps> = ({ onSelectModel }) =
                         {model.tags.map((tag, tagIndex) => (
                           <span 
                             key={tagIndex} 
-                            className="badge bg-secondary me-1"
+                            className="sample-tag"
                           >
                             {tag}
                           </span>
@@ -392,5 +396,5 @@ export function buildSampleUrl(
 const VariantBadge: React.FC<{ model: Sample; preferredVariant: SampleVariant }> = ({ model, preferredVariant }) => {
   const variant = resolveSampleVariant(model, preferredVariant);
   const label = SAMPLE_VARIANTS.find(({ key }) => key === variant)?.label;
-  return label ? <span className="badge bg-secondary ms-2">{label}</span> : null;
+  return label ? <span className="sample-variant-badge">{label}</span> : null;
 };

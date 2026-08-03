@@ -3,8 +3,13 @@ import { IInteractivityVariable } from "../BasicBehaveEngine/types/Interactivity
 import { getColorForTypeIndex, getTypeLabel } from "./socketColors";
 
 export interface VariablesConfigFieldProps {
-    /** all variables declared on the graph; the array index is the variable id */
-    variables: IInteractivityVariable[];
+    /**
+     * All variables declared on the graph; the array index is the variable id. Read at *render*
+     * time (and the dropdown re-renders on every open) so variables declared after the node last
+     * rendered still appear — the Variables editor replaces graph.variables outright, and neither
+     * that nor addVariable re-renders the nodes.
+     */
+    getVariables: () => IInteractivityVariable[];
     /** ids of the currently selected variables (order preserved) */
     selectedIds: number[];
     /** called with the new list of selected ids whenever the selection changes */
@@ -17,9 +22,10 @@ export interface VariablesConfigFieldProps {
  * lists every declared variable as a checkbox row so several can be toggled without typing
  * comma-separated ids. Replaces the raw text input the generic config field used to render.
  */
-export const VariablesConfigField: React.FC<VariablesConfigFieldProps> = ({ variables, selectedIds, onChange }) => {
+export const VariablesConfigField: React.FC<VariablesConfigFieldProps> = ({ getVariables, selectedIds, onChange }) => {
     const [open, setOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
+    const variables = getVariables();
 
     // close the dropdown when clicking outside of it
     useEffect(() => {
@@ -85,7 +91,7 @@ export const VariablesConfigField: React.FC<VariablesConfigFieldProps> = ({ vari
                     {variables.length === 0 ? (
                         <div className={"vars-config-empty"}>No variables declared</div>
                     ) : (
-                        variables.map((variable, id) => {
+                        variables.map((variable: IInteractivityVariable, id: number) => {
                             const checked = selectedIds.includes(id);
                             return (
                                 <label key={id} className={"vars-config-option"}>
