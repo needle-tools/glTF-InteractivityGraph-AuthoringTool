@@ -20,11 +20,6 @@ const edgeStyle = (color: string) => ({ stroke: color, strokeWidth: 2 });
 const NODE_SPACING = 500;
 const COMPONENT_GAP = 800;
 
-// how long after the last model edit the whole-graph live validation re-runs (see
-// scheduleLiveValidation) — long enough to coalesce a burst of edits, short enough that the
-// ⚠/panel feedback still feels immediate
-const LIVE_VALIDATION_DEBOUNCE_MS = 200;
-
 // equality for the nodeWarnings state, so a validation pass that changes nothing keeps the
 // previous object identity and doesn't re-render every provider consumer
 const nodeWarningsEqual = (a: Record<string, IGraphDiagnostic[]>, b: Record<string, IGraphDiagnostic[]>): boolean => {
@@ -187,17 +182,16 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // view), so we guard on this ref and defer the setState to avoid an update-during-render loop.
     const cycleReportedRef = useRef<boolean>(false);
 
-    // See graphDirty on the context type: true once a structural edit has been made since the
-    // engine last (re)loaded the graph. Every model mutation funnels through markGraphDirty
-    // (node setters via markDirtyIfChanged, onConnect/onEdgesDelete, add/remove node,
-    // event/variable edits), which makes it the single choke point to also re-run the whole-graph
-    // live validation after an edit (debounced; see scheduleLiveValidation below).
+    // See graphDirty on the context type. Live warnings aren't recomputed on every edit (a fresh
+    // node has empty sockets by construction) — only on load and on clearGraphDirty (Reload/Play).
     const [graphDirty, setGraphDirty] = useState(false);
     const markGraphDirty = useCallback(() => {
         setGraphDirty(true);
-        scheduleLiveValidation();
     }, []);
-    const clearGraphDirty = useCallback(() => setGraphDirty(false), []);
+    const clearGraphDirty = useCallback(() => {
+        setGraphDirty(false);
+        void runLiveValidation();
+    }, []);
 
     const playHandlerRef = useRef<(() => void) | null>(null);
     const registerPlayHandler = useCallback((handler: (() => void) | null) => {
@@ -227,8 +221,7 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     const [nodeWarnings, setNodeWarnings] = useState<Record<string, IGraphDiagnostic[]>>({});
 
     // See setLoadingState on the context type: the current phase/progress lives here, outside React
-    // state, and is pushed to subscribers. scheduleLiveValidation reads the ref directly to tell
-    // whether a load is in flight.
+    // state, and is pushed to subscribers.
     const loadingStateRef = useRef<LoadingState | null>(null);
     const loadingListenersRef = useRef(new Set<() => void>());
     const setLoadingState = useCallback((state: LoadingState | null) => {
@@ -250,7 +243,6 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // graph never blocks the main thread; a newer run (or a new load) supersedes an in-flight one
     // via the cancel token, in which case nothing is committed.
     const validationCancelRef = useRef<{ current: boolean } | null>(null);
-    const validationTimerRef = useRef<number | null>(null);
 
     // resolves true once the result is committed, false when superseded by a newer run/load (the
     // newer owner then controls nodeWarnings and the loading bar)
@@ -287,17 +279,6 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         setNodeWarnings(prev => (nodeWarningsEqual(prev, next) ? prev : next));
         return true;
     }, []);
-
-    // Debounced trigger for interactive edits (wired into markGraphDirty above). No-op while a
-    // load is in flight: the canvas rebuild runs one authoritative pass in its "Checking" phase.
-    const scheduleLiveValidation = useCallback(() => {
-        if (loadingStateRef.current?.active) { return; }
-        if (validationTimerRef.current !== null) { window.clearTimeout(validationTimerRef.current); }
-        validationTimerRef.current = window.setTimeout(() => {
-            validationTimerRef.current = null;
-            void runLiveValidation();
-        }, LIVE_VALIDATION_DEBOUNCE_MS);
-    }, [runLiveValidation]);
 
     const allDiagnostics = useMemo(
         () => [...diagnostics, ...Object.values(nodeWarnings).flat()],
@@ -606,13 +587,9 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         const cancelled = { current: false };
         loadCancelRef.current = cancelled;
 
-        // supersede any scheduled/in-flight live validation — it would be validating the outgoing
-        // graph — and drop its stale warnings; the canvas rebuild's "Checking" phase runs a fresh
+        // supersede any in-flight live validation — it would be validating the outgoing graph —
+        // and drop its stale warnings; the canvas rebuild's "Checking" phase runs a fresh
         // authoritative pass once the new graph is fully typed
-        if (validationTimerRef.current !== null) {
-            window.clearTimeout(validationTimerRef.current);
-            validationTimerRef.current = null;
-        }
         if (validationCancelRef.current) { validationCancelRef.current.current = true; }
         setNodeWarnings({});
         setLoadingState({ active: true, step: "Reading graph", progress: 0 });
