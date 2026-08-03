@@ -29,7 +29,7 @@ import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } fro
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
 import { trackEvent, trackEventThrottled } from '../utils/analytics';
-import { IconAddNode, IconCustomEvents, IconFrame, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
+import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
@@ -1347,23 +1347,6 @@ export const AuthoringComponent = () => {
                     isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
                     onClick={() => openPanel(AuthoringComponentModelType.GRAPH_SEARCH, 'search')}
                 />
-                <button
-                    id={"graph-frame-btn"}
-                    data-testid={"graph-frame-btn"}
-                    className={"graph-menu-bar-btn"}
-                    title={"Fit the whole graph in the view"}
-                    onClick={() => frameGraph(300)}
-                >
-                    <IconFrame/>
-                    <span className="graph-menu-bar-btn__label">Auto Frame</span>
-                </button>
-                <MenuBarButton
-                    id={"fullscreen-graph-btn"}
-                    icon={<IconFullscreen active={graphFullscreen}/>}
-                    label={graphFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-                    isActive={graphFullscreen}
-                    onClick={() => void toggleGraphFullscreen()}
-                />
                 <ReloadIndicator dirty={graphDirty} onReload={() => { trackEvent('graph_reload'); requestPlay(); }}/>
                 <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
             </div>
@@ -1421,7 +1404,19 @@ export const AuthoringComponent = () => {
                     {/* zoom / fit / interaction-lock, bottom-left (react-flow's default corner).
                         <Controls/> renders its own four buttons and then any children, so app-specific
                         toggles are added as <ControlButton/> entries at the end of the same stack. */}
-                    <Controls>
+                    {/* the built-in fit button has to go through frameGraph too — reactflow's own
+                        fitView is the one that gives up on unmeasured (culled) nodes */}
+                    <Controls onFitView={() => frameGraph(300)}>
+                        <ControlButton
+                            data-testid={"graph-fullscreen-btn"}
+                            className={graphFullscreen ? "is-active" : undefined}
+                            title={graphFullscreen ? "Exit fullscreen" : "Show the graph fullscreen"}
+                            aria-label={"Toggle graph fullscreen"}
+                            aria-pressed={graphFullscreen}
+                            onClick={() => void toggleGraphFullscreen()}
+                        >
+                            <IconFullscreen active={graphFullscreen}/>
+                        </ControlButton>
                         <ControlButton
                             data-testid={"toggle-input-legend-btn"}
                             className={showInputLegend ? "is-active" : undefined}
