@@ -1180,6 +1180,10 @@ export const AuthoringComponent = () => {
     // open a graph authoring side panel (variables, custom events, JSON view, ...) and record which
     // one, so the dashboard shows how people interact with the graph tooling
     const openPanel = (modal: AuthoringComponentModelType, name: string) => {
+        if (authoringComponentModal === modal) {
+            setAuthoringComponentModal(AuthoringComponentModelType.NONE);
+            return;
+        }
         trackEvent('graph_panel_opened', { panel: name });
         setAuthoringComponentModal(modal);
     };

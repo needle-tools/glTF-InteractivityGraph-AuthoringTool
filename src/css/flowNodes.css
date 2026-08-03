@@ -126,7 +126,7 @@
 /* ---- graph panel toolbar (shares .panel__toolbar with the engine panel) ---- */
 
 .graph-menu-bar {
-    gap: var(--sp-1);
+    gap: 0 1px;
 }
 
 /* error/warning counter: sits at the end of the toolbar row (the flexible spacer before it
