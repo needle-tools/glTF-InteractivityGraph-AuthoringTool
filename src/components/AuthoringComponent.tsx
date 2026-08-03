@@ -278,8 +278,18 @@ export const AuthoringComponent = () => {
     // Controls "fit view" button on any graph bigger than one screenful. Compute the bounds from the
     // node positions we already have, substituting the LOD box for anything reactflow hasn't
     // measured, and hand them to fitBounds, which carries no such precondition.
+    // set when framing was asked for while the panel had no size on screen (the graph editor is
+    // hidden — see app-split__pane--hidden); fitBounds against a zero-size canvas would compute a
+    // garbage viewport, so the request is replayed once the panel is shown again
+    const pendingFrameRef = useRef(false);
+
     const frameGraph = useCallback((duration = 0) => {
         if (!reactFlowInstance) { return; }
+        const rect = reactFlowRef.current?.getBoundingClientRect();
+        if (rect === undefined || rect.width === 0 || rect.height === 0) {
+            pendingFrameRef.current = true;
+            return;
+        }
         const flowNodes: Node[] = reactFlowInstance.getNodes();
         if (flowNodes.length === 0) { return; }
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -294,11 +304,10 @@ export const AuthoringComponent = () => {
 
         // Predict the zoom fitBounds would choose and, if it is below the floor, center on the graph
         // at the floor instead of fitting it (see FRAME_MIN_ZOOM).
-        const canvas = reactFlowRef.current?.getBoundingClientRect();
-        if (canvas && bounds.width > 0 && bounds.height > 0) {
+        if (bounds.width > 0 && bounds.height > 0) {
             const fitZoom = Math.min(
-                canvas.width / (bounds.width * (1 + FRAME_PADDING)),
-                canvas.height / (bounds.height * (1 + FRAME_PADDING)),
+                rect.width / (bounds.width * (1 + FRAME_PADDING)),
+                rect.height / (bounds.height * (1 + FRAME_PADDING)),
             );
             if (fitZoom < FRAME_MIN_ZOOM) {
                 reactFlowInstance.setCenter(
@@ -311,6 +320,22 @@ export const AuthoringComponent = () => {
         }
         reactFlowInstance.fitBounds(bounds, { padding: FRAME_PADDING, duration });
     }, [reactFlowInstance]);
+
+    // replay a frame request that was deferred because the panel was hidden, the moment it has a
+    // size again (toggling the graph editor back on)
+    useEffect(() => {
+        const container = reactFlowRef.current;
+        if (container === null || typeof ResizeObserver === "undefined") { return; }
+        const observer = new ResizeObserver(() => {
+            if (!pendingFrameRef.current) { return; }
+            const { width, height } = container.getBoundingClientRect();
+            if (width === 0 || height === 0) { return; }
+            pendingFrameRef.current = false;
+            frameGraph();
+        });
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [frameGraph]);
 
     // pan/select a node by id from the diagnostics counter popover
     const jumpToNode = useCallback((nodeUid: string) => {

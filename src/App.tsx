@@ -10,10 +10,16 @@ import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 
 // Storage key for persisting the engine type
 const ENGINE_TYPE_STORAGE_KEY = 'interactivity-graph-engine-type';
+// Storage key for persisting whether the graph authoring half is shown
+const GRAPH_EDITOR_VISIBLE_STORAGE_KEY = 'interactivity-graph-editor-visible';
 
 export const App = () => {
   const [engineType, setEngineType] = useState<EngineType>(EngineType.BABYLON);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  // hides the whole graph authoring half, leaving the engine view alone in the workspace — for
+  // viewing/playing a glb without authoring. The component stays mounted (see app-split__pane
+  // --hidden) so toggling back doesn't pay for rebuilding the canvas from the model again.
+  const [showGraphEditor, setShowGraphEditor] = useState(true);
   // fraction of the split row's width given to the left (engine) panel; the divider drags this
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [dividerHovered, setDividerHovered] = useState(false);
@@ -80,7 +86,26 @@ export const App = () => {
     if (modelParam) {
       setModelUrl(modelParam);
     }
+
+    // Graph editor visibility: URL parameter wins over the stored preference, so a
+    // "?graph=hidden" link opens straight into the viewer-only layout
+    const graphParam = params.get('graph');
+    if (graphParam !== null) {
+      setShowGraphEditor(!['hidden', 'off', 'false', '0'].includes(graphParam.toLowerCase()));
+    } else {
+      const storedGraphVisible = localStorage.getItem(GRAPH_EDITOR_VISIBLE_STORAGE_KEY);
+      if (storedGraphVisible !== null) {
+        setShowGraphEditor(storedGraphVisible === 'true');
+      }
+    }
   }, []);
+
+  const toggleGraphEditor = () => {
+    setShowGraphEditor(prev => {
+      localStorage.setItem(GRAPH_EDITOR_VISIBLE_STORAGE_KEY, String(!prev));
+      return !prev;
+    });
+  };
 
   // Handle browser back/forward navigation
   useEffect(() => {
@@ -163,6 +188,8 @@ export const App = () => {
           setEngineType={handleEngineTypeChange}
           currentEngineType={engineType}
           onSelectModel={handleModelUrlChange}
+          showGraphEditor={showGraphEditor}
+          onToggleGraphEditor={toggleGraphEditor}
         />
 
         {/* renders nothing (and takes no space) while there are no diagnostics */}
@@ -172,7 +199,9 @@ export const App = () => {
             right, with a draggable divider controlling the split (see startSplitDrag) */}
         <main className={"app-main"}>
           <div ref={splitRowRef} className={"app-split"}>
-            <div className={"app-split__pane"} style={{flexGrow: splitRatio}}>
+            {/* with the graph pane hidden the engine pane is the only flex item, and a grow factor
+                below 1 would leave the rest of the row empty — give it the full width instead */}
+            <div className={"app-split__pane"} style={{flexGrow: showGraphEditor ? splitRatio : 1}}>
                 <RenderIf shouldShow={engineType === EngineType.LOGGING}>
                      <LoggingEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
@@ -180,18 +209,23 @@ export const App = () => {
                     <BabylonEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
             </div>
+            <RenderIf shouldShow={showGraphEditor}>
+                <div
+                    role={"separator"}
+                    aria-orientation={"vertical"}
+                    onMouseDown={startSplitDrag}
+                    onMouseEnter={() => setDividerHovered(true)}
+                    onMouseLeave={() => setDividerHovered(false)}
+                    title={"Drag to resize"}
+                    className={`app-divider${dividerActive ? " is-active" : ""}`}
+                >
+                    <div className={"app-divider__grip"}/>
+                </div>
+            </RenderIf>
             <div
-                role={"separator"}
-                aria-orientation={"vertical"}
-                onMouseDown={startSplitDrag}
-                onMouseEnter={() => setDividerHovered(true)}
-                onMouseLeave={() => setDividerHovered(false)}
-                title={"Drag to resize"}
-                className={`app-divider${dividerActive ? " is-active" : ""}`}
+                className={`app-split__pane${showGraphEditor ? "" : " app-split__pane--hidden"}`}
+                style={{flexGrow: 1 - splitRatio}}
             >
-                <div className={"app-divider__grip"}/>
-            </div>
-            <div className={"app-split__pane"} style={{flexGrow: 1 - splitRatio}}>
                 <AuthoringComponent/>
             </div>
           </div>
@@ -236,9 +270,11 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
 
 interface AppHeaderProps extends EngineSelectorProps {
     onSelectModel: (url: string) => void;
+    showGraphEditor: boolean;
+    onToggleGraphEditor: () => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType, onSelectModel }) => (
+const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType, onSelectModel, showGraphEditor, onToggleGraphEditor }) => (
     <header className={"app-header"}>
         <div className={"app-header__brand"}>
             <h1 className={"app-title"}>glTF Interactivity Editor and Viewer</h1>
@@ -250,6 +286,17 @@ const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType,
         </div>
         <div className={"app-header__actions"}>
             <EngineSelector setEngineType={setEngineType} currentEngineType={currentEngineType} />
+            <button
+                type={"button"}
+                className={"btn-app"}
+                onClick={onToggleGraphEditor}
+                aria-pressed={!showGraphEditor}
+                title={showGraphEditor
+                    ? "Hide the graph authoring panel and give the whole workspace to the engine view"
+                    : "Show the graph authoring panel again"}
+            >
+                {showGraphEditor ? "Hide Graph Editor" : "Show Graph Editor"}
+            </button>
             <SampleSidebar onSelectModel={onSelectModel} />
         </div>
     </header>

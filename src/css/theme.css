@@ -246,6 +246,12 @@ body {
     display: flex;
 }
 
+/* graph editor hidden: the pane keeps its children mounted (so the built canvas survives a
+   toggle) but takes no space, leaving the engine view the full workspace width */
+.app-split__pane--hidden {
+    display: none;
+}
+
 .app-divider {
     flex: 0 0 0.75rem;
     align-self: stretch;
