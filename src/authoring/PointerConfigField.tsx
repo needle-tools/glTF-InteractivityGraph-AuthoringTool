@@ -117,7 +117,6 @@ export const PointerConfigField: React.FC<PointerConfigFieldProps> = ({ value, a
                     placeholder="/nodes/[node]/translation"
                     onChange={(e) => onChange(e.target.value)}
                     style={{ flex: 1, minWidth: 0, fontFamily: "monospace", borderColor: currentSupported === false ? "#d98c00" : undefined }}
-                    title={currentSupported === false ? "This pointer is not supported by this tool's engine and may not resolve at runtime." : undefined}
                 />
                 <button
                     type="button"

@@ -155,7 +155,6 @@ const ReloadIndicator = (props: { dirty: boolean, onReload: () => void }) => {
         <button
             id={"reload-graph-btn"}
             className={"graph-menu-bar-btn graph-menu-bar-btn--reload"}
-            title={"The running scene doesn't update automatically as you edit — reload to apply your changes"}
             onClick={props.onReload}
         >
             <IconReload/>
@@ -2079,37 +2078,34 @@ const GraphSearchComponent = (props: {
                 </div>
                 {indexError !== null && <div style={{marginTop: 6, color: "#b00020", fontSize: 12}}>{indexError}</div>}
 
-                <div style={{marginTop: 12, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", maxHeight: "min(22rem, 38vh)", overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", padding: 8}}>
-                    {trimmedQuery === "" && (
-                        <div style={{fontSize: 13, color: "#777", padding: "8px 6px"}}>
-                            Search matches node operation names and string values in node configuration (including pointer templates).
-                        </div>
-                    )}
-                    {trimmedQuery !== "" && results.length === 0 && (
-                        <div style={{fontSize: 13, color: "#777", padding: "8px 6px"}}>No matching nodes.</div>
-                    )}
-                    {results.map(({node, index, configStrings}) => (
-                        <button
-                            key={`${node.uid ?? index}`}
-                            className="graph-search-result"
-                            onClick={() => {
-                                if (node.uid !== undefined) {
-                                    props.onJumpToNode(node.uid);
-                                } else {
-                                    props.onJumpToIndex(index);
-                                }
-                                props.closeModal();
-                            }}
-                        >
-                            <div className="graph-search-result-title">#{index} {node.op ?? "Unknown op"}</div>
-                            {configStrings.length > 0 && (
-                                <div className="graph-search-result-config" title={configStrings.join("\n")}>
-                                    {configStrings.join("  |  ")}
-                                </div>
-                            )}
-                        </button>
-                    ))}
-                </div>
+                {trimmedQuery !== "" && (
+                    <div style={{marginTop: 12, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", maxHeight: "min(22rem, 38vh)", overflowY: "auto", overscrollBehavior: "contain", textAlign: "left", padding: 8}}>
+                        {results.length === 0 && (
+                            <div style={{fontSize: 13, color: "#777", padding: "8px 6px"}}>No matching nodes.</div>
+                        )}
+                        {results.map(({node, index, configStrings}) => (
+                            <button
+                                key={`${node.uid ?? index}`}
+                                className="graph-search-result"
+                                onClick={() => {
+                                    if (node.uid !== undefined) {
+                                        props.onJumpToNode(node.uid);
+                                    } else {
+                                        props.onJumpToIndex(index);
+                                    }
+                                    props.closeModal();
+                                }}
+                            >
+                                <div className="graph-search-result-title">#{index} {node.op ?? "Unknown op"}</div>
+                                {configStrings.length > 0 && (
+                                    <div className="graph-search-result-config" title={configStrings.join("\n")}>
+                                        {configStrings.join("  |  ")}
+                                    </div>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </>
         </GraphOverlayPanel>
     );
