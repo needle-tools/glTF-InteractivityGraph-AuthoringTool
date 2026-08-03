@@ -334,6 +334,26 @@
     border-bottom: 1px solid var(--border);
 }
 
+/* the graph canvas expanded by the control stack's fullscreen toggle. :fullscreen covers the real
+   Fullscreen API (the element is promoted out of the split layout, so it needs its own sizing);
+   the fallback class is the same look as a fixed overlay for browsers that refuse the request. */
+.authoring-view:fullscreen,
+.authoring-view:-webkit-full-screen,
+.authoring-view--fullscreen-fallback {
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    background: #fff;
+}
+
+.authoring-view--fullscreen-fallback {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+}
+
 .graph-overlay__title {
     margin: 0;
     font-size: var(--fs-lg);

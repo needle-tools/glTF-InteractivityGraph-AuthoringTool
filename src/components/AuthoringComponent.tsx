@@ -28,7 +28,7 @@ import { GraphMiniMap } from './GraphMiniMap';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
-import { IconCustomEvents, IconFrame, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
+import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
@@ -49,6 +49,30 @@ const edgeTypes: EdgeTypes = {
     default: DeletableEdge,
 };
 
+
+// Safari still exposes the Fullscreen API only under its webkit prefix, so the graph's fullscreen
+// toggle has to look both up. Anything older than either (or a browser that refuses the request)
+// falls back to a fixed, full-viewport overlay — see .authoring-view--fullscreen-fallback.
+interface WebkitFullscreenDocument extends Document {
+    webkitFullscreenElement?: Element | null;
+    webkitExitFullscreen?: () => Promise<void> | void;
+}
+
+interface WebkitFullscreenElement extends HTMLElement {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+}
+
+function getFullscreenElement(): Element | null {
+    return document.fullscreenElement ?? (document as WebkitFullscreenDocument).webkitFullscreenElement ?? null;
+}
+
+async function exitFullscreen(): Promise<void> {
+    if (document.exitFullscreen) {
+        await document.exitFullscreen();
+    } else {
+        await (document as WebkitFullscreenDocument).webkitExitFullscreen?.();
+    }
+}
 
 // one end of a drag-connection: the node + handle it started from, and whether that handle is a
 // source (output) or target (input). Used to decide which sockets to offer on the dropped-onto node.
@@ -238,6 +262,33 @@ export const AuthoringComponent = () => {
     // the input legend is a footer bar, not a modal, so it toggles independently of the overlays.
     // Off by default: it's a reference for newcomers, opened from the control stack when wanted.
     const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
+    // native fullscreen and the CSS fallback are tracked apart because only the first one gets a
+    // fullscreenchange event to sync from; the toggle button reads them as one
+    const [nativeGraphFullscreen, setNativeGraphFullscreen] = useState(false);
+    const [fullscreenFallback, setFullscreenFallback] = useState(false);
+    const graphFullscreen = nativeGraphFullscreen || fullscreenFallback;
+
+    // follow the browser out of fullscreen as well as into it: Escape and the browser's own exit
+    // affordance leave no other trace
+    useEffect(() => {
+        const update = () => setNativeGraphFullscreen(getFullscreenElement() === reactFlowRef.current);
+        document.addEventListener("fullscreenchange", update);
+        document.addEventListener("webkitfullscreenchange", update);
+        return () => {
+            document.removeEventListener("fullscreenchange", update);
+            document.removeEventListener("webkitfullscreenchange", update);
+        };
+    }, []);
+
+    // the fallback overlay is ours, so Escape has to be wired up by hand
+    useEffect(() => {
+        if (!fullscreenFallback) return;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setFullscreenFallback(false);
+        };
+        window.addEventListener("keydown", closeOnEscape);
+        return () => window.removeEventListener("keydown", closeOnEscape);
+    }, [fullscreenFallback]);
 
     useEffect(() => {
         if (authoringComponentModal === AuthoringComponentModelType.NONE) {
@@ -1097,6 +1148,41 @@ export const AuthoringComponent = () => {
         setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
     };
 
+    // the menu bar's Add Node entry: same picker as the right-click one, but with no cursor to
+    // place the node at, so it lands in the middle of the current view
+    const openNodePickerAtCenter = () => {
+        if (!reactFlowInstance || !reactFlowRef.current) return;
+        const bounds = reactFlowRef.current.getBoundingClientRect();
+        mousePosRef.current = reactFlowInstance.project({ x: bounds.width / 2, y: bounds.height / 2 });
+        pendingWireRef.current = null;
+        setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
+    };
+
+    const toggleGraphFullscreen = async () => {
+        const element = reactFlowRef.current;
+        if (!element) return;
+        if (fullscreenFallback) {
+            setFullscreenFallback(false);
+            return;
+        }
+        if (getFullscreenElement() === element) {
+            await exitFullscreen();
+            return;
+        }
+        try {
+            if (element.requestFullscreen) {
+                await element.requestFullscreen();
+            } else if ((element as WebkitFullscreenElement).webkitRequestFullscreen) {
+                await (element as WebkitFullscreenElement).webkitRequestFullscreen!();
+            } else {
+                setFullscreenFallback(true);
+            }
+        } catch {
+            // a rejected request (permissions policy, no user gesture) is not fatal — take the overlay
+            setFullscreenFallback(true);
+        }
+    };
+
     const handleLeftClick = (e: React.MouseEvent) => {
         e.preventDefault();
        setAuthoringComponentModal(AuthoringComponentModelType.NONE)
@@ -1179,6 +1265,14 @@ export const AuthoringComponent = () => {
                 both halves of the workspace start on the same line */}
             <div className={"panel__toolbar graph-menu-bar"}>
                 <MenuBarButton
+                    id={"add-node-btn"}
+                    icon={<IconAddNode/>}
+                    label={"Add Node"}
+                    isActive={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}
+                    onClick={openNodePickerAtCenter}
+                />
+                <MenuBarDivider/>
+                <MenuBarButton
                     id={"variables-btn"}
                     icon={<IconVariables/>}
                     label={"Variables"}
@@ -1216,22 +1310,14 @@ export const AuthoringComponent = () => {
                     isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
                     onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
                 />
-                <button
-                    id={"graph-frame-btn"}
-                    data-testid={"graph-frame-btn"}
-                    className={"graph-menu-bar-btn"}
-                    title={"Fit the whole graph in the view"}
-                    onClick={() => frameGraph(300)}
-                >
-                    <IconFrame/>
-                    Auto Frame
-                </button>
                 <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
                 <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
             </div>
+            {/* .authoring-view is what the fullscreen toggle expands (see the fullscreen rules in
+                flowNodes.css); the fallback class covers browsers without the Fullscreen API */}
             <div
                 ref={reactFlowRef}
-                className={"panel__body"}
+                className={`panel__body authoring-view${fullscreenFallback ? " authoring-view--fullscreen-fallback" : ""}`}
                 data-testid={"authoring-view"}
                 onContextMenuCapture={suppressBrowserContextMenu}
                 onContextMenu={suppressBrowserContextMenu}
@@ -1275,10 +1361,22 @@ export const AuthoringComponent = () => {
                     // otherwise overlaps the minimap. Permitted under reactflow's MIT license.
                     proOptions={{ hideAttribution: true }}
                 >
-                    {/* zoom / fit / interaction-lock, bottom-left (react-flow's default corner).
-                        <Controls/> renders its own four buttons and then any children, so app-specific
-                        toggles are added as <ControlButton/> entries at the end of the same stack. */}
-                    <Controls>
+                    {/* zoom / fit, bottom-left (react-flow's default corner). <Controls/> renders
+                        its own buttons and then any children, so app-specific toggles are added as
+                        <ControlButton/> entries at the end of the same stack. The built-in fit
+                        button has to go through frameGraph too — reactflow's own fitView is the one
+                        that gives up on unmeasured (culled) nodes. */}
+                    <Controls onFitView={() => frameGraph(300)}>
+                        <ControlButton
+                            data-testid={"graph-fullscreen-btn"}
+                            className={graphFullscreen ? "is-active" : undefined}
+                            title={graphFullscreen ? "Exit fullscreen" : "Show the graph fullscreen"}
+                            aria-label={"Toggle graph fullscreen"}
+                            aria-pressed={graphFullscreen}
+                            onClick={() => void toggleGraphFullscreen()}
+                        >
+                            <IconFullscreen active={graphFullscreen}/>
+                        </ControlButton>
                         <ControlButton
                             data-testid={"toggle-input-legend-btn"}
                             className={showInputLegend ? "is-active" : undefined}
