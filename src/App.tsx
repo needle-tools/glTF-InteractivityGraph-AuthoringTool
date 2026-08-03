@@ -10,16 +10,29 @@ import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 
 // Storage key for persisting the engine type
 const ENGINE_TYPE_STORAGE_KEY = 'interactivity-graph-engine-type';
-// Storage key for persisting whether the graph authoring half is shown
-const GRAPH_EDITOR_VISIBLE_STORAGE_KEY = 'interactivity-graph-editor-visible';
+// Storage key for persisting which workspace panes are shown
+const VIEW_MODE_STORAGE_KEY = 'interactivity-graph-view-mode';
+
+// which workspace pane(s) are visible: the 3D/logging engine view, the graph authoring view, or
+// both side by side (the default)
+type ViewMode = 'scene' | 'graph' | 'both';
+
+const viewModeFromString = (value: string | null): ViewMode | undefined => {
+  switch (value?.toLowerCase()) {
+    case 'scene': return 'scene';
+    case 'graph': return 'graph';
+    case 'both': return 'both';
+    default: return undefined;
+  }
+};
 
 export const App = () => {
   const [engineType, setEngineType] = useState<EngineType>(EngineType.BABYLON);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
-  // hides the whole graph authoring half, leaving the engine view alone in the workspace — for
-  // viewing/playing a glb without authoring. The component stays mounted (see app-split__pane
-  // --hidden) so toggling back doesn't pay for rebuilding the canvas from the model again.
-  const [showGraphEditor, setShowGraphEditor] = useState(true);
+  // which pane(s) of the workspace are shown — hiding a pane leaves it mounted (see
+  // app-split__pane--hidden) so switching back doesn't pay for rebuilding the canvas or graph
+  // from scratch.
+  const [viewMode, setViewMode] = useState<ViewMode>('both');
   // fraction of the split row's width given to the left (engine) panel; the divider drags this
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [dividerHovered, setDividerHovered] = useState(false);
@@ -87,24 +100,22 @@ export const App = () => {
       setModelUrl(modelParam);
     }
 
-    // Graph editor visibility: URL parameter wins over the stored preference, so a
-    // "?graph=hidden" link opens straight into the viewer-only layout
-    const graphParam = params.get('graph');
-    if (graphParam !== null) {
-      setShowGraphEditor(!['hidden', 'off', 'false', '0'].includes(graphParam.toLowerCase()));
+    // View mode: URL parameter wins over the stored preference, so a "?view=scene" link opens
+    // straight into the viewer-only layout
+    const viewParam = viewModeFromString(params.get('view'));
+    if (viewParam) {
+      setViewMode(viewParam);
     } else {
-      const storedGraphVisible = localStorage.getItem(GRAPH_EDITOR_VISIBLE_STORAGE_KEY);
-      if (storedGraphVisible !== null) {
-        setShowGraphEditor(storedGraphVisible === 'true');
+      const storedViewMode = viewModeFromString(localStorage.getItem(VIEW_MODE_STORAGE_KEY));
+      if (storedViewMode) {
+        setViewMode(storedViewMode);
       }
     }
   }, []);
 
-  const toggleGraphEditor = () => {
-    setShowGraphEditor(prev => {
-      localStorage.setItem(GRAPH_EDITOR_VISIBLE_STORAGE_KEY, String(!prev));
-      return !prev;
-    });
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
   };
 
   // Handle browser back/forward navigation
@@ -188,8 +199,8 @@ export const App = () => {
           setEngineType={handleEngineTypeChange}
           currentEngineType={engineType}
           onSelectModel={handleModelUrlChange}
-          showGraphEditor={showGraphEditor}
-          onToggleGraphEditor={toggleGraphEditor}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
         />
 
         {/* renders nothing (and takes no space) while there are no diagnostics */}
@@ -201,7 +212,10 @@ export const App = () => {
           <div ref={splitRowRef} className={"app-split"}>
             {/* with the graph pane hidden the engine pane is the only flex item, and a grow factor
                 below 1 would leave the rest of the row empty — give it the full width instead */}
-            <div className={"app-split__pane"} style={{flexGrow: showGraphEditor ? splitRatio : 1}}>
+            <div
+                className={`app-split__pane${viewMode === "graph" ? " app-split__pane--hidden" : ""}`}
+                style={{flexGrow: viewMode === "both" ? splitRatio : 1}}
+            >
                 <RenderIf shouldShow={engineType === EngineType.LOGGING}>
                      <LoggingEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
@@ -209,7 +223,7 @@ export const App = () => {
                     <BabylonEngineComponent modelUrl={modelUrl} />
                 </RenderIf>
             </div>
-            <RenderIf shouldShow={showGraphEditor}>
+            <RenderIf shouldShow={viewMode === "both"}>
                 <div
                     role={"separator"}
                     aria-orientation={"vertical"}
@@ -223,8 +237,8 @@ export const App = () => {
                 </div>
             </RenderIf>
             <div
-                className={`app-split__pane${showGraphEditor ? "" : " app-split__pane--hidden"}`}
-                style={{flexGrow: 1 - splitRatio}}
+                className={`app-split__pane${viewMode === "scene" ? " app-split__pane--hidden" : ""}`}
+                style={{flexGrow: viewMode === "both" ? 1 - splitRatio : 1}}
             >
                 <AuthoringComponent/>
             </div>
@@ -268,13 +282,43 @@ export const EngineSelector: React.FC<EngineSelectorProps> = ({ setEngineType, c
     </div>
 );
 
-interface AppHeaderProps extends EngineSelectorProps {
-    onSelectModel: (url: string) => void;
-    showGraphEditor: boolean;
-    onToggleGraphEditor: () => void;
+interface ViewModeSelectorProps {
+    viewMode: ViewMode;
+    onViewModeChange: (mode: ViewMode) => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType, onSelectModel, showGraphEditor, onToggleGraphEditor }) => (
+// the workspace pane tabs, styled as the same segmented control as the engine selector
+const VIEW_MODE_TABS: ReadonlyArray<{ mode: ViewMode; label: string; title: string }> = [
+    { mode: "scene", label: "3D Scene", title: "Show only the engine view" },
+    { mode: "graph", label: "Graph", title: "Show only the graph authoring panel" },
+    { mode: "both", label: "Both", title: "Show the engine view and the graph authoring panel side by side" },
+];
+
+export const ViewModeSelector: React.FC<ViewModeSelectorProps> = ({ viewMode, onViewModeChange }) => (
+    <div data-testid={"view-mode-selector"}>
+        <ul className={"app-tabs"} role={"tablist"}>
+            {VIEW_MODE_TABS.map(({ mode, label, title }) => {
+                const isActive = viewMode === mode;
+                return (
+                    <li
+                        key={mode}
+                        role={"presentation"}
+                        className={`app-tab${isActive ? " is-active" : ""}`}
+                        onClick={() => onViewModeChange(mode)}
+                    >
+                        <button type={"button"} role={"tab"} aria-selected={isActive} title={title}>{label}</button>
+                    </li>
+                );
+            })}
+        </ul>
+    </div>
+);
+
+interface AppHeaderProps extends EngineSelectorProps, ViewModeSelectorProps {
+    onSelectModel: (url: string) => void;
+}
+
+const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType, onSelectModel, viewMode, onViewModeChange }) => (
     <header className={"app-header"}>
         <div className={"app-header__brand"}>
             <h1 className={"app-title"}>glTF Interactivity Editor and Viewer</h1>
@@ -286,17 +330,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ setEngineType, currentEngineType,
         </div>
         <div className={"app-header__actions"}>
             <EngineSelector setEngineType={setEngineType} currentEngineType={currentEngineType} />
-            <button
-                type={"button"}
-                className={"btn-app"}
-                onClick={onToggleGraphEditor}
-                aria-pressed={!showGraphEditor}
-                title={showGraphEditor
-                    ? "Hide the graph authoring panel and give the whole workspace to the engine view"
-                    : "Show the graph authoring panel again"}
-            >
-                {showGraphEditor ? "Hide Graph Editor" : "Show Graph Editor"}
-            </button>
+            <ViewModeSelector viewMode={viewMode} onViewModeChange={onViewModeChange} />
             <SampleSidebar onSelectModel={onSelectModel} />
         </div>
     </header>
