@@ -25,6 +25,7 @@ import { TypedValueInput } from '../authoring/TypedValueInput';
 import { NodeInfoTooltip, buildNodeTypeTooltipSections } from '../authoring/NodeInfoTooltip';
 import { LoadingProgressBar } from './LoadingProgressBar';
 import { GraphMiniMap } from './GraphMiniMap';
+import { NodeWarningAnnotations } from './NodeWarningAnnotations';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
@@ -1410,6 +1411,7 @@ export const AuthoringComponent = () => {
                         </ControlButton>
                     </Controls>
                     <Background />
+                    <NodeWarningAnnotations />
                     <GraphMiniMap />
 
                     <RenderIf shouldShow={authoringComponentModal === AuthoringComponentModelType.NODE_PICKER}>
