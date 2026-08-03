@@ -1158,6 +1158,12 @@ export const AuthoringComponent = () => {
         setAuthoringComponentModal(AuthoringComponentModelType.NODE_PICKER);
     };
 
+    // open a graph authoring side panel (variables, custom events, JSON view, ...), or close it
+    // again when its own menu bar button is clicked a second time
+    const togglePanel = (modal: AuthoringComponentModelType) => {
+        setAuthoringComponentModal(authoringComponentModal === modal ? AuthoringComponentModelType.NONE : modal);
+    };
+
     const toggleGraphFullscreen = async () => {
         const element = reactFlowRef.current;
         if (!element) return;
@@ -1277,14 +1283,14 @@ export const AuthoringComponent = () => {
                     icon={<IconVariables/>}
                     label={"Variables"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.VARIABLES}
-                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.VARIABLES)}
+                    onClick={() => togglePanel(AuthoringComponentModelType.VARIABLES)}
                 />
                 <MenuBarButton
                     id={"custom-events-btn"}
                     icon={<IconCustomEvents/>}
                     label={"Custom Events"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.CUSTOM_EVENTS}
-                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.CUSTOM_EVENTS)}
+                    onClick={() => togglePanel(AuthoringComponentModelType.CUSTOM_EVENTS)}
                 />
                 <MenuBarDivider/>
                 <MenuBarButton
@@ -1292,14 +1298,14 @@ export const AuthoringComponent = () => {
                     icon={<IconJsonView/>}
                     label={"JSON View"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.JSON_VIEW}
-                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.JSON_VIEW)}
+                    onClick={() => togglePanel(AuthoringComponentModelType.JSON_VIEW)}
                 />
                 <MenuBarButton
                     id={"show-node-list-btn"}
                     icon={<IconNodeTypes/>}
                     label={"Node Types"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.NODE_LIST}
-                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.NODE_LIST)}
+                    onClick={() => togglePanel(AuthoringComponentModelType.NODE_LIST)}
                 />
                 <span className={"panel__toolbar-spacer"}/>
                 {/* view actions live on the right of the bar, ahead of the status indicators */}
@@ -1308,7 +1314,7 @@ export const AuthoringComponent = () => {
                     icon={<IconSearch/>}
                     label={"Search Graph"}
                     isActive={authoringComponentModal === AuthoringComponentModelType.GRAPH_SEARCH}
-                    onClick={() => setAuthoringComponentModal(AuthoringComponentModelType.GRAPH_SEARCH)}
+                    onClick={() => togglePanel(AuthoringComponentModelType.GRAPH_SEARCH)}
                 />
                 <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
                 <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>

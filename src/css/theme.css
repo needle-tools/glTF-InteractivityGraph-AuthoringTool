@@ -303,7 +303,7 @@ body {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--sp-2);
+    gap: 0 1px;
     flex: 0 0 auto;
     min-height: calc(var(--control-h) + var(--sp-4));
     padding: var(--sp-2) var(--sp-3);
@@ -387,12 +387,12 @@ body {
 .graph-menu-bar-btn {
     display: inline-flex;
     align-items: center;
-    gap: var(--sp-2);
+    gap: var(--sp-1);
     height: var(--control-h);
     border: 1px solid transparent;
     background: transparent;
     border-radius: var(--radius-sm);
-    padding: 0 var(--sp-3);
+    padding: 0 var(--sp-2);
     font-family: inherit;
     font-size: var(--fs-sm);
     font-weight: 600;
