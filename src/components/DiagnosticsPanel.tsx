@@ -12,7 +12,9 @@ export const categoryLabel: Record<IGraphDiagnostic["category"], string> = {
 };
 
 export const DiagnosticsPanel: React.FC = () => {
-    const { allDiagnostics: diagnostics } = useContext(InteractivityGraphContext);
+    // the applied graph's issues (load + last Reload/Play), not the in-progress edits — those are
+    // reported live by the editor's own counter/node badges instead
+    const { appliedDiagnostics: diagnostics } = useContext(InteractivityGraphContext);
     const [collapsed, setCollapsed] = useState(false);
 
     if (!diagnostics || diagnostics.length === 0) {

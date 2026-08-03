@@ -266,7 +266,7 @@ export const AuthoringComponent = () => {
     // ids of the edges connecting that upstream hierarchy, highlighted alongside the nodes
     const [ancestorEdgeIds, setAncestorEdgeIds] = useState<Set<string>>(new Set());
 
-    const {graph, getAuthorGraph, addDeclaration, addNode, removeNode, allDiagnostics, graphDirty, markGraphDirty, requestPlay, setLoadingState, runLiveValidation} = useContext(InteractivityGraphContext);
+    const {graph, getAuthorGraph, addDeclaration, addNode, removeNode, liveDiagnostics, graphDirty, markGraphDirty, requestPlay, setLoadingState, runLiveValidation} = useContext(InteractivityGraphContext);
     // the graph object identity we last rebuilt the canvas from; a load replaces graph identity
     // (setGraph), which is the signal to rebuild — interactive edits mutate the same object in
     // place and leave identity untouched, so they never retrigger a rebuild
@@ -1071,7 +1071,9 @@ export const AuthoringComponent = () => {
             // visible), then clear the loading bar. A superseding load cancels the validation run
             // (committed=false) and owns the loading bar itself, so only a committed pass clears it.
             setLoadingState({ active: true, step: "Checking", progress: 0.97 });
-            const committed = await runLiveValidation();
+            // markApplied: a finished load/rebuild *is* the applied graph, so this result seeds the
+            // snapshot the "Loaded with issues" panel reports
+            const committed = await runLiveValidation({ markApplied: true });
             if (cancelled || !committed) { return; }
             setLoadingState(null);
         };
@@ -1261,7 +1263,7 @@ export const AuthoringComponent = () => {
                     onClick={() => togglePanel(AuthoringComponentModelType.GRAPH_SEARCH)}
                 />
                 <ReloadIndicator dirty={graphDirty} onReload={requestPlay}/>
-                <DiagnosticsCounter diagnostics={allDiagnostics} onJumpToNode={jumpToNode}/>
+                <DiagnosticsCounter diagnostics={liveDiagnostics} onJumpToNode={jumpToNode}/>
             </div>
             {/* .authoring-view is what the fullscreen toggle expands (see the fullscreen rules in
                 flowNodes.css); the fallback class covers browsers without the Fullscreen API */}

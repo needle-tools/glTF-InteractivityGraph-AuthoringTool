@@ -203,9 +203,6 @@ export const App = () => {
           onViewModeChange={handleViewModeChange}
         />
 
-        {/* renders nothing (and takes no space) while there are no diagnostics */}
-        <DiagnosticsPanel />
-
         {/* side-by-side, resizable: 3D/logging engine view on the left, graph authoring on the
             right, with a draggable divider controlling the split (see startSplitDrag) */}
         <main className={"app-main"}>
@@ -244,6 +241,10 @@ export const App = () => {
             </div>
           </div>
         </main>
+
+        {/* below the workspace so it never pushes it down on load; renders nothing (and takes no
+            space) while there are no diagnostics */}
+        <DiagnosticsPanel />
       </div>
     </InteractivityGraphProvider>
   );

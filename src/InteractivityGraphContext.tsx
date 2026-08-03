@@ -1,4 +1,4 @@
-import { createContext, useCallback, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IInteractivityDeclaration, IInteractivityEvent, IInteractivityGraph, IInteractivityVariable } from './BasicBehaveEngine/types/InteractivityGraph';
 import { AuthoredGraph, AuthoredNode, AuthoredValue, NodeSpecFlag } from './authoring/spec/AuthoredGraph';
 import { buildNodeByUid, createNoOpNode, getNodeSpec, hasNodeSpecFlag, resolveOutputSocketType, standardTypes } from './authoring/spec/nodes';
@@ -19,6 +19,11 @@ const edgeStyle = (color: string) => ({ stroke: color, strokeWidth: 2 });
 // nodes, and the gap left between two disjoint components once they are packed.
 const NODE_SPACING = 500;
 const COMPONENT_GAP = 800;
+
+// How long an edit burst is collected before the live validation pass runs (see markGraphDirty).
+// Short enough that a warning appears effectively while typing, long enough that holding a key
+// down or dragging a slider doesn't queue one whole-graph pass per keystroke.
+const LIVE_VALIDATION_DEBOUNCE_MS = 250;
 
 // equality for the nodeWarnings state, so a validation pass that changes nothing keeps the
 // previous object identity and doesn't re-render every provider consumer
@@ -71,10 +76,13 @@ interface InteractivityGraphContextType {
     diagnostics: IGraphDiagnostic[],
     setDiagnosticsForCategory: (category: DiagnosticCategory, diagnostics: IGraphDiagnostic[]) => void,
     clearDiagnostics: () => void,
-    // diagnostics + every node's live socket/type warnings (missing values, type mismatches,
-    // type-group conflicts), so the DiagnosticsPanel/DiagnosticsCounter reflect problems
-    // introduced by editing the graph in the UI, not just ones found at load time
-    allDiagnostics: IGraphDiagnostic[],
+    // diagnostics + the per-node warnings of the last *applied* graph — the state the runtime is
+    // actually running (load, or the most recent Reload/Play). Drives the "Loaded with issues"
+    // panel, which therefore doesn't churn while the user is still editing.
+    appliedDiagnostics: IGraphDiagnostic[],
+    // diagnostics + the per-node warnings of the graph as it stands right now, recomputed on every
+    // edit. Drives the graph editor's in-canvas counter, which must always show current issues.
+    liveDiagnostics: IGraphDiagnostic[],
     // load-time 'node'-category diagnostics indexed by node uid. Each mounted node needs only its
     // own; filtering the whole list per node per render was O(nodes x diagnostics) on a big graph.
     diagnosticsByNodeUid: ReadonlyMap<string, IGraphDiagnostic[]>,
@@ -85,9 +93,10 @@ interface InteractivityGraphContextType {
     nodeWarnings: Record<string, IGraphDiagnostic[]>,
     // Recompute nodeWarnings for the whole graph now (chunked across frames, superseding any
     // in-flight run). Resolves true once committed, false when superseded by a newer run/load.
-    // The canvas rebuild awaits this in its final "Checking" phase; interactive edits instead go
-    // through the debounced trigger wired into markGraphDirty.
-    runLiveValidation: () => Promise<boolean>,
+    // The canvas rebuild awaits this in its final "Checking" phase, with markApplied so the result
+    // also becomes the applied snapshot behind appliedDiagnostics; interactive edits instead go
+    // through the debounced trigger wired into markGraphDirty, which updates only the live set.
+    runLiveValidation: (options?: { markApplied?: boolean }) => Promise<boolean>,
     // Progress of the current chunked load, published through an external store rather than React
     // state: it ticks once per frame-budget yield, and as part of the context value each tick
     // re-rendered every consumer — the canvas and all its mounted nodes included. Only the
@@ -143,7 +152,8 @@ const initialContext: InteractivityGraphContextType = {
     diagnostics: [],
     setDiagnosticsForCategory: () => {return null},
     clearDiagnostics: () => {return null},
-    allDiagnostics: [],
+    appliedDiagnostics: [],
+    liveDiagnostics: [],
     diagnosticsByNodeUid: new Map(),
     nodeWarnings: {},
     runLiveValidation: async () => false,
@@ -182,16 +192,38 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // view), so we guard on this ref and defer the setState to avoid an update-during-render loop.
     const cycleReportedRef = useRef<boolean>(false);
 
-    // See graphDirty on the context type. Live warnings aren't recomputed on every edit (a fresh
-    // node has empty sockets by construction) — only on load and on clearGraphDirty (Reload/Play).
+    // See graphDirty on the context type. Every genuine user edit funnels through markGraphDirty
+    // (the node setters, connect/disconnect, add/remove node), so that is also where live warnings
+    // are kept current: authoring issues have to show up as the user edits, not only once the
+    // changes are applied via Reload/Play (clearGraphDirty). The pass is debounced to coalesce
+    // bursts, and runLiveValidation supersedes any still-in-flight run through its own cancel
+    // token, so only the newest result is ever committed.
     const [graphDirty, setGraphDirty] = useState(false);
+    const validationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scheduleLiveValidation = useCallback(() => {
+        if (validationDebounceRef.current !== null) { clearTimeout(validationDebounceRef.current); }
+        validationDebounceRef.current = setTimeout(() => {
+            validationDebounceRef.current = null;
+            void runLiveValidation();
+        }, LIVE_VALIDATION_DEBOUNCE_MS);
+    }, []);
+    const cancelScheduledLiveValidation = useCallback(() => {
+        if (validationDebounceRef.current === null) { return; }
+        clearTimeout(validationDebounceRef.current);
+        validationDebounceRef.current = null;
+    }, []);
+    useEffect(() => cancelScheduledLiveValidation, [cancelScheduledLiveValidation]);
     const markGraphDirty = useCallback(() => {
         setGraphDirty(true);
-    }, []);
+        scheduleLiveValidation();
+    }, [scheduleLiveValidation]);
     const clearGraphDirty = useCallback(() => {
         setGraphDirty(false);
-        void runLiveValidation();
-    }, []);
+        // Reload/Play applies the edited graph, so this pass advances the applied snapshot too. It
+        // runs now, so drop the pending debounced one rather than repeating it.
+        cancelScheduledLiveValidation();
+        void runLiveValidation({ markApplied: true });
+    }, [cancelScheduledLiveValidation]);
 
     const playHandlerRef = useRef<(() => void) | null>(null);
     const registerPlayHandler = useCallback((handler: (() => void) | null) => {
@@ -220,6 +252,22 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     // nodes made the counts depend on the viewport (culling unmounted a node -> warnings vanished).
     const [nodeWarnings, setNodeWarnings] = useState<Record<string, IGraphDiagnostic[]>>({});
 
+    // Same shape, but frozen at the last *applied* graph (load, or Reload/Play) rather than
+    // following every edit — i.e. the issues of what the runtime is currently running. Only a
+    // markApplied validation run advances it, so the "Loaded with issues" panel keeps describing
+    // the applied graph while the editor's own surfaces move ahead with the user's edits.
+    const [appliedNodeWarnings, setAppliedNodeWarnings] = useState<Record<string, IGraphDiagnostic[]>>({});
+
+    // uids deleted in the editor since the last apply. Their load-time diagnostics are filtered out
+    // of the live set right away (the node is gone from the editor) but stay in the applied set
+    // until the deletion is actually applied, at which point the applied run flushes them for good
+    // — being load-time, they are never re-derived, so nothing else would drop them. State rather
+    // than a plain ref because the live set is derived from it; the ref mirrors it for the
+    // validation callback, which is stable and can't close over the current value.
+    const [pendingRemovedUids, setPendingRemovedUids] = useState<ReadonlySet<string>>(new Set());
+    const pendingRemovedUidsRef = useRef(pendingRemovedUids);
+    pendingRemovedUidsRef.current = pendingRemovedUids;
+
     // See setLoadingState on the context type: the current phase/progress lives here, outside React
     // state, and is pushed to subscribers.
     const loadingStateRef = useRef<LoadingState | null>(null);
@@ -246,7 +294,9 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
 
     // resolves true once the result is committed, false when superseded by a newer run/load (the
     // newer owner then controls nodeWarnings and the loading bar)
-    const runLiveValidation = useCallback(async (): Promise<boolean> => {
+    const runLiveValidation = useCallback(async ({ markApplied = false }: { markApplied?: boolean } = {}): Promise<boolean> => {
+        // this pass covers everything a pending debounced one would have
+        cancelScheduledLiveValidation();
         if (validationCancelRef.current) { validationCancelRef.current.current = true; }
         const cancelled = { current: false };
         validationCancelRef.current = cancelled;
@@ -277,12 +327,35 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         // one replace-all commit: also implicitly drops entries of deleted nodes. Keep the previous
         // identity when nothing changed so provider consumers don't re-render for a clean pass.
         setNodeWarnings(prev => (nodeWarningsEqual(prev, next) ? prev : next));
+        // the graph was just loaded/applied, so this result is also the applied snapshot — and the
+        // deletions it reflects can now be flushed from the load-time diagnostics
+        if (markApplied) {
+            setAppliedNodeWarnings(prev => (nodeWarningsEqual(prev, next) ? prev : next));
+            const removed = pendingRemovedUidsRef.current;
+            if (removed.size > 0) {
+                pendingRemovedUidsRef.current = new Set<string>();
+                setPendingRemovedUids(pendingRemovedUidsRef.current);
+                setDiagnostics(prev => prev.filter(d => d.nodeUid === undefined || !removed.has(d.nodeUid)));
+            }
+        }
         return true;
     }, []);
 
-    const allDiagnostics = useMemo(
-        () => [...diagnostics, ...Object.values(nodeWarnings).flat()],
-        [diagnostics, nodeWarnings]
+    const appliedDiagnostics = useMemo(
+        () => [...diagnostics, ...Object.values(appliedNodeWarnings).flat()],
+        [diagnostics, appliedNodeWarnings]
+    );
+
+    const liveDiagnostics = useMemo(
+        // load-time entries for nodes the user has already deleted are not "current" even though
+        // the applied set still carries them (see pendingRemovedUids)
+        () => [
+            ...(pendingRemovedUids.size === 0
+                ? diagnostics
+                : diagnostics.filter(d => d.nodeUid === undefined || !pendingRemovedUids.has(d.nodeUid))),
+            ...Object.values(nodeWarnings).flat(),
+        ],
+        [diagnostics, nodeWarnings, pendingRemovedUids]
     );
 
     const diagnosticsByNodeUid = useMemo(() => {
@@ -1043,11 +1116,17 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
     const removeNode = (uid: string) => {
         graph.nodes = graph.nodes.filter(node => node.uid !== uid);
         nodeByUid.delete(uid);
-        // load-time 'node' diagnostics (e.g. "Invalid declaration reference") are keyed by nodeUid
-        // and only ever recomputed by a fresh load - unlike nodeWarnings (the live validation pass),
-        // they aren't re-derived from the current graph, so a deleted node's entry would otherwise
-        // linger in the panel forever.
-        setDiagnostics(prev => prev.filter(d => d.nodeUid !== uid));
+        // Load-time 'node' diagnostics (e.g. "Invalid declaration reference") are keyed by nodeUid
+        // and never re-derived from the current graph, so a deleted node's entry has to be dropped
+        // explicitly or it lingers in the panel forever — but not here.
+        // Don't drop this node's load-time diagnostics yet: the panel reports the *applied* graph,
+        // and deleting a node in the editor doesn't change what the runtime is running until the
+        // user applies. Queue the uid instead — the next applied run prunes it (see
+        // pendingRemovedUidsRef). appliedNodeWarnings needs no queueing: that same run recomputes
+        // it wholesale from the by-then node-less graph.
+        // mirror updated eagerly too, so two deletes in one tick can't lose the first
+        pendingRemovedUidsRef.current = new Set(pendingRemovedUidsRef.current).add(uid);
+        setPendingRemovedUids(pendingRemovedUidsRef.current);
         markGraphDirty();
     };
 
@@ -1057,7 +1136,8 @@ export const InteractivityGraphProvider = ({ children }: { children: React.React
         diagnostics: diagnostics,
         setDiagnosticsForCategory: setDiagnosticsForCategory,
         clearDiagnostics: clearDiagnostics,
-        allDiagnostics: allDiagnostics,
+        appliedDiagnostics: appliedDiagnostics,
+        liveDiagnostics: liveDiagnostics,
         diagnosticsByNodeUid: diagnosticsByNodeUid,
         nodeWarnings: nodeWarnings,
         runLiveValidation: runLiveValidation,
