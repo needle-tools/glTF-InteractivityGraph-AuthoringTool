@@ -1591,3 +1591,15 @@
     /* transform-only updates so a pan never triggers layout */
     will-change: transform;
 }
+
+/* screen-space overlay ringing warning nodes once the LOD box's dotted border is too thin to
+   read; see WARNING_ANNOTATION_ZOOM_THRESHOLD in NodeWarningAnnotations.tsx */
+.node-warning-annotations {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 4;
+}
