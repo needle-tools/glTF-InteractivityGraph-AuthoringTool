@@ -29,6 +29,7 @@ import { NodeWarningAnnotations } from './NodeWarningAnnotations';
 import { applyNodePreset, getNodePresetSearchText, NodePreset, nodePresets } from '../authoring/nodePresets';
 import { reconcileNodeSockets } from '../authoring/socketReconciler';
 import { joinSearchTerms } from '../authoring/searchText';
+import { useFullscreen } from '../hooks/useFullscreen';
 import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
@@ -49,31 +50,6 @@ nodeTypes["NoOp"] = (props: any) => {
 const edgeTypes: EdgeTypes = {
     default: DeletableEdge,
 };
-
-
-// Safari still exposes the Fullscreen API only under its webkit prefix, so the graph's fullscreen
-// toggle has to look both up. Anything older than either (or a browser that refuses the request)
-// falls back to a fixed, full-viewport overlay — see .authoring-view--fullscreen-fallback.
-interface WebkitFullscreenDocument extends Document {
-    webkitFullscreenElement?: Element | null;
-    webkitExitFullscreen?: () => Promise<void> | void;
-}
-
-interface WebkitFullscreenElement extends HTMLElement {
-    webkitRequestFullscreen?: () => Promise<void> | void;
-}
-
-function getFullscreenElement(): Element | null {
-    return document.fullscreenElement ?? (document as WebkitFullscreenDocument).webkitFullscreenElement ?? null;
-}
-
-async function exitFullscreen(): Promise<void> {
-    if (document.exitFullscreen) {
-        await document.exitFullscreen();
-    } else {
-        await (document as WebkitFullscreenDocument).webkitExitFullscreen?.();
-    }
-}
 
 // one end of a drag-connection: the node + handle it started from, and whether that handle is a
 // source (output) or target (input). Used to decide which sockets to offer on the dropped-onto node.
@@ -262,33 +238,9 @@ export const AuthoringComponent = () => {
     // the input legend is a footer bar, not a modal, so it toggles independently of the overlays.
     // Off by default: it's a reference for newcomers, opened from the control stack when wanted.
     const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
-    // native fullscreen and the CSS fallback are tracked apart because only the first one gets a
-    // fullscreenchange event to sync from; the toggle button reads them as one
-    const [nativeGraphFullscreen, setNativeGraphFullscreen] = useState(false);
-    const [fullscreenFallback, setFullscreenFallback] = useState(false);
-    const graphFullscreen = nativeGraphFullscreen || fullscreenFallback;
-
-    // follow the browser out of fullscreen as well as into it: Escape and the browser's own exit
-    // affordance leave no other trace
-    useEffect(() => {
-        const update = () => setNativeGraphFullscreen(getFullscreenElement() === reactFlowRef.current);
-        document.addEventListener("fullscreenchange", update);
-        document.addEventListener("webkitfullscreenchange", update);
-        return () => {
-            document.removeEventListener("fullscreenchange", update);
-            document.removeEventListener("webkitfullscreenchange", update);
-        };
-    }, []);
-
-    // the fallback overlay is ours, so Escape has to be wired up by hand
-    useEffect(() => {
-        if (!fullscreenFallback) return;
-        const closeOnEscape = (event: KeyboardEvent) => {
-            if (event.key === "Escape") setFullscreenFallback(false);
-        };
-        window.addEventListener("keydown", closeOnEscape);
-        return () => window.removeEventListener("keydown", closeOnEscape);
-    }, [fullscreenFallback]);
+    const graphFullscreenState = useFullscreen(reactFlowRef);
+    const graphFullscreen = graphFullscreenState.isFullscreen;
+    const fullscreenFallback = graphFullscreenState.fallback;
 
     useEffect(() => {
         if (authoringComponentModal === AuthoringComponentModelType.NONE) {
@@ -1178,28 +1130,7 @@ export const AuthoringComponent = () => {
     };
 
     const toggleGraphFullscreen = async () => {
-        const element = reactFlowRef.current;
-        if (!element) return;
-        if (fullscreenFallback) {
-            setFullscreenFallback(false);
-            return;
-        }
-        if (getFullscreenElement() === element) {
-            await exitFullscreen();
-            return;
-        }
-        try {
-            if (element.requestFullscreen) {
-                await element.requestFullscreen();
-            } else if ((element as WebkitFullscreenElement).webkitRequestFullscreen) {
-                await (element as WebkitFullscreenElement).webkitRequestFullscreen!();
-            } else {
-                setFullscreenFallback(true);
-            }
-        } catch {
-            // a rejected request (permissions policy, no user gesture) is not fatal — take the overlay
-            setFullscreenFallback(true);
-        }
+        await graphFullscreenState.toggle();
     };
 
     const handleLeftClick = (e: React.MouseEvent) => {
