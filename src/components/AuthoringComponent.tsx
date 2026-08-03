@@ -2334,8 +2334,9 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
                                             <Row style={{ marginBottom: 0 }}>
                                                 <Col><span style={{ fontSize: 11, color: "#999" }}>ID</span></Col>
                                                 <Col xs={3}><span style={{ fontSize: 11, color: "#999" }}>Type</span></Col>
-                                                <Col xs={4}><span style={{ fontSize: 11, color: "#999" }}>Default</span></Col>
-                                                <Col style={{ width: 44, flexShrink: 0, padding: 0 }}></Col>
+                                                <Col xs={5}><span style={{ fontSize: 11, color: "#999" }}>Default</span></Col>
+                                                {/* xs="auto" so the remove-button column doesn't flex-grow and steal width from Default */}
+                                                <Col xs={"auto"} style={{ width: 44, padding: 0 }}></Col>
                                             </Row>
                                         )}
                                         {event.values.map((val, valueIndex) => (
@@ -2363,14 +2364,14 @@ const CustomEventsComponent = (props: {closeModal: any}) => {
                                                             ))}
                                                         </Form.Control>
                                                     </Col>
-                                                    <Col xs={4}>
+                                                    <Col xs={5}>
                                                         <TypedValueInput
                                                             typeIndex={val.type}
                                                             value={val.defaultValue}
                                                             onChange={(v) => updateValue(eventIndex, valueIndex, { defaultValue: v })}
                                                         />
                                                     </Col>
-                                                    <Col style={{ width: 44, flexShrink: 0, padding: "0 4px", textAlign: "right" }}>
+                                                    <Col xs={"auto"} style={{ width: 44, padding: "0 4px", textAlign: "right" }}>
                                                         <Button variant="outline-secondary" size={"sm"} title={"Remove value"} onClick={() => removeValue(eventIndex, valueIndex)}>
                                                             ✕
                                                         </Button>
