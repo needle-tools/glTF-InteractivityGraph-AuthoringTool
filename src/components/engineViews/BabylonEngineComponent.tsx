@@ -411,7 +411,7 @@ export const BabylonEngineComponent: React.FC<BabylonEngineComponentProps> = ({ 
 
                 <button type="button" data-testid={"frame-btn"} className="panel__toolbar-btn" onClick={() => autoFrame()}>
                     <IconFrame/>
-                    Auto Frame
+                    Fit View
                 </button>
             </div>
 
