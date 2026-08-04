@@ -34,6 +34,11 @@ import { useFullscreen } from '../hooks/useFullscreen';
 import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
 import '../css/flowNodes.css';
 
+// navigator.userAgentData is Chromium-only, so fall back to the deprecated but universally
+// supported platform/userAgent strings for the Mac check
+const isMacPlatform = typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad|iPod/.test((navigator as any).userAgentData?.platform ?? navigator.platform ?? navigator.userAgent);
+
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
     nodes[node.op!] = (props: any) => {
         return <AuthoringGraphNode {...props} />;
@@ -1389,7 +1394,7 @@ export const AuthoringComponent = () => {
                     zoomOnScroll={true}
                     zoomOnDoubleClick={false}
                     preventScrolling={true}
-                    deleteKeyCode="Delete"
+                    deleteKeyCode={['Delete', 'Backspace']}
                     fitView
                     // drops reactflow's "React Flow" watermark from the bottom-right corner; it
                     // otherwise overlaps the minimap. Permitted under reactflow's MIT license.
@@ -1485,9 +1490,9 @@ export const AuthoringComponent = () => {
                         ['Right-drag', 'Pan'],
                         ['Left-drag', 'Multi-select'],
                         ['Scroll', 'Zoom'],
-                        ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
-                        ['Ctrl+D', 'Duplicate'],
-                        ['Del', 'Delete selected'],
+                        [isMacPlatform ? '⌘C / ⌘V' : 'Ctrl+C / Ctrl+V', 'Copy / Paste'],
+                        [isMacPlatform ? '⌘D' : 'Ctrl+D', 'Duplicate'],
+                        [isMacPlatform ? '⌫' : 'Del', 'Delete selected'],
                     ] as [string, string][]).map(([key, label]) => (
                         <span key={key} className={"graph-keymap__item"}>
                             <kbd className={"graph-keymap__key"}>{key}</kbd>
