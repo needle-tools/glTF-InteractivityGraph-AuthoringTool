@@ -254,6 +254,7 @@ export const AuthoringComponent = () => {
     const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
     // ⌘/⌫ on Mac vs Ctrl/Del elsewhere — labels only; the handlers accept either modifier
     const shortcutLabels = useMemo(() => getShortcutLabels(), []);
+    const [coarsePointer, setCoarsePointer] = useState(false);
     const graphFullscreenState = useFullscreen(reactFlowRef);
     const graphFullscreen = graphFullscreenState.isFullscreen;
     const fullscreenFallback = graphFullscreenState.fallback;
