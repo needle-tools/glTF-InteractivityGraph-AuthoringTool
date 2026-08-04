@@ -32,12 +32,8 @@ import { joinSearchTerms } from '../authoring/searchText';
 import { trackEvent, trackEventThrottled } from '../utils/analytics';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { IconAddNode, IconCustomEvents, IconFullscreen, IconJsonView, IconLegend, IconNodeTypes, IconReload, IconSearch, IconVariables } from './toolbarIcons';
+import { getShortcutLabels } from '../utils/platform';
 import '../css/flowNodes.css';
-
-// navigator.userAgentData is Chromium-only, so fall back to the deprecated but universally
-// supported platform/userAgent strings for the Mac check
-const isMacPlatform = typeof navigator !== 'undefined' &&
-    /Mac|iPhone|iPad|iPod/.test((navigator as any).userAgentData?.platform ?? navigator.platform ?? navigator.userAgent);
 
 const nodeTypes = interactivityNodeSpecs.reduce((nodes, node) => {
     nodes[node.op!] = (props: any) => {
@@ -246,6 +242,8 @@ export const AuthoringComponent = () => {
     // the input legend is a footer bar, not a modal, so it toggles independently of the overlays.
     // Off by default: it's a reference for newcomers, opened from the control stack when wanted.
     const [showInputLegend, setShowInputLegend] = useState<boolean>(false)
+    // ⌘/⌫ on Mac vs Ctrl/Del elsewhere — labels only; the handlers accept either modifier
+    const shortcutLabels = useMemo(() => getShortcutLabels(), []);
     const [coarsePointer, setCoarsePointer] = useState(false);
     const graphFullscreenState = useFullscreen(reactFlowRef);
     const graphFullscreen = graphFullscreenState.isFullscreen;
@@ -1490,9 +1488,9 @@ export const AuthoringComponent = () => {
                         ['Right-drag', 'Pan'],
                         ['Left-drag', 'Multi-select'],
                         ['Scroll', 'Zoom'],
-                        [isMacPlatform ? '⌘C / ⌘V' : 'Ctrl+C / Ctrl+V', 'Copy / Paste'],
-                        [isMacPlatform ? '⌘D' : 'Ctrl+D', 'Duplicate'],
-                        [isMacPlatform ? '⌫' : 'Del', 'Delete selected'],
+                        [shortcutLabels.copyPaste, 'Copy / Paste'],
+                        [shortcutLabels.duplicate, 'Duplicate'],
+                        [shortcutLabels.del, 'Delete selected'],
                     ] as [string, string][]).map(([key, label]) => (
                         <span key={key} className={"graph-keymap__item"}>
                             <kbd className={"graph-keymap__key"}>{key}</kbd>
