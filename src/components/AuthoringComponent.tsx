@@ -86,9 +86,11 @@ const MenuBarButton = (props: {id: string, icon: React.ReactNode, label: string,
         id={props.id}
         className={`graph-menu-bar-btn${props.isActive ? " is-active" : ""}`}
         onClick={props.onClick}
+        aria-label={props.label}
+        title={props.label}
     >
         {props.icon}
-        {props.label}
+        <span className="graph-menu-bar-btn__label">{props.label}</span>
     </button>
 );
 
@@ -140,7 +142,7 @@ const ReloadIndicator = (props: { dirty: boolean, onReload: () => void }) => {
             onClick={props.onReload}
         >
             <IconReload/>
-            Unplayed changes — Reload
+            <span className="graph-menu-bar-btn__label">Unplayed changes — Reload</span>
         </button>
     );
 };
@@ -259,6 +261,15 @@ export const AuthoringComponent = () => {
     const graphFullscreenState = useFullscreen(reactFlowRef);
     const graphFullscreen = graphFullscreenState.isFullscreen;
     const fullscreenFallback = graphFullscreenState.fallback;
+
+    useEffect(() => {
+        if (typeof window.matchMedia !== "function") return;
+        const media = window.matchMedia("(max-width: 767px), (pointer: coarse)");
+        const update = () => setCoarsePointer(media.matches);
+        update();
+        media.addEventListener?.("change", update);
+        return () => media.removeEventListener?.("change", update);
+    }, []);
 
     useEffect(() => {
         if (authoringComponentModal === AuthoringComponentModelType.NONE) {
@@ -593,6 +604,7 @@ export const AuthoringComponent = () => {
             recolorEdges(uid);
             refreshValueConsumers(uid);
         }
+        trackEvent(kind === "variable" ? 'graph_variable_deleted' : 'graph_event_deleted', { referencingNodes: affectedUids.size });
         markGraphDirty();
     }, [graph, setEdges, setNodes, recolorEdges, refreshValueConsumers]);
 
@@ -1470,8 +1482,10 @@ export const AuthoringComponent = () => {
                     onlyRenderVisibleElements={true}
                     onPaneClick={handleLeftClick}
                     onPaneContextMenu={handleRightClick}
-                    panOnDrag={[2]}
-                    selectionOnDrag={true}
+                    panOnDrag={coarsePointer ? true : [2]}
+                    selectionOnDrag={!coarsePointer}
+                    zoomOnPinch={true}
+                    connectOnClick={true}
                     zoomOnScroll={true}
                     zoomOnDoubleClick={false}
                     preventScrolling={true}
