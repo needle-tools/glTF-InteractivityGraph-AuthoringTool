@@ -287,9 +287,17 @@ export const behaveEngineNodeRegistry: ReadonlyArray<[string, any]> = [
     ["event/onHoverOut", OnHoverOut],
 ];
 
+/** The graph failed load-time validation; per the spec it is rejected and never runs. */
+export class GraphRejectedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "GraphRejectedError";
+    }
+}
 
 export class BasicBehaveEngine implements IBehaveEngine {
     protected registry: Map<string, any>;
+    private executionErrorListener: ((error: unknown) => void) | undefined;
     protected idToBehaviourNodeMap: Map<number, BehaveEngineNode>;
     private eventBus: IEventBus;
     protected onTickNodeIndices: number[];
@@ -630,13 +638,14 @@ export class BasicBehaveEngine implements IBehaveEngine {
         try {
             this.validateGraph(runtimeGraph);
         } catch (e) {
-            throw new Error(`The graph is invalid ${e}`)
+            throw new GraphRejectedError(`The graph is invalid: ${e instanceof Error ? e.message : e}`);
         }
 
-        this.nodes = runtimeGraph.nodes;
-        this._variables = runtimeGraph.variables;
-        this.events = runtimeGraph.events;
-        this.types = runtimeGraph.types;
+        // spec: all top-level graph arrays are optional
+        this.nodes = runtimeGraph.nodes ?? [];
+        this._variables = runtimeGraph.variables ?? [];
+        this.events = runtimeGraph.events ?? [];
+        this.types = runtimeGraph.types ?? [];
         this.idToBehaviourNodeMap.clear();
         this.registerGraphEventPointers();
 
@@ -661,7 +670,7 @@ export class BasicBehaveEngine implements IBehaveEngine {
         this.nodes.forEach(node => {
             const nodeDeclaration: IInteractivityDeclaration | undefined = runtimeGraph.declarations[node.declaration];
             if (nodeDeclaration === undefined) {
-                throw Error(`Unrecognized node declaration ${node.declaration} but declerations has ${Object.keys(runtimeGraph.declarations).length} keys`);
+                throw new GraphRejectedError(`Unrecognized node declaration ${node.declaration} but declerations has ${Object.keys(runtimeGraph.declarations).length} keys`);
             }
             const behaviourNodeProps: IBehaviourNodeProps = {
                 ...defaultProps,
@@ -669,18 +678,23 @@ export class BasicBehaveEngine implements IBehaveEngine {
                 flows:node.flows || {},
                 values: node.values || {},
                 configuration: node.configuration || {},
-                variables: runtimeGraph.variables,
-                types: runtimeGraph.types,
+                variables: this._variables,
+                types: this.types,
                 graphEngine: this,
                 declaration: nodeDeclaration,
                 addEventToWorkQueue: this.addEventToWorkQueue,
             };
             const nodeType = nodeDeclaration.op;
             let behaviourNode: BehaveEngineNode;
-            if (this.registry.get(nodeType) === undefined) {
-                behaviourNode = new NoOpNode(behaviourNodeProps);
-            } else {
-                behaviourNode = this.registry.get(nodeType).init(behaviourNodeProps);
+            try {
+                if (this.registry.get(nodeType) === undefined) {
+                    behaviourNode = new NoOpNode(behaviourNodeProps);
+                } else {
+                    behaviourNode = this.registry.get(nodeType).init(behaviourNodeProps);
+                }
+            } catch (e) {
+                // node constructors validate their configuration/sockets; a throw there is a load-time rejection
+                throw new GraphRejectedError(`Node ${index} (${nodeType}) is invalid: ${e instanceof Error ? e.message : e}`);
             }
             this.idToBehaviourNodeMap.set(index, behaviourNode);
             index++;
@@ -808,7 +822,7 @@ export class BasicBehaveEngine implements IBehaveEngine {
     }
 
     protected validateGraph = (behaviorGraph: any) => {
-        const nodes: BehaveEngineNode[] = behaviorGraph.nodes;
+        const nodes: BehaveEngineNode[] = behaviorGraph.nodes ?? [];
 
         let index = 0;
         for (const node of nodes) {
@@ -898,8 +912,20 @@ export class BasicBehaveEngine implements IBehaveEngine {
             return;
         }
         this._timerID = setTimeout(() => {
-            this.executeEventQueue()
+            try {
+                this.executeEventQueue();
+            } catch (e) {
+                // a throwing node halts the loop; report it instead of failing silently in a timer
+                this._timerID = null;
+                if (this.executionErrorListener === undefined) { throw e; }
+                this.executionErrorListener(e);
+            }
         }, 1000 / this.fps)
+    }
+
+    /** Receives runtime errors that stopped the event loop after the initial load. */
+    public setExecutionErrorListener = (listener: ((error: unknown) => void) | undefined) => {
+        this.executionErrorListener = listener;
     }
 
     public flushPendingPropagationCancellations = () => {

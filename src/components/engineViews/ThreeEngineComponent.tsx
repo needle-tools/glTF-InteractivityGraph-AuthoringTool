@@ -27,11 +27,11 @@ import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIco
 import { ViewportControls } from "./ViewportControls";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
-import { downloadInteractivityGlb, GlbSource } from "./glbExport";
+import { downloadInteractiveModel } from "./modelExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 
-/** what the viewport currently shows — the same shape the glb export takes as its source */
-type ModelSource = GlbSource;
+/** what the viewport currently shows */
+type ModelSource = { kind: "file"; file: File } | { kind: "url"; url: string };
 
 /** upper bound for the device-pixel render scale, as in the Babylon view */
 const MAX_RENDER_SCALE = 2;
@@ -194,7 +194,10 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             return;
         }
         trackEvent('graph_exported', { engine: 'three' });
-        void downloadInteractivityGlb(source, getExecutableGraph())
+        const exportSource = source.kind === "file"
+            ? { kind: "files" as const, model: { path: source.file.name, file: source.file }, entries: [{ path: source.file.name, file: source.file }] }
+            : source;
+        void downloadInteractiveModel(exportSource, getExecutableGraph(), "glb")
             .catch((error) => console.error("Failed to export glb:", error));
     };
     const playRef = useRef(play);

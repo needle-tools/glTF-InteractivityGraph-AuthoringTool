@@ -1789,6 +1789,7 @@ export class BabylonDecorator extends ADecorator {
             //no-op
         }, "float", true);
 
+        // spec: both playheads are 0 before the first start and keep their last value once the animation stops
         this.registerJsonPointer(`/animations/${maxAnimations}/extensions/KHR_interactivity/playhead`, (path) => {
             const parts: string[] = path.split("/");
             const animationIndex = Number(parts[2]);

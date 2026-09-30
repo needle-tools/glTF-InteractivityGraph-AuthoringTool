@@ -16,7 +16,7 @@ import { configureNeedleXR, type NeedleXRContext } from "../../integrations/Need
 import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
 import { useFullscreen } from "../../hooks/useFullscreen";
 import { ViewportControls } from "./ViewportControls";
-import { downloadInteractivityGlb, GlbSource } from "./glbExport";
+import { downloadInteractiveModel } from "./modelExport";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import type { NeedleContext } from "../../integrations/NeedlePointerEvents";
@@ -27,8 +27,8 @@ registerNeedleInteractivity({
     initializeWithoutExtension: true,
 });
 
-/** what the viewport currently shows — the same shape the glb export takes as its source */
-type ModelSource = GlbSource;
+/** what the viewport currently shows */
+type ModelSource = { kind: "file"; file: File } | { kind: "url"; url: string };
 
 interface PendingLoad {
     authoredGraph: IInteractivityGraph;
@@ -201,7 +201,10 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
             return;
         }
         trackEvent('graph_exported', { engine: 'needle' });
-        void downloadInteractivityGlb(source, getExecutableGraph())
+        const exportSource = source.kind === "file"
+            ? { kind: "files" as const, model: { path: source.file.name, file: source.file }, entries: [{ path: source.file.name, file: source.file }] }
+            : source;
+        void downloadInteractiveModel(exportSource, getExecutableGraph(), "glb")
             .catch((error) => console.error("Failed to export glb:", error));
     };
 
