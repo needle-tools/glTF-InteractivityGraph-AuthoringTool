@@ -19,6 +19,8 @@ declare module "needle-engine-runtime" {
 
     export class OrbitControls {
         fitCamera(options?: NeedleCameraFitOptions): unknown;
+        // the wrapped Three.js controls
+        readonly controls: import("three/examples/jsm/controls/OrbitControls.js").OrbitControls | null;
     }
 
     export interface NeedleCameraFitOptions {

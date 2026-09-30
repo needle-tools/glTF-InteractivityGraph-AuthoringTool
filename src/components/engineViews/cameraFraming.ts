@@ -1,5 +1,7 @@
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import type { ArcRotateCameraMouseWheelInput } from "@babylonjs/core/Cameras/Inputs/arcRotateCameraMouseWheelInput";
+import type { PerspectiveCamera } from "three";
+import type { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 export const MODEL_VIEW_Z_DIRECTION = 1;
 
@@ -50,4 +52,35 @@ export const configureModelNavigation = (camera: ArcRotateCamera, modelSize: num
         camera.onViewMatrixChangedObservable.add(updateForDistance);
         updateForDistance();
     }
+};
+
+// model size used by the Three.js near-plane update, refreshed whenever the view is reframed
+const threeModelSizeByControls = new WeakMap<ThreeOrbitControls, number>();
+
+/**
+ * Three.js / Needle Engine counterpart of configureModelNavigation. OrbitControls already zooms
+ * by a factor and pans in screen space, so this adds zoom towards the cursor, distance limits from
+ * the model size and a near plane that follows the distance (a fixed one clips close-ups in large
+ * scenes). Call after framing; `modelSize` is the largest bounding box extent.
+ */
+export const configureThreeModelNavigation = (camera: PerspectiveCamera, controls: ThreeOrbitControls, modelSize: number): void => {
+    const size = Number.isFinite(modelSize) && modelSize > 0 ? modelSize : 1;
+    const isFirstConfiguration = !threeModelSizeByControls.has(controls);
+    threeModelSizeByControls.set(controls, size);
+
+    controls.zoomToCursor = true;
+    controls.minDistance = size * 1e-4;
+    controls.maxDistance = size * 10;
+    camera.far = size * 100;
+
+    const updateForDistance = () => {
+        const currentSize = threeModelSizeByControls.get(controls) ?? size;
+        const distance = camera.position.distanceTo(controls.target);
+        camera.near = Math.max(distance * NEAR_PLANE_RATIO, currentSize * 1e-6);
+        camera.updateProjectionMatrix();
+    };
+    if (isFirstConfiguration) {
+        controls.addEventListener("change", updateForDistance);
+    }
+    updateForDistance();
 };

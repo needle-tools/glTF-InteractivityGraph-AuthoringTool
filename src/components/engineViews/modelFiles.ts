@@ -101,3 +101,41 @@ export const registerModelFiles = (entries: ModelFileEntry[], model: ModelFileEn
         }
     }
 };
+
+/**
+ * Object URLs for a selected model and its companion files, for loaders that take a URL (Three's
+ * GLTFLoader, Needle Engine). A .gltf's relative uris resolve against the model's blob URL, so
+ * `resolve` (a LoadingManager URL modifier) maps those back to the matching selected files.
+ */
+export interface ModelFileUrls {
+    modelUrl: string;
+    resolve: (url: string) => string;
+    dispose: () => void;
+}
+
+export const createModelFileUrls = (entries: ModelFileEntry[], model: ModelFileEntry): ModelFileUrls => {
+    const created: string[] = [];
+    const objectUrl = (file: File) => {
+        const url = URL.createObjectURL(file);
+        created.push(url);
+        return url;
+    };
+    const modelUrl = objectUrl(model.file);
+    const base = modelUrl.slice(0, modelUrl.lastIndexOf("/") + 1);
+    const resourceUrls = new Map<File, string>();
+    return {
+        modelUrl,
+        resolve: (url) => {
+            if (url === modelUrl || !url.startsWith(base)) { return url; }
+            const file = resolveModelResource(entries, model, url.slice(base.length));
+            if (file === undefined) { return url; }
+            let resourceUrl = resourceUrls.get(file);
+            if (resourceUrl === undefined) {
+                resourceUrl = objectUrl(file);
+                resourceUrls.set(file, resourceUrl);
+            }
+            return resourceUrl;
+        },
+        dispose: () => created.forEach((url) => URL.revokeObjectURL(url)),
+    };
+};

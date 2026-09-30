@@ -17,21 +17,20 @@ import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring/CustomEventControls";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
-import { computeExtensionDiagnostics } from "../../diagnostics";
+import { computeExecutionDiagnostics, computeExtensionDiagnostics } from "../../diagnostics";
 import { registerGLTFInteractivity } from "../../integrations/GLTFInteractivityPlugin";
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
 import { useFullscreen } from "../../hooks/useFullscreen";
-import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
 import { ViewportControls } from "./ViewportControls";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
-import { downloadInteractiveModel } from "./modelExport";
-import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
-
-/** what the viewport currently shows */
-type ModelSource = { kind: "file"; file: File } | { kind: "url"; url: string };
+import { downloadInteractiveModel, ModelExportFormat, ModelSource } from "./modelExport";
+import { createModelFileUrls, entriesFromFileList, findModelEntry, ModelFileEntry, ModelFileUrls } from "./modelFiles";
+import { MODEL_UPLOAD_ACCEPT, MODEL_UPLOAD_TITLE, ModelDownloadMenu, ModelDropOverlay, useModelFileDrop } from "./modelFileUi";
+import { configureThreeModelNavigation, MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 
 /** upper bound for the device-pixel render scale, as in the Babylon view */
 const MAX_RENDER_SCALE = 2;
@@ -102,11 +101,9 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             center.y + maxDimension * 0.4,
             center.z + distance * MODEL_VIEW_Z_DIRECTION,
         );
-        cameraRef.current.near = Math.max(distance / 1000, 0.001);
-        cameraRef.current.far = Math.max(distance * 100, 1000);
-        cameraRef.current.updateProjectionMatrix();
         controlsRef.current.target.copy(center);
         controlsRef.current.update();
+        configureThreeModelNavigation(cameraRef.current, controlsRef.current, maxDimension);
     };
 
     const loadSource = async (
@@ -126,9 +123,17 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         setGraphRunning(false);
         disposeLoadedModel();
 
-        let objectUrl: string | undefined;
+        // a .gltf from local files resolves its .bin/textures among the other selected files
+        let fileUrls: ModelFileUrls | undefined;
         try {
-            const url = source.kind === "url" ? source.url : (objectUrl = URL.createObjectURL(source.file));
+            let url: string;
+            if (source.kind === "url") {
+                url = source.url;
+            } else {
+                fileUrls = createModelFileUrls(source.entries, source.model);
+                loader.manager.setURLModifier(fileUrls.resolve);
+                url = fileUrls.modelUrl;
+            }
             const gltf = await loader.loadAsync(url);
             const runtime = getInteractivityRuntime(gltf);
             if (!runtime) throw new Error("GLTFInteractivityPlugin did not attach a runtime");
@@ -143,7 +148,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             scene.add(model.scene);
             frameModel(model);
             sourceRef.current = source;
-            setModelName(source.kind === "file" ? source.file.name : source.url.split("/").pop() ?? "model.glb");
+            setModelName(source.kind === "files" ? source.model.file.name : source.url.split("/").pop() ?? "model.glb");
 
             setDiagnosticsForCategory(
                 "extension",
@@ -152,6 +157,12 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             setGltfObjectModel(buildGltfObjectModel(model.gltf));
 
             const decorator = runtime.decorator;
+            // a rejected graph or a runtime error that halts the engine shows up in the diagnostics panel
+            setDiagnosticsForCategory("execution", []);
+            decorator.setExecutionErrorListener((error) => {
+                console.warn("KHR_interactivity graph execution stopped", error);
+                setDiagnosticsForCategory("execution", computeExecutionDiagnostics(error));
+            });
             decorator.setCamera(camera);
             decorator.attachPointerEvents(canvas);
             attachPointerEventLogging(decorator);
@@ -165,18 +176,38 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
                 embeddedGraph,
                 replaceAuthoringGraph,
                 loadGraphFromJson,
-                loadBehaveGraph: (graph) => decorator.loadBehaveGraph(graph),
+                loadBehaveGraph: (graph) => {
+                    try {
+                        decorator.loadBehaveGraph(graph);
+                    } catch (error) {
+                        setDiagnosticsForCategory("execution", computeExecutionDiagnostics(error));
+                        throw error;
+                    }
+                },
             });
             setGraphRunning(true);
             clearGraphDirty();
         } catch (error) {
             console.error("Error loading model in Three engine", error);
         } finally {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
+            if (fileUrls) {
+                loader.manager.setURLModifier(undefined);
+                fileUrls.dispose();
             }
         }
     };
+
+    const selectModelFiles = (entries: ModelFileEntry[]): void => {
+        const model = findModelEntry(entries);
+        if (model === undefined) {
+            console.warn("No .glb or .gltf among the selected files", entries.map((entry) => entry.path));
+            return;
+        }
+        const source: ModelSource = { kind: "files", model, entries };
+        sourceRef.current = source;
+        void loadSource(source, getExecutableGraph(), true);
+    };
+    const draggingFiles = useModelFileDrop(selectModelFiles);
 
     const play = (): void => {
         trackEvent('scene_play', { engine: 'three' });
@@ -185,20 +216,19 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         }
     };
 
-    // whichever glb the viewport shows gets the graph embedded — samples loaded by URL included,
-    // not only local uploads (see GlbSource)
-    const downloadGlb = (): void => {
+    // whichever model the viewport shows gets the graph embedded — samples loaded by URL included,
+    // not only local uploads (see ModelSource)
+    const exportModel = (format: ModelExportFormat): void => {
         const source = sourceRef.current;
         if (source === null) {
             console.warn("No model loaded to export");
             return;
         }
-        trackEvent('graph_exported', { engine: 'three' });
-        const exportSource = source.kind === "file"
-            ? { kind: "files" as const, model: { path: source.file.name, file: source.file }, entries: [{ path: source.file.name, file: source.file }] }
-            : source;
-        void downloadInteractiveModel(exportSource, getExecutableGraph(), "glb")
-            .catch((error) => console.error("Failed to export glb:", error));
+        trackEvent('graph_exported', { engine: 'three', format });
+        void downloadInteractiveModel(source, getExecutableGraph(), format).catch((error) => {
+            console.error("Failed to export model:", error);
+            window.alert(`Export failed: ${error instanceof Error ? error.message : error}`);
+        });
     };
     const playRef = useRef(play);
     playRef.current = play;
@@ -310,29 +340,26 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
                 <input
                     className="d-none"
                     type="file"
-                    accept=".glb"
+                    multiple
+                    accept={MODEL_UPLOAD_ACCEPT}
                     ref={fileInputRef}
                     data-testid="three-engine-file-input"
-                    onChange={() => {
-                        const file = fileInputRef.current?.files?.[0];
-                        if (file) {
-                            const source: ModelSource = { kind: "file", file };
-                            sourceRef.current = source;
-                            void loadSource(source, getExecutableGraph(), true);
-                        }
+                    onChange={(event) => {
+                        selectModelFiles(entriesFromFileList(event.target.files));
+                        // allow selecting the same file again
+                        event.target.value = "";
                     }}
                 />
-                <button type="button" className="panel__toolbar-btn" onClick={() => fileInputRef.current?.click()}>
+                <button type="button" className="panel__toolbar-btn" onClick={() => fileInputRef.current?.click()} title={MODEL_UPLOAD_TITLE}>
                     <IconUpload/>
-                    Upload glb
+                    Upload glb/glTF
                 </button>
 
-                <button type="button" className="panel__toolbar-btn" onClick={downloadGlb} disabled={!modelName}>
-                    <IconDownload/>
-                    Download glb
-                </button>
+                <ModelDownloadMenu disabled={!modelName} testId={"three-download-toggle"} onExport={exportModel}/>
 
             </div>
+
+            <ModelDropOverlay visible={draggingFiles}/>
 
             <div
                 ref={viewportRef}
