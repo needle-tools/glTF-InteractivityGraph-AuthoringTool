@@ -25,10 +25,14 @@ import { registerThreeActiveCameraPointers, registerThreeScenePointers } from ".
 import { registerThreeStructuralPointers } from "./threeStructuralPointers";
 import type { ThreePointerBinder } from "./threePointerTypes";
 
+// spec animation state entry; callback is the end completion (animation/start's done)
 interface ActiveAnimation {
     action: AnimationAction;
     callback: () => void;
+    startTime: number;
     endTime: number;
+    stopTime: number;
+    stopDone: (() => void) | null;
     speed: number;
     virtualTime: number;
 }
@@ -225,7 +229,7 @@ export class ThreeDecorator extends ADecorator {
         action.time = clipTime(startTime, clip.duration, false);
         action.setEffectiveTimeScale(startTime <= endTime ? speed : -speed);
         action.play();
-        this.threeAnimations.set(animationIndex, { action, callback, endTime, speed, virtualTime: startTime });
+        this.threeAnimations.set(animationIndex, { action, callback, startTime, endTime, stopTime: endTime, stopDone: null, speed, virtualTime: startTime });
         this.startAnimationTimer();
         this.model.mixer.update(0);
     };
@@ -284,10 +288,10 @@ export class ThreeDecorator extends ADecorator {
         if (!active) {
             return;
         }
-        const direction = active.virtualTime <= stopTime ? 1 : -1;
-        active.endTime = stopTime;
-        active.callback = callback;
-        active.action.setEffectiveTimeScale(direction * active.speed);
+        // spec: only replaces the stop time and stop completion; whether the stop applies is decided
+        // on each animation update (see advanceAnimations)
+        active.stopTime = stopTime;
+        active.stopDone = callback;
     };
 
     private startAnimationTimer(): void {
@@ -316,18 +320,25 @@ export class ThreeDecorator extends ADecorator {
         this.model.mixer.update(delta);
 
         for (const [animationIndex, active] of [...this.threeAnimations]) {
-            const direction = active.action.getEffectiveTimeScale() >= 0 ? 1 : -1;
-            active.virtualTime += direction * active.speed * delta;
-            const finished = direction > 0 ? active.virtualTime >= active.endTime : active.virtualTime <= active.endTime;
-            if (!finished || !Number.isFinite(active.endTime)) {
+            const forward = active.startTime <= active.endTime;
+            active.virtualTime += (forward ? 1 : -1) * active.speed * delta;
+            // spec animation update: a stop time within [start, end) (reverse: (end, start]) stops the
+            // animation once reached, even if it had already passed; otherwise it ends at the end time
+            const stopReached = forward
+                ? active.stopTime >= active.startTime && active.stopTime < active.endTime && active.virtualTime >= active.stopTime
+                : active.stopTime <= active.startTime && active.stopTime > active.endTime && active.virtualTime <= active.stopTime;
+            const endReached = Number.isFinite(active.endTime)
+                && (forward ? active.virtualTime >= active.endTime : active.virtualTime <= active.endTime);
+            if (!stopReached && !endReached) {
                 continue;
             }
-            active.virtualTime = active.endTime;
-            active.action.time = clipTime(active.endTime, active.action.getClip().duration, true);
+            const finalTime = stopReached ? active.stopTime : active.endTime;
+            active.virtualTime = finalTime;
+            active.action.time = clipTime(finalTime, active.action.getClip().duration, true);
             active.action.paused = true;
             this.model.mixer.update(0);
             this.threeAnimations.delete(animationIndex);
-            active.callback();
+            (stopReached ? active.stopDone : active.callback)?.();
         }
         if (this.threeAnimations.size === 0) {
             this.stopAnimationTimer();

@@ -33,7 +33,10 @@ interface BabylonAnimationState {
     endTime: number;
     speed: number;
     startedAt: number;
+    // spec animation state: end completion (animation/start's done), stop time and stop completion
     callback: () => void;
+    stopTime: number;
+    stopDone: (() => void) | null;
 }
 
 export class BabylonDecorator extends ADecorator {
@@ -1924,6 +1927,8 @@ export class BabylonDecorator extends ADecorator {
             speed,
             startedAt: performance.now(),
             callback,
+            stopTime: endTime,
+            stopDone: null,
         };
         this.activeAnimations.set(animation, state);
         this.animationPlayheads.set(animation, {
@@ -1942,22 +1947,26 @@ export class BabylonDecorator extends ADecorator {
     public stopAnimationAt = (animationIndex: number, stopTime: number , callback: () => void): void => {
         const state = this.activeAnimations.get(animationIndex);
         if (!state) return;
-        const currentTime = this.currentAnimationPlayheads(animationIndex).virtualPlayhead;
-        const forward = state.startTime <= state.endTime;
-        if ((forward && (stopTime < currentTime || stopTime > state.endTime))
-            || (!forward && (stopTime > currentTime || stopTime < state.endTime))) {
-            return;
-        }
+        // spec: always replaces the stop time and stop completion; whether the stop applies is
+        // decided against the animation's range when it is reached (see scheduleAnimationCompletion)
+        state.stopTime = stopTime;
+        state.stopDone = callback;
         if (state.timer) clearTimeout(state.timer);
-        state.startTime = currentTime;
-        state.endTime = stopTime;
-        state.startedAt = performance.now();
-        state.callback = callback;
         this.scheduleAnimationCompletion(animationIndex, state);
     }
 
+    // spec animation update: the stop applies if the stop time is within [start, end) (reverse: (end, start]),
+    // even if it has already passed; otherwise the animation ends at the end time with its own done flow
     private scheduleAnimationCompletion(animationIndex: number, state: BabylonAnimationState): void {
-        const durationMs = Math.abs(state.endTime - state.startTime) / state.speed * 1000;
+        const forward = state.startTime <= state.endTime;
+        const stopApplies = forward
+            ? state.stopTime >= state.startTime && state.stopTime < state.endTime
+            : state.stopTime <= state.startTime && state.stopTime > state.endTime;
+        const targetTime = stopApplies ? state.stopTime : state.endTime;
+        const done = stopApplies ? state.stopDone : state.callback;
+        const currentTime = this.currentAnimationPlayheads(animationIndex).virtualPlayhead;
+        const remaining = forward ? targetTime - currentTime : currentTime - targetTime;
+        const durationMs = Math.max(0, remaining) / state.speed * 1000;
         if (!Number.isFinite(durationMs)) {
             state.timer = null;
             return;
@@ -1965,15 +1974,14 @@ export class BabylonDecorator extends ADecorator {
         state.timer = setTimeout(() => {
             if (this.activeAnimations.get(animationIndex) !== state) return;
             const source = this.world.animations[animationIndex] as AnimationGroup;
-            const forward = state.startTime <= state.endTime;
-            state.instance.goToFrame(animationFrameAtTime(source, state.endTime, true, forward));
+            state.instance.goToFrame(animationFrameAtTime(source, targetTime, true, forward));
             this.animationPlayheads.set(animationIndex, {
-                playhead: animationTimeInRange(source, state.endTime, true, forward),
-                virtualPlayhead: state.endTime,
+                playhead: animationTimeInRange(source, targetTime, true, forward),
+                virtualPlayhead: targetTime,
             });
             this.clearAnimation(animationIndex);
-            state.callback();
-        }, Math.max(0, durationMs));
+            done?.();
+        }, durationMs);
     }
 
     private currentAnimationPlayheads(animationIndex: number): { playhead: number; virtualPlayhead: number } {
