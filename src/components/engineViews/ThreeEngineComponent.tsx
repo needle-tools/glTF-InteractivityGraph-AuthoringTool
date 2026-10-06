@@ -23,14 +23,16 @@ import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
 import { useFullscreen } from "../../hooks/useFullscreen";
-import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { useModelFileDrop } from "../../hooks/useModelFileDrop";
+import { IconPlay, IconSendEvent } from "../toolbarIcons";
 import { ViewportControls } from "./ViewportControls";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
-import { downloadInteractiveModel, ModelSource } from "./modelExport";
+import { downloadInteractiveModel, ModelExportFormat, ModelSource } from "./modelExport";
+import { findModelEntry, ModelFileEntry } from "./modelFiles";
+import { useModelSourceUrl } from "./modelSourceUrl";
+import { ModelDropOverlay, ModelFileControls } from "./ModelFileControls";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
-
-/** what the viewport currently shows — the same shape the glb export takes as its source */
 
 /** upper bound for the device-pixel render scale, as in the Babylon view */
 const MAX_RENDER_SCALE = 2;
@@ -55,7 +57,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
     const loadedModelRef = useRef<ThreeLoadedModel | null>(null);
     const runtimeRef = useRef<InteractivityRuntime | null>(null);
     const sourceRef = useRef<ModelSource | null>(null);
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const sourceUrl = useModelSourceUrl();
     const animationFrameRef = useRef<number | null>(null);
     const loadTokenRef = useRef(0);
     const [modelName, setModelName] = useState<string | null>(null);
@@ -125,10 +127,8 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         setGraphRunning(false);
         disposeLoadedModel();
 
-        let objectUrl: string | undefined;
         try {
-            const url = source.kind === "url" ? source.url : (objectUrl = URL.createObjectURL(source.model.file));
-            const gltf = await loader.loadAsync(url);
+            const gltf = await loader.loadAsync(await sourceUrl(source));
             const runtime = getInteractivityRuntime(gltf);
             if (!runtime) throw new Error("GLTFInteractivityPlugin did not attach a runtime");
             const model = runtime.model;
@@ -170,10 +170,6 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             clearGraphDirty();
         } catch (error) {
             console.error("Error loading model in Three engine", error);
-        } finally {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
         }
     };
 
@@ -184,17 +180,34 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         }
     };
 
-    // whichever glb the viewport shows gets the graph embedded — samples loaded by URL included,
+    // a .glb, or a .gltf with its .bin/textures among the other files (selected or dropped)
+    const selectModelFiles = (entries: ModelFileEntry[]): void => {
+        const model = findModelEntry(entries);
+        if (model === undefined) {
+            console.warn("No .glb or .gltf among the selected files", entries.map((entry) => entry.path));
+            return;
+        }
+        const source: ModelSource = { kind: "files", model, entries };
+        sourceRef.current = source;
+        void loadSource(source, getExecutableGraph(), true);
+    };
+    const draggingFiles = useModelFileDrop(selectModelFiles);
+
+    // whichever model the viewport shows gets the graph embedded — samples loaded by URL included,
     // not only local uploads (see ModelSource)
-    const downloadGlb = (): void => {
+    const exportModel = async (format: ModelExportFormat): Promise<void> => {
         const source = sourceRef.current;
         if (source === null) {
             console.warn("No model loaded to export");
             return;
         }
-        trackEvent('graph_exported', { engine: 'three' });
-        void downloadInteractiveModel(source, getExecutableGraph(), "glb")
-            .catch((error) => console.error("Failed to export glb:", error));
+        try {
+            trackEvent('graph_exported', { engine: 'three' });
+            await downloadInteractiveModel(source, getExecutableGraph(), format);
+        } catch (error) {
+            console.error("Failed to export model:", error);
+            window.alert(`Export failed: ${error instanceof Error ? error.message : error}`);
+        }
     };
     const playRef = useRef(play);
     playRef.current = play;
@@ -302,33 +315,17 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
                     Send Custom Event
                 </button>
 
-                <span className={"panel__toolbar-label"}>Model</span>
-                <input
-                    className="d-none"
-                    type="file"
-                    accept=".glb"
-                    ref={fileInputRef}
-                    data-testid="three-engine-file-input"
-                    onChange={() => {
-                        const file = fileInputRef.current?.files?.[0];
-                        if (file) {
-                            const source: ModelSource = { kind: "files", model: { path: file.name, file }, entries: [{ path: file.name, file }] };
-                            sourceRef.current = source;
-                            void loadSource(source, getExecutableGraph(), true);
-                        }
-                    }}
+                <ModelFileControls
+                    hasModel={!!modelName}
+                    inputTestId={"three-engine-file-input"}
+                    downloadTestId={"three-download-toggle"}
+                    onSelectFiles={selectModelFiles}
+                    onExport={(format) => void exportModel(format)}
                 />
-                <button type="button" className="panel__toolbar-btn" onClick={() => fileInputRef.current?.click()}>
-                    <IconUpload/>
-                    Upload glb
-                </button>
-
-                <button type="button" className="panel__toolbar-btn" onClick={downloadGlb} disabled={!modelName}>
-                    <IconDownload/>
-                    Download glb
-                </button>
 
             </div>
+
+            <ModelDropOverlay visible={draggingFiles}/>
 
             <div
                 ref={viewportRef}
