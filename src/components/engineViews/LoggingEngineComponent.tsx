@@ -12,6 +12,7 @@ import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { IconJsonFile, IconPlay, IconPointer, IconSendEvent } from "../toolbarIcons";
 import { trackEvent } from "../../utils/analytics";
 
+
 enum LoggingEngineModal {
     OBJECT_MODEL = "OBJECT_MODEL",
     CUSTOM_EVENT = "CUSTOM_EVENT",

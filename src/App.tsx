@@ -302,9 +302,10 @@ interface EngineSelectorProps {
     currentEngineType: EngineType;
 }
 
-// the engine tabs, kept in the order Babylon-then-Logging. Rendered as a plain <ul>/<li>
-// segmented control rather than react-bootstrap's <Tabs> so it can carry the app's own styling
-// (and so a tab is still an <li>, which the e2e spec clicks).
+// the engine tabs, in the order the fork presents its runtimes (the three renderers first, the
+// logging engine last). Rendered as a plain <ul>/<li> segmented control rather than
+// react-bootstrap's <Tabs> so it can carry the app's own styling (and so a tab is still an <li>,
+// which the e2e spec clicks).
 const ENGINE_TABS: ReadonlyArray<{ engine: EngineType; label: string }> = [
     { engine: EngineType.BABYLON, label: "Babylon Engine" },
     { engine: EngineType.THREE, label: "Three.js" },

@@ -378,6 +378,7 @@
         display: none;
     }
 
+    /* icon-only buttons on a phone: the labels are still on the button as aria-label/title */
     .graph-menu-bar-btn {
         flex: 0 0 36px;
         width: 36px;
@@ -415,11 +416,6 @@
         overflow-x: hidden !important;
         overflow-y: auto !important;
     }
-}
-
-.graph-menu-bar-btn--reload {
-    background: #fdf1d8;
-    color: #8a6116;
 }
 
 .graph-overlay__title {
