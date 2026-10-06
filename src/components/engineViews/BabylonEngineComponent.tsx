@@ -28,11 +28,11 @@ import { attachSkinLoadedMetadata, BabylonLoadedModel, buildBabylonDecoratorWorl
 import { downloadInteractiveModel, ModelExportFormat, ModelSource } from "./modelExport";
 import { entriesFromDataTransfer, entriesFromFileList, findModelEntry, ModelFileEntry, pluginExtensionForName, pluginExtensionForUrl, registerModelFiles } from "./modelFiles";
 import { configureModelNavigation, MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
+import { trackEvent } from "../../utils/analytics";
 import { useDevicePixelRatio } from "../../hooks/useDevicePixelRatio";
 import { useFullscreen } from "../../hooks/useFullscreen";
 import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
 import { ViewportControls } from "./ViewportControls";
-import { trackEvent } from "../../utils/analytics";
 
 enum BabylonEngineModal {
     CUSTOM_EVENT = "CUSTOM_EVENT",

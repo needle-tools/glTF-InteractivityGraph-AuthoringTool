@@ -282,6 +282,90 @@ body {
     background: var(--brand-600);
 }
 
+/* Phone layout: the side-by-side split doesn't fit, so the shell stops being a fixed-height
+   viewport and becomes a scrolling page with the engine view stacked above the graph, each
+   given a workable height of its own. The divider goes away with the row it resized. */
+@media (max-width: 767.98px) {
+    html,
+    body,
+    #root {
+        height: auto;
+    }
+
+    body {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .app-shell {
+        height: auto;
+        min-height: 100dvh;
+        overflow: visible;
+    }
+
+    .app-header {
+        gap: var(--sp-2);
+        padding: var(--sp-2) var(--sp-3);
+    }
+
+    .app-title {
+        font-size: var(--fs-md);
+    }
+
+    /* the intro line is the first thing to go — the header has to leave room for the tabs */
+    .app-subtitle {
+        display: none;
+    }
+
+    .app-header__actions {
+        width: 100%;
+        margin-left: 0;
+        flex-wrap: wrap;
+    }
+
+    /* tabs share the row evenly instead of scrolling out of the header */
+    .app-tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        flex: 1 1 100%;
+    }
+
+    .app-tab > button {
+        width: 100%;
+        padding: 0 var(--sp-1);
+        font-size: var(--fs-xs);
+    }
+
+    .app-main {
+        padding: var(--sp-2) var(--sp-3) var(--sp-3);
+    }
+
+    .app-split {
+        flex-direction: column;
+        gap: var(--sp-3);
+    }
+
+    /* svh so an address bar sliding in doesn't resize the panes mid-scroll */
+    .app-split__pane:first-child {
+        flex: 0 0 auto;
+        width: 100%;
+        height: min(68svh, 620px);
+        min-height: 420px;
+    }
+
+    /* :not(--hidden) so the graph editor toggle still wins over the stacked layout */
+    .app-split__pane:last-child:not(.app-split__pane--hidden) {
+        flex: 0 0 auto;
+        width: 100%;
+        height: max(78svh, 620px);
+        min-height: 620px;
+    }
+
+    .app-divider {
+        display: none;
+    }
+}
+
 /* --------------------------------------------------------------- panels -- */
 
 /* the two workspace halves (3D/logging view, graph editor): identical card so
