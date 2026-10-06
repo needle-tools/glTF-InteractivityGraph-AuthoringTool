@@ -13,10 +13,14 @@ import { registerNeedleInteractivity } from "../../integrations/NeedleInteractiv
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
 import { configureNeedleXR, type NeedleXRContext } from "../../integrations/NeedleXR";
-import { IconDownload, IconPlay, IconSendEvent, IconUpload } from "../toolbarIcons";
+import { IconPlay, IconSendEvent } from "../toolbarIcons";
 import { useFullscreen } from "../../hooks/useFullscreen";
+import { useModelFileDrop } from "../../hooks/useModelFileDrop";
 import { ViewportControls } from "./ViewportControls";
-import { downloadInteractiveModel, ModelSource } from "./modelExport";
+import { downloadInteractiveModel, ModelExportFormat, ModelSource } from "./modelExport";
+import { findModelEntry, ModelFileEntry } from "./modelFiles";
+import { useModelSourceUrl } from "./modelSourceUrl";
+import { ModelDropOverlay, ModelFileControls } from "./ModelFileControls";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import type { NeedleContext } from "../../integrations/NeedlePointerEvents";
@@ -26,8 +30,6 @@ registerNeedleInteractivity({
     autoStart: false,
     initializeWithoutExtension: true,
 });
-
-/** what the viewport currently shows — the same shape the glb export takes as its source */
 
 interface PendingLoad {
     authoredGraph: IInteractivityGraph;
@@ -83,8 +85,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
     const pendingLoadRef = useRef<PendingLoad | null>(null);
     const loadedModelRef = useRef<ThreeLoadedModel | null>(null);
     const runtimeRef = useRef<InteractivityRuntime | null>(null);
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const activeObjectUrlRef = useRef<string | null>(null);
+    const sourceUrl = useModelSourceUrl();
     const loadTokenRef = useRef(0);
     const [modelName, setModelName] = useState<string | null>(null);
     const [graphRunning, setGraphRunning] = useState(false);
@@ -101,11 +102,11 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         setSupportedPointerTemplates,
     } = useContext(InteractivityGraphContext);
 
-    const loadSource = (
+    const loadSource = async (
         source: ModelSource,
         authoredGraph: IInteractivityGraph,
         replaceAuthoringGraph: boolean,
-    ): void => {
+    ): Promise<void> => {
         const element = engineElementRef.current;
         if (!element) return;
 
@@ -114,17 +115,19 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         loadedModelRef.current = null;
         setGraphRunning(false);
 
-        if (activeObjectUrlRef.current) {
-            URL.revokeObjectURL(activeObjectUrlRef.current);
-            activeObjectUrlRef.current = null;
-        }
-        const url = source.kind === "url" ? source.url : URL.createObjectURL(source.model.file);
-        if (source.kind === "files") activeObjectUrlRef.current = url;
-
         const token = ++loadTokenRef.current;
         pendingLoadRef.current = { authoredGraph, replaceAuthoringGraph, token };
         sourceRef.current = source;
         setModelName(source.kind === "files" ? source.model.file.name : source.url.split("/").pop() ?? "model.glb");
+
+        let url: string;
+        try {
+            url = await sourceUrl(source);
+        } catch (error) {
+            console.error("Error loading model in Needle engine", error);
+            return;
+        }
+        if (loadTokenRef.current !== token) return;
 
         element.removeAttribute("src");
         requestAnimationFrame(() => {
@@ -178,7 +181,7 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
 
     const play = (): void => {
         trackEvent('scene_play', { engine: 'needle' });
-        if (sourceRef.current) loadSource(sourceRef.current, getExecutableGraph(), false);
+        if (sourceRef.current) void loadSource(sourceRef.current, getExecutableGraph(), false);
     };
     const playRef = useRef(play);
     playRef.current = play;
@@ -191,17 +194,32 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         }
     };
 
-    // whichever glb the viewport shows gets the graph embedded — samples loaded by URL included,
+    // a .glb, or a .gltf with its .bin/textures among the other files (selected or dropped)
+    const selectModelFiles = (entries: ModelFileEntry[]): void => {
+        const model = findModelEntry(entries);
+        if (model === undefined) {
+            console.warn("No .glb or .gltf among the selected files", entries.map((entry) => entry.path));
+            return;
+        }
+        void loadSource({ kind: "files", model, entries }, getExecutableGraph(), true);
+    };
+    const draggingFiles = useModelFileDrop(selectModelFiles);
+
+    // whichever model the viewport shows gets the graph embedded — samples loaded by URL included,
     // not only local uploads (see ModelSource)
-    const downloadGlb = (): void => {
+    const exportModel = async (format: ModelExportFormat): Promise<void> => {
         const source = sourceRef.current;
         if (source === null) {
             console.warn("No model loaded to export");
             return;
         }
-        trackEvent('graph_exported', { engine: 'needle' });
-        void downloadInteractiveModel(source, getExecutableGraph(), "glb")
-            .catch((error) => console.error("Failed to export glb:", error));
+        try {
+            trackEvent('graph_exported', { engine: 'needle' });
+            await downloadInteractiveModel(source, getExecutableGraph(), format);
+        } catch (error) {
+            console.error("Failed to export model:", error);
+            window.alert(`Export failed: ${error instanceof Error ? error.message : error}`);
+        }
     };
 
     useEffect(() => {
@@ -224,14 +242,13 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
 
     useEffect(() => {
         if (modelUrl && engineElementRef.current) {
-            loadSource({ kind: "url", url: modelUrl }, getExecutableGraph(), true);
+            void loadSource({ kind: "url", url: modelUrl }, getExecutableGraph(), true);
         }
     }, [modelUrl]);
 
     useEffect(() => () => {
         loadTokenRef.current += 1;
         runtimeRef.current?.dispose();
-        if (activeObjectUrlRef.current) URL.revokeObjectURL(activeObjectUrlRef.current);
         setSupportedPointerTemplates(null);
     }, []);
 
@@ -248,29 +265,17 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
                     Send Custom Event
                 </button>
 
-                <span className={"panel__toolbar-label"}>Model</span>
-                <input
-                    className="d-none"
-                    type="file"
-                    accept=".glb"
-                    ref={fileInputRef}
-                    data-testid="needle-engine-file-input"
-                    onChange={() => {
-                        const file = fileInputRef.current?.files?.[0];
-                        if (file) loadSource({ kind: "files", model: { path: file.name, file }, entries: [{ path: file.name, file }] }, getExecutableGraph(), true);
-                    }}
+                <ModelFileControls
+                    hasModel={!!modelName}
+                    inputTestId={"needle-engine-file-input"}
+                    downloadTestId={"needle-download-toggle"}
+                    onSelectFiles={selectModelFiles}
+                    onExport={(format) => void exportModel(format)}
                 />
-                <button type="button" className="panel__toolbar-btn" onClick={() => fileInputRef.current?.click()}>
-                    <IconUpload/>
-                    Upload glb
-                </button>
-
-                <button type="button" className="panel__toolbar-btn" onClick={downloadGlb} disabled={!modelName}>
-                    <IconDownload/>
-                    Download glb
-                </button>
 
             </div>
+
+            <ModelDropOverlay visible={draggingFiles}/>
 
             {/* the needle-engine element manages its own canvas, so this pane only has to be a
                 sized, clipped box inside the panel body */}
