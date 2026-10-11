@@ -7,7 +7,7 @@ import type { IInteractivityGraph } from "../BasicBehaveEngine/types/Interactivi
 import type { ThreeLoadedModel } from "./ThreeLoadedModel";
 import { ThreeDecorator } from "../decorators/ThreeDecorator";
 
-export const INTERACTIVITY_RUNTIME = Symbol.for("@needle-tools/gltf-interactivity/runtime");
+export const INTERACTIVITY_RUNTIME = Symbol.for("three-gltf-interactivity/runtime");
 
 export interface InteractivityRuntimeOptions {
     fps?: number;

@@ -1,5 +1,5 @@
 {
-  "asset": { "version": "2.0", "generator": "@needle-tools/gltf-interactivity fixture" },
+  "asset": { "version": "2.0", "generator": "three-gltf-interactivity fixture" },
   "scene": 0,
   "scenes": [{ "nodes": [0, 1] }],
   "nodes": [
@@ -30,23 +30,18 @@
         "declarations": [{ "op": "pointer/set" }, { "op": "event/onStart" }],
         "nodes": [
           {
+            "declaration": 1,
+            "flows": { "out": { "node": 1, "socket": "in" } }
+          },
+          {
             "declaration": 0,
             "values": { "value": { "type": 0, "value": [1, 0, 0] } },
             "configuration": {
               "pointer": { "value": ["/nodes/0/translation"] },
               "type": { "value": [0] }
-            },
-            "flows": { "out": {}, "err": {} }
-          },
-          {
-            "declaration": 1,
-            "values": {},
-            "configuration": {},
-            "flows": { "out": { "node": 0, "socket": "in" } }
+            }
           }
         ],
-        "variables": [],
-        "events": [],
         "types": [{ "name": "float3", "signature": "float3" }]
       }]
     }

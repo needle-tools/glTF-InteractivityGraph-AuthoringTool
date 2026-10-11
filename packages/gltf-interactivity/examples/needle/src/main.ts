@@ -2,7 +2,7 @@ import "@needle-tools/engine";
 import {
   registerNeedleInteractivity,
   type InteractivityRuntime,
-} from "@needle-tools/gltf-interactivity/needle";
+} from "three-gltf-interactivity/needle";
 import {
   createSampleBrowser,
   type BrowserRuntime,
