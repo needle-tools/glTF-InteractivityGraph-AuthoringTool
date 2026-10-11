@@ -7,8 +7,9 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
+    "@khronosgroup/gltf-interactivity-engine": "file:../../../../src/BasicBehaveEngine",
     "@needle-tools/engine": "6.0.0-alpha",
-    "@needle-tools/gltf-interactivity": "file:../..",
+    "three-gltf-interactivity": "file:../..",
     "three": "npm:@needle-tools/three@0.185.2-alpha.1"
   },
   "devDependencies": {

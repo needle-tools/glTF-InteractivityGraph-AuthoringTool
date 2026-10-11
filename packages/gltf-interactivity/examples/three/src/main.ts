@@ -2,7 +2,7 @@ import {
   getInteractivityRuntime,
   registerGLTFInteractivity,
   type InteractivityRuntime,
-} from "@needle-tools/gltf-interactivity";
+} from "three-gltf-interactivity";
 import {
   Box3,
   Color,
