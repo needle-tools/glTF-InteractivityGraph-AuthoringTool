@@ -35,5 +35,8 @@
             "lines": 70,
             "statements": 70
         }
-    }
+    },
+    "modulePathIgnorePatterns": [
+        "<rootDir>/packages/gltf-interactivity/.cache/"
+    ]
 }

@@ -23,5 +23,8 @@
     ],
     "moduleNameMapper": {
         "^uuid$": "uuid"
-    }
+    },
+    "modulePathIgnorePatterns": [
+        "<rootDir>/packages/gltf-interactivity/.cache/"
+    ]
 }

@@ -17,7 +17,7 @@ test("supports the Three.js release matrix", async ({ context }) => {
       rendererMode: "webgl",
       readyCount: 1,
       nodeX: 1,
-      assertionCount: 7,
+      assertionCount: 8,
     });
     expect(result.coloredPixels).toBeGreaterThan(0);
   }
@@ -41,7 +41,7 @@ test("supports the Needle Engine runtime shapes", async ({ context }) => {
       status: "passed",
       readyCount: 1,
       nodeX: 1,
-      assertionCount: 5,
+      assertionCount: 8,
     });
   }
 });
@@ -61,7 +61,12 @@ async function runPages(context, pages) {
       if (message.type() === "error") diagnostics.push(`console: ${message.text()}`);
     });
     page.on("pageerror", error => diagnostics.push(`pageerror: ${error.stack || error.message}`));
-    page.on("requestfailed", request => diagnostics.push(`requestfailed: ${request.failure()?.errorText || "unknown"} ${request.url()}`));
+    page.on("requestfailed", request => {
+      const reason = request.failure()?.errorText || "unknown";
+      // Disposing the element aborts the SDK's optional startup check; model/worker failures remain fatal.
+      if (reason === "net::ERR_ABORTED" && request.url().startsWith("https://needle.tools/api/v1/needle-engine/check?")) return;
+      diagnostics.push(`requestfailed: ${reason} ${request.url()}`);
+    });
     page.on("response", response => {
       if (response.status() >= 400) diagnostics.push(`response: ${response.status()} ${response.url()}`);
     });
