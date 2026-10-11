@@ -5,6 +5,7 @@ import type {
     GLTFParser,
 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Material, Object3D } from "three";
+import { validateInteractivityExtension } from "../BasicBehaveEngine/validateInteractivity";
 import { GLTFAnimationPointerExtension } from "@needle-tools/three-animation-pointer";
 import {
     buildThreeLoadedModel,
@@ -45,6 +46,9 @@ export class GLTFInteractivityPlugin implements GLTFLoaderPlugin {
         this.shouldInitialize = this.options.initializeWithoutExtension === true
             || this.parser.json.extensions?.KHR_interactivity !== undefined;
         if (!this.shouldInitialize) return;
+
+        const extension = this.parser.json.extensions?.KHR_interactivity;
+        if (extension !== undefined) validateInteractivityExtension(extension);
 
         [this.dependencyMaterials, this.dependencyNodes] = await Promise.all([
             this.parser.getDependencies("material") as Promise<Material[]>,

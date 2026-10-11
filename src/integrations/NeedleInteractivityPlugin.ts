@@ -7,7 +7,7 @@ import {
     type INeedleGLTFExtensionPlugin,
 } from "@needle-tools/engine";
 import type { Camera } from "three";
-import { attachNeedlePointerEvents, type NeedleContext } from "./NeedlePointerEvents";
+import { attachNeedlePointerEvents, attachNeedleXRPointerEvents, type NeedleContext } from "./NeedlePointerEvents";
 import {
     registerGLTFInteractivity,
     type GLTFInteractivityRegistrationOptions,
@@ -30,7 +30,9 @@ export function createNeedleInteractivityPlugin(
             const userOnReady = options.onReady;
             registerGLTFInteractivity(loader, {
                 ...options,
-                manualAnimationUpdates: true,
+                // The graph's delays/ticks use elapsed time. Needle caps its frame delta,
+                // which otherwise makes animations drift after loading or slow frames.
+                manualAnimationUpdates: false,
                 registerAnimationPointer: false,
                 async onReady(runtime, gltf) {
                     bindNeedleRuntime(runtime, context, options.pointerEvents !== false);
@@ -50,7 +52,9 @@ export function registerNeedleInteractivity(
 }
 
 function bindNeedleRuntime(runtime: InteractivityRuntime, context: Context, pointerEvents: boolean): void {
-    runtime.setCamera(context.mainCamera as unknown as Camera);
+    const needleContext = context as unknown as NeedleContext;
+    const xrInput = pointerEvents ? attachNeedleXRPointerEvents(needleContext, runtime.model, runtime.decorator) : undefined;
+    runtime.setCamera((needleContext.xrCamera ?? context.mainCamera) as Camera);
     if (pointerEvents) {
         runtime.addCleanup(attachNeedlePointerEvents(
             context as unknown as NeedleContext,
@@ -61,8 +65,9 @@ function bindNeedleRuntime(runtime: InteractivityRuntime, context: Context, poin
 
     const removeUpdate = onUpdate((currentContext) => {
         if (currentContext !== context) return;
-        runtime.setCamera(context.mainCamera as unknown as Camera);
+        runtime.setCamera((needleContext.xrCamera ?? context.mainCamera) as Camera);
         runtime.update(context.time.deltaTime);
+        xrInput?.update();
     });
     const removeClear = onClear((currentContext) => {
         if (currentContext !== context) return;
@@ -70,4 +75,5 @@ function bindNeedleRuntime(runtime: InteractivityRuntime, context: Context, poin
     });
     runtime.addCleanup(removeUpdate);
     runtime.addCleanup(removeClear);
+    if (xrInput) runtime.addCleanup(() => xrInput.dispose());
 }
