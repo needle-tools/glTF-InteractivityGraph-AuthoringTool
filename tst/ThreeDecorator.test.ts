@@ -1,10 +1,27 @@
-import { AnimationClip, BufferGeometry, Group, MathUtils, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera, Texture } from "three";
+import {
+    AnimationClip,
+    ArrayCamera,
+    BufferGeometry,
+    Group,
+    MathUtils,
+    Mesh,
+    MeshPhysicalMaterial,
+    MeshStandardMaterial,
+    PerspectiveCamera,
+    Texture,
+} from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BasicBehaveEngine } from "../src/BasicBehaveEngine/BasicBehaveEngine";
 import { DOMEventBus } from "../src/BasicBehaveEngine/eventBuses/DOMEventBus";
-import { buildThreeLoadedModel, disposeThreeLoadedModel } from "../src/components/engineViews/threeLoadedModel";
+import {
+    buildThreeLoadedModel,
+    disposeThreeLoadedModel,
+} from "../src/components/engineViews/threeLoadedModel";
 import { ThreeDecorator } from "../src/decorators/ThreeDecorator";
-import { completeGltfMaterial, schemaMaterialPointers } from "./materialPointerFixture";
+import {
+    completeGltfMaterial,
+    schemaMaterialPointers,
+} from "./materialPointerFixture";
 
 describe("ThreeDecorator", () => {
     it("maps extension state and live pointers onto loaded Three objects", () => {
@@ -17,19 +34,26 @@ describe("ThreeDecorator", () => {
         scene.add(node);
 
         const gltf = {
+            extensionsUsed: ["KHR_node_visibility", "KHR_physics_rigid_bodies"],
             scene: 0,
             scenes: [{ nodes: [0] }],
-            nodes: [{
-                mesh: 0,
-                weights: [0.6, 0.2],
-                extensions: {
-                    KHR_node_visibility: { visible: false },
-                    KHR_node_selectability: { selectable: false },
-                    KHR_node_hoverability: { hoverable: false },
+            nodes: [
+                {
+                    mesh: 0,
+                    weights: [0.6, 0.2],
+                    extensions: {
+                        KHR_node_visibility: { visible: false },
+                        KHR_node_selectability: { selectable: false },
+                        KHR_node_hoverability: { hoverable: false },
+                    },
                 },
-            }],
-            meshes: [{ weights: [0.1, 0.2], primitives: [{ targets: [{}, {}] }] }],
-            materials: [{ pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1] } }],
+            ],
+            meshes: [
+                { weights: [0.1, 0.2], primitives: [{ targets: [{}, {}] }] },
+            ],
+            materials: [
+                { pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1] } },
+            ],
         };
         const result = {
             scene,
@@ -39,7 +63,10 @@ describe("ThreeDecorator", () => {
             asset: {},
             parser: {
                 json: gltf,
-                associations: new Map<object, { nodes?: number; materials?: number } | undefined>([
+                associations: new Map<
+                    object,
+                    { nodes?: number; materials?: number } | undefined
+                >([
                     [node, { nodes: 0 }],
                     [material, { materials: 0 }],
                     [new MeshStandardMaterial(), undefined],
@@ -49,16 +76,35 @@ describe("ThreeDecorator", () => {
         } as unknown as GLTF;
 
         const model = buildThreeLoadedModel(result);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        const decorator = new ThreeDecorator(
+            new BasicBehaveEngine(60, new DOMEventBus()),
+            model,
+        );
         try {
             expect(node.visible).toBe(false);
+            expect(
+                decorator.getPathValue(
+                    "/extensions/KHR_interactivity/asset/extensions/KHR_node_visibility/enabled",
+                ),
+            ).toEqual([true]);
+            expect(
+                decorator.getPathValue(
+                    "/extensions/KHR_interactivity/asset/extensions/KHR_physics_rigid_bodies/enabled",
+                ),
+            ).toBeUndefined();
             expect(node.userData.selectable).toBe(false);
             expect(node.userData.hoverable).toBe(false);
             expect(decorator.getPathValue("/nodes/0/weights/0")).toEqual([0.6]);
 
-            decorator.setPathValue("/nodes/0/extensions/KHR_node_visibility/visible", [true]);
+            decorator.setPathValue(
+                "/nodes/0/extensions/KHR_node_visibility/visible",
+                [true],
+            );
             decorator.setPathValue("/nodes/0/weights/0", [0.9]);
-            decorator.setPathValue("/materials/0/pbrMetallicRoughness/baseColorFactor", [0.25, 0.5, 0.75, 0.8]);
+            decorator.setPathValue(
+                "/materials/0/pbrMetallicRoughness/baseColorFactor",
+                [0.25, 0.5, 0.75, 0.8],
+            );
 
             expect(node.visible).toBe(true);
             expect(mesh.morphTargetInfluences).toEqual([0.9, 0.2]);
@@ -72,8 +118,14 @@ describe("ThreeDecorator", () => {
 
     it("maps repeated mesh clones by glTF hierarchy instead of shared loader associations", () => {
         const scene = new Group();
-        const first = new Mesh(new BufferGeometry(), new MeshStandardMaterial());
-        const second = new Mesh(new BufferGeometry(), new MeshStandardMaterial());
+        const first = new Mesh(
+            new BufferGeometry(),
+            new MeshStandardMaterial(),
+        );
+        const second = new Mesh(
+            new BufferGeometry(),
+            new MeshStandardMaterial(),
+        );
         scene.add(first, second);
         const sharedAssociation = { meshes: 0, primitives: 0, nodes: 1 };
         const result = {
@@ -88,12 +140,18 @@ describe("ThreeDecorator", () => {
                     nodes: [{ mesh: 0 }, { mesh: 0 }],
                     meshes: [{ primitives: [{}] }],
                 },
-                associations: new Map([[first, sharedAssociation], [second, sharedAssociation]]),
+                associations: new Map([
+                    [first, sharedAssociation],
+                    [second, sharedAssociation],
+                ]),
             },
         } as unknown as GLTF;
 
         const model = buildThreeLoadedModel(result);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        const decorator = new ThreeDecorator(
+            new BasicBehaveEngine(60, new DOMEventBus()),
+            model,
+        );
         try {
             decorator.setPathValue("/nodes/0/translation", [1, 2, 3]);
             expect(first.position.toArray()).toEqual([1, 2, 3]);
@@ -111,7 +169,9 @@ describe("ThreeDecorator", () => {
         const activeNode = new Group();
         const childNode = new Group();
         const inactiveNode = new Group();
-        inactiveNode.add(new Mesh(new BufferGeometry(), new MeshStandardMaterial()));
+        inactiveNode.add(
+            new Mesh(new BufferGeometry(), new MeshStandardMaterial()),
+        );
         const nodeWithoutMesh = new Group();
         activeNode.add(childNode);
         scene.add(activeNode);
@@ -125,7 +185,10 @@ describe("ThreeDecorator", () => {
                     scene: 0,
                     scenes: [{ nodes: [0] }],
                     nodes: [{ children: [1], mesh: 0 }, {}, { mesh: 1 }, {}],
-                    meshes: [{ primitives: [{ material: 0 }] }, { primitives: [{}] }],
+                    meshes: [
+                        { primitives: [{ material: 0 }] },
+                        { primitives: [{}] },
+                    ],
                     materials: [{}],
                     animations: [{}],
                 },
@@ -133,18 +196,39 @@ describe("ThreeDecorator", () => {
             },
         } as unknown as GLTF;
 
-        const model = buildThreeLoadedModel(result, [], [activeNode, childNode, inactiveNode, nodeWithoutMesh]);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        const model = buildThreeLoadedModel(
+            result,
+            [],
+            [activeNode, childNode, inactiveNode, nodeWithoutMesh],
+        );
+        const decorator = new ThreeDecorator(
+            new BasicBehaveEngine(60, new DOMEventBus()),
+            model,
+        );
         try {
-            expect(decorator.getPathValue("/scenes/0/nodes/0")).toEqual(["/nodes/0"]);
-            expect(decorator.getPathValue("/nodes/0/children/0")).toEqual(["/nodes/1"]);
-            expect(decorator.getPathValue("/nodes/0/mesh")).toEqual(["/meshes/0"]);
-            expect(decorator.getPathValue("/meshes/0/primitives/0/material")).toEqual(["/materials/0"]);
-            expect(decorator.getPathValue("/animations/0")).toEqual(["/animations/0"]);
+            expect(decorator.getPathValue("/scenes/0/nodes/0")).toEqual([
+                "/nodes/0",
+            ]);
+            expect(decorator.getPathValue("/nodes/0/children/0")).toEqual([
+                "/nodes/1",
+            ]);
+            expect(decorator.getPathValue("/nodes/0/mesh")).toEqual([
+                "/meshes/0",
+            ]);
+            expect(
+                decorator.getPathValue("/meshes/0/primitives/0/material"),
+            ).toEqual(["/materials/0"]);
+            expect(decorator.getPathValue("/animations/0")).toEqual([
+                "/animations/0",
+            ]);
             expect(decorator.isValidJsonPtr("/animations/0/")).toBe(false);
 
-            expect(decorator.getPathValue("/nodes/2/weights.length")).toEqual([0]);
-            expect(decorator.isValidJsonPtr("/nodes/3/weights.length")).toBe(false);
+            expect(decorator.getPathValue("/nodes/2/weights.length")).toEqual([
+                0,
+            ]);
+            expect(decorator.isValidJsonPtr("/nodes/3/weights.length")).toBe(
+                false,
+            );
             expect(decorator.isValidJsonPtr("/nodes/0/name")).toBe(false);
 
             decorator.setPathValue("/nodes/2/translation", [4, 5, 6]);
@@ -172,12 +256,24 @@ describe("ThreeDecorator", () => {
                     scenes: [{ nodes: [0] }],
                     nodes: [{ mesh: 0 }],
                     meshes: [{ primitives: [{ material: 0 }] }],
-                    materials: [{
-                        pbrMetallicRoughness: { baseColorTexture: { index: 0 } },
-                        extensions: { KHR_materials_ior: { ior: 1.5 } },
-                    }],
+                    materials: [
+                        {
+                            pbrMetallicRoughness: {
+                                baseColorTexture: { index: 0 },
+                            },
+                            extensions: { KHR_materials_ior: { ior: 1.5 } },
+                        },
+                    ],
                 },
-                associations: new Map<object, { materials?: number; meshes?: number; primitives?: number; nodes?: number }>([
+                associations: new Map<
+                    object,
+                    {
+                        materials?: number;
+                        meshes?: number;
+                        primitives?: number;
+                        nodes?: number;
+                    }
+                >([
                     [material, { materials: 0 }],
                     [mesh, { meshes: 0, primitives: 0, nodes: 0 }],
                 ]),
@@ -185,17 +281,31 @@ describe("ThreeDecorator", () => {
         } as unknown as GLTF;
 
         const model = buildThreeLoadedModel(result);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        const decorator = new ThreeDecorator(
+            new BasicBehaveEngine(60, new DOMEventBus()),
+            model,
+        );
         try {
-            const transform = "/materials/0/pbrMetallicRoughness/baseColorTexture/extensions/KHR_texture_transform";
-            decorator.setPathValue("/materials/0/extensions/KHR_materials_ior/ior", [2.1]);
+            const transform =
+                "/materials/0/pbrMetallicRoughness/baseColorTexture/extensions/KHR_texture_transform";
+            decorator.setPathValue(
+                "/materials/0/extensions/KHR_materials_ior/ior",
+                [2.1],
+            );
             decorator.setPathValue(`${transform}/offset`, [0.25, 0.75]);
-            decorator.setPathValue("/materials/0/pbrMetallicRoughness/baseColorTexture/texCoord", [2]);
+            decorator.setPathValue(
+                "/materials/0/pbrMetallicRoughness/baseColorTexture/texCoord",
+                [2],
+            );
 
             expect(material.ior).toBe(2.1);
             expect(material.map.offset.toArray()).toEqual([0.25, 0.75]);
             expect(material.map.channel).toBe(2);
-            expect(decorator.isValidJsonPtr("/materials/0/extensions/KHR_materials_clearcoat/clearcoatFactor")).toBe(false);
+            expect(
+                decorator.isValidJsonPtr(
+                    "/materials/0/extensions/KHR_materials_clearcoat/clearcoatFactor",
+                ),
+            ).toBe(false);
         } finally {
             decorator.dispose();
             disposeThreeLoadedModel(model);
@@ -221,7 +331,15 @@ describe("ThreeDecorator", () => {
                     meshes: [{ primitives: [{ material: 0 }] }],
                     materials: [gltfMaterial],
                 },
-                associations: new Map<object, { materials?: number; meshes?: number; primitives?: number; nodes?: number }>([
+                associations: new Map<
+                    object,
+                    {
+                        materials?: number;
+                        meshes?: number;
+                        primitives?: number;
+                        nodes?: number;
+                    }
+                >([
                     [material, { materials: 0 }],
                     [mesh, { meshes: 0, primitives: 0, nodes: 0 }],
                 ]),
@@ -229,15 +347,22 @@ describe("ThreeDecorator", () => {
         } as unknown as GLTF;
 
         const model = buildThreeLoadedModel(result);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        const decorator = new ThreeDecorator(
+            new BasicBehaveEngine(60, new DOMEventBus()),
+            model,
+        );
         try {
             const expected = schemaMaterialPointers();
             const registered = new Set(decorator.getRegisteredJsonPointers());
-            const missing = [...expected.keys()].filter((path) => !registered.has(path));
+            const missing = [...expected.keys()].filter(
+                (path) => !registered.has(path),
+            );
 
             expect(missing).toEqual([]);
             for (const [path, definition] of expected) {
-                expect(decorator.getPathTypeName(path)).toBe(definition.typeName);
+                expect(decorator.getPathTypeName(path)).toBe(
+                    definition.typeName,
+                );
                 expect(decorator.isReadOnly(path)).toBe(definition.readOnly);
                 expect(decorator.getPathValue(path)).toBeDefined();
             }
@@ -263,24 +388,69 @@ describe("ThreeDecorator", () => {
                     scene: 0,
                     scenes: [{ nodes: [0] }],
                     nodes: [{ camera: 0 }],
-                    cameras: [{ perspective: { aspectRatio: 1.5, yfov: MathUtils.degToRad(45), znear: 0.1, zfar: 100 } }],
+                    cameras: [
+                        {
+                            perspective: {
+                                aspectRatio: 1.5,
+                                yfov: MathUtils.degToRad(45),
+                                znear: 0.1,
+                                zfar: 100,
+                            },
+                        },
+                    ],
                 },
                 associations: new Map(),
             },
         } as unknown as GLTF;
 
         const model = buildThreeLoadedModel(result);
-        const decorator = new ThreeDecorator(new BasicBehaveEngine(60, new DOMEventBus()), model);
+        const decorator = new ThreeDecorator(
+            new BasicBehaveEngine(60, new DOMEventBus()),
+            model,
+        );
         try {
             decorator.setCamera(camera);
-            decorator.setPathValue("/cameras/0/perspective/yfov", [Math.PI / 3]);
+            decorator.setPathValue("/cameras/0/perspective/yfov", [
+                Math.PI / 3,
+            ]);
             decorator.setPathValue("/cameras/0/perspective/aspectRatio", [2]);
 
             expect(camera.fov).toBeCloseTo(60);
             expect(camera.aspect).toBe(2);
-            expect(decorator.getPathValue("/extensions/KHR_interactivity/activeCamera/position")).toEqual([3, 3, 4]);
-            expect(decorator.getPathValue("/extensions/KHR_interactivity/activeCamera/perspective/yfov")).toEqual([Math.PI / 3]);
-            expect(decorator.isReadOnly("/extensions/KHR_interactivity/activeCamera/position")).toBe(true);
+            expect(
+                decorator.getPathValue(
+                    "/extensions/KHR_interactivity/activeCamera/position",
+                ),
+            ).toEqual([3, 3, 4]);
+            expect(
+                decorator.getPathValue(
+                    "/extensions/KHR_interactivity/activeCamera/perspective/yfov",
+                ),
+            ).toEqual([Math.PI / 3]);
+            expect(
+                decorator.isReadOnly(
+                    "/extensions/KHR_interactivity/activeCamera/position",
+                ),
+            ).toBe(true);
+            const xrCamera = new ArrayCamera();
+            xrCamera.projectionMatrix.copy(
+                new PerspectiveCamera(80, 1.4, 0.1, 100).projectionMatrix,
+            );
+            decorator.setCamera(xrCamera);
+            expect(
+                (
+                    decorator.getPathValue(
+                        "/extensions/KHR_interactivity/activeCamera/perspective/yfov",
+                    ) as number[]
+                )[0],
+            ).toBeCloseTo(MathUtils.degToRad(80));
+            expect(
+                (
+                    decorator.getPathValue(
+                        "/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio",
+                    ) as number[]
+                )[0],
+            ).toBeCloseTo(1.4);
         } finally {
             decorator.dispose();
             disposeThreeLoadedModel(model);
@@ -315,3 +485,64 @@ function completePhysicalMaterial(): MeshPhysicalMaterial {
     }
     return material;
 }
+
+describe("Three animation stopAt completion", () => {
+    const cases = [
+        { start: 1, end: 3, stop: 2, stopped: true, completion: 2 },
+        { start: 3, end: 1, stop: 2, stopped: true, completion: 2 },
+        { start: 1, end: 3, stop: 3, stopped: false, completion: 3 },
+        { start: 1, end: 3, stop: 4, stopped: false, completion: 3 },
+        { start: 1, end: 3, stop: 0, stopped: false, completion: 3 },
+        { start: 3, end: 1, stop: 1, stopped: false, completion: 1 },
+        { start: 3, end: 1, stop: 0, stopped: false, completion: 1 },
+        { start: 3, end: 1, stop: 4, stopped: false, completion: 1 },
+        { start: 1, end: 1, stop: 1, stopped: false, completion: 1 },
+    ];
+    it.each(cases)(
+        "start=$start end=$end stop=$stop selects the correct completion",
+        ({ start, end, stop, stopped, completion }) => {
+            const scene = new Group();
+            const result = {
+                scene,
+                scenes: [scene],
+                cameras: [],
+                animations: [new AnimationClip("test", 4, [])],
+                parser: {
+                    json: { asset: { version: "2.0" }, animations: [{}] },
+                    associations: new Map(),
+                },
+                userData: {},
+            } as unknown as GLTF;
+            const model = buildThreeLoadedModel(result);
+            const decorator = new ThreeDecorator(
+                new BasicBehaveEngine(60, new DOMEventBus()),
+                model,
+            );
+            let done = 0,
+                stopDone = 0;
+            try {
+                decorator.setManualAnimationUpdates(true);
+                decorator.startAnimation(0, start, end, 1, () => done++);
+                decorator.stopAnimationAt(0, stop, () => stopDone++);
+                decorator.updateAnimations(3);
+                expect(done).toBe(stopped ? 0 : 1);
+                expect(stopDone).toBe(stopped ? 1 : 0);
+                expect(
+                    decorator.getPathValue(
+                        "/animations/0/extensions/KHR_interactivity/isPlaying",
+                    ),
+                ).toEqual([false]);
+                expect(
+                    decorator.getPathValue(
+                        "/animations/0/extensions/KHR_interactivity/playhead",
+                    ),
+                ).toEqual([completion]);
+                decorator.updateAnimations(3);
+                expect(done + stopDone).toBe(1);
+            } finally {
+                decorator.dispose();
+                disposeThreeLoadedModel(model);
+            }
+        },
+    );
+});

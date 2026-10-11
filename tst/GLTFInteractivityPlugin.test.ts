@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { Group, PerspectiveCamera } from "three";
+import { AnimationClip, Group, PerspectiveCamera, VectorKeyframeTrack } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { TextDecoder } from "util";
 import {
@@ -19,7 +19,7 @@ const EMPTY_INTERACTIVITY_GLTF = {
     extensions: {
         KHR_interactivity: {
             graph: 0,
-            graphs: [{ declarations: [], nodes: [], variables: [], types: [], events: [] }],
+            graphs: [{}],
         },
     },
 };
@@ -148,10 +148,12 @@ describe("Needle interactivity registration", () => {
 
         const context = {
             mainCamera: new PerspectiveCamera(),
+            xrCamera: new PerspectiveCamera() as PerspectiveCamera | undefined,
             renderer: { domElement: document.createElement("canvas") },
             physics: {},
             time: { deltaTime: 1 / 60 },
         };
+        context.xrCamera!.position.set(3, 4, 5);
         const loader = new GLTFLoader();
         const register = jest.spyOn(loader, "register");
         const plugin = createNeedleInteractivityPlugin({ autoStart: false, pointerEvents: false });
@@ -162,9 +164,28 @@ describe("Needle interactivity registration", () => {
         const dispose = jest.spyOn(runtime!, "dispose");
 
         expect(runtime).toBeDefined();
+        expect(runtime!.decorator.getPathValue("/extensions/KHR_interactivity/activeCamera/position")).toEqual([3, 4, 5]);
         expect(updateCallbacks).toHaveLength(1);
         expect(clearCallbacks).toHaveLength(1);
+        // A long frame must not slow animation relative to graph delays and ticks.
+        runtime!.model.animations.push(new AnimationClip("clock", 1, [
+            new VectorKeyframeTrack(".position", [0, 1], [0, 0, 0, 1, 0, 0]),
+        ]));
+        runtime!.decorator.registerKnownPointers();
+        jest.useFakeTimers();
+        try {
+            runtime!.decorator.startAnimation(0, 0, 1, 1, () => undefined);
+            jest.advanceTimersByTime(120);
+            context.time.deltaTime = 0.01;
+            updateCallbacks[0](context);
+            const playhead = runtime!.decorator.getPathValue("/animations/0/extensions/KHR_interactivity/playhead") as number[];
+            expect(playhead[0]).toBeGreaterThan(0.1);
+            expect(runtime!.model.scene.position.x).toBeCloseTo(playhead[0], 5);
+            runtime!.decorator.stopAnimation(0);
+        } finally { jest.useRealTimers(); }
+        context.xrCamera = undefined;
         updateCallbacks[0](context);
+        expect(runtime!.decorator.getPathValue("/extensions/KHR_interactivity/activeCamera/position")).toEqual([0, 0, 0]);
         clearCallbacks[0](context);
         expect(dispose).toHaveBeenCalledTimes(1);
 

@@ -89,8 +89,14 @@ export function registerThreeActiveCameraPointers(camera: Camera, register: Thre
     register("/extensions/KHR_interactivity/activeCamera/position", "float3", () => camera.getWorldPosition(worldPosition).toArray(), undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/rotation", "float4", () => camera.getWorldQuaternion(worldRotation).toArray(), undefined, true);
 
-    register("/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio", "float", () => [isPerspectiveCamera(camera) ? camera.aspect : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/perspective/yfov", "float", () => [isPerspectiveCamera(camera) ? MathUtils.degToRad(camera.fov) : NaN], undefined, true);
+    // WebXR writes ArrayCamera projection matrices without updating its fov/aspect fields.
+    const projectionDriven = (camera as Camera & { isArrayCamera?: boolean }).isArrayCamera === true;
+    register("/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio", "float", () => [isPerspectiveCamera(camera) ? (projectionDriven ? camera.projectionMatrix.elements[5] / camera.projectionMatrix.elements[0] : camera.aspect) : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/perspective/yfov", "float", () => {
+        if (!isPerspectiveCamera(camera)) return [NaN];
+        const matrix = camera.projectionMatrix.elements;
+        return [projectionDriven ? Math.atan((matrix[9] + 1) / matrix[5]) - Math.atan((matrix[9] - 1) / matrix[5]) : MathUtils.degToRad(camera.fov)];
+    }, undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/perspective/znear", "float", () => [isPerspectiveCamera(camera) ? camera.near : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/perspective/zfar", "float", () => [isPerspectiveCamera(camera) ? camera.far : NaN], undefined, true);
 
