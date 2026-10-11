@@ -1,9 +1,10 @@
 import * as THREE from "three";
+import { BasicBehaveEngine } from "@khronosgroup/gltf-interactivity-engine";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
   getInteractivityRuntime,
   registerGLTFInteractivity,
-} from "@needle-tools/gltf-interactivity";
+} from "three-gltf-interactivity";
 
 const config = window.__GLTF_INTERACTIVITY_MATRIX_CONFIG__;
 
@@ -36,6 +37,7 @@ async function runSuite() {
     const gltf = await loader.loadAsync(config.fixtureUrl);
     runtime = getInteractivityRuntime(gltf);
     assert(runtime, "the loader attached an interactivity runtime");
+    assert(runtime.engine instanceof BasicBehaveEngine,"the runtime uses its installed Khronos dependency");
     assert(readyCount === 1, "the runtime was created exactly once");
     assert(getInteractivityRuntime(runtime.model) === runtime, "the model shares the loader runtime");
     assert(runtime.model.nodes[0]?.position.x === 1, "event/onStart ran before loadAsync resolved");
@@ -62,7 +64,7 @@ async function runSuite() {
       readyCount,
       nodeX: runtime.model.nodes[0].position.x,
       coloredPixels,
-      assertionCount: 7,
+      assertionCount: 8,
     };
   }
   finally {

@@ -1,8 +1,10 @@
 import "@needle-tools/engine";
+import * as THREE from "three";
+import { BasicBehaveEngine } from "@khronosgroup/gltf-interactivity-engine";
 import {
   getInteractivityRuntime,
   registerNeedleInteractivity,
-} from "@needle-tools/gltf-interactivity/needle";
+} from "three-gltf-interactivity/needle";
 
 const config = window.__GLTF_INTERACTIVITY_MATRIX_CONFIG__;
 
@@ -39,6 +41,9 @@ async function runSuite() {
     await waitFor(() => runtime?.model.nodes[0]?.position.x === 1);
 
     assert(runtime, "Needle created the interactivity runtime during import");
+    assert(runtime.engine instanceof BasicBehaveEngine,"Needle uses the installed Khronos engine dependency");
+    assert(engine.context.scene instanceof THREE.Object3D, "Needle uses the mapped host Three instance");
+    assert(runtime.model.mixer instanceof THREE.AnimationMixer, "the adapter uses the same host Three instance");
     assert(readyCount === 1, "Needle created the runtime exactly once");
     assert(getInteractivityRuntime(loadedFile) === runtime, "Needle returned the loader-attached runtime");
     assert(runtime.model.nodes[0]?.position.x === 1, "the graph started automatically while loading");
@@ -51,7 +56,7 @@ async function runSuite() {
       runtimeShape: config.runtimeShape,
       readyCount,
       nodeX: runtime.model.nodes[0].position.x,
-      assertionCount: 5,
+      assertionCount: 8,
     };
   }
   finally {
