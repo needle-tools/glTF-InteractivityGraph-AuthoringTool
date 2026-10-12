@@ -39,9 +39,10 @@ class Bus {
     delete this.pointers[id];
   };
 }
-export function runGraph(graph) {
+export function runGraph(graph, configure) {
   const bus = new Bus(),
     engine = new BasicBehaveEngine(60, bus);
+  configure?.(engine);
   engine.loadBehaveGraph(graph, false);
   engine.executeEventQueueTick();
   return {

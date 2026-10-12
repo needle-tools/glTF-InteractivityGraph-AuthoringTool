@@ -17,7 +17,7 @@ export class VM {
                 case OPS.READ:case OPS.WRITE:{
                     if(!this.scene)throw new Error('A scene adapter is required');const descriptor=p.io[a],args=stack.splice(stack.length-b,b),indices=args.slice(0,descriptor.indices.length);
                     if(op===OPS.READ)stack.push(Number(this.scene.get(descriptor.path,indices)));
-                    else{const values=args.slice(indices.length);this.scene.set(descriptor.path,indices,descriptor.type==='float3'?values:descriptor.type==='bool'?Boolean(values[0]):values[0]);stack.push(0);}break;
+                    else{const values=args.slice(indices.length);this.scene.set(descriptor.path,indices,['float3','float4'].includes(descriptor.type)?values:descriptor.type==='bool'?Boolean(values[0]):values[0]);stack.push(0);}break;
                 }
                 case OPS.AND_VALUE:binary((a,b)=>a?b:a);break;case OPS.OR_VALUE:binary((a,b)=>a?a:b);break;
                 case OPS.SELECT:{const no=pop(),yes=pop(),condition=pop();stack.push(condition?yes:no);break;}

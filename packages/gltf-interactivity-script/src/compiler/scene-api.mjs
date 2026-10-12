@@ -3,6 +3,7 @@ export function sceneCall(node,fail) {
     const name=node.callee.property.name;
     const methods={
         setTranslation:{path:'/nodes/[node]/translation',type:'float3',write:true,arity:4},
+        setRotation:{path:'/nodes/[node]/rotation',type:'float4',write:true,arity:5},
         setScale:{path:'/nodes/[node]/scale',type:'float3',write:true,arity:4},
         setVisible:{path:'/nodes/[node]/extensions/KHR_node_visibility/visible',type:'bool',write:true,arity:2},
         getVisible:{path:'/nodes/[node]/extensions/KHR_node_visibility/visible',type:'bool',arity:1},

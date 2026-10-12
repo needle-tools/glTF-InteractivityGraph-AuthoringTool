@@ -905,13 +905,15 @@ export function lowerStructured(
             return nodeValue(g.pointer(d.path, d.type, indices), d.type, flow);
           const values = result.slice(d.indices.length),
             value =
-              d.type === "float3"
-                ? g.vec3(...values.map(numeric))
-                : d.type === "bool"
-                  ? truth(values[0])
-                  : d.type === "int"
-                    ? integer(values[0])
-                    : numeric(values[0]);
+              d.type === "float4"
+                ? g.vec4(...values.map(numeric))
+                : d.type === "float3"
+                  ? g.vec3(...values.map(numeric))
+                  : d.type === "bool"
+                    ? truth(values[0])
+                    : d.type === "int"
+                      ? integer(values[0])
+                      : numeric(values[0]);
           flow.push(g.write(d.path, d.type, value, indices));
           return nodeValue(f(0), "float", flow);
         }
