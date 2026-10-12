@@ -1,0 +1,60 @@
+{
+  "name": "gltf-interactivity-script",
+  "version": "0.1.0",
+  "description": "Agent-oriented JavaScript compiler and typed primitive API for KHR_interactivity",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "Apache-2.0",
+  "bin": {
+    "gltf-interactivity-script": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.mts",
+      "import": "./src/index.mjs"
+    },
+    "./reference": {
+      "types": "./src/reference.d.mts",
+      "import": "./src/reference.mjs"
+    },
+    "./globals": {
+      "types": "./src/globals.d.mts",
+      "import": "./src/globals.mjs"
+    },
+    "./catalog": {
+      "types": "./src/catalog.d.mts",
+      "import": "./src/catalog.mjs"
+    }
+  },
+  "files": [
+    "src",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "AGENT_GUIDE.md"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate-catalog.mjs",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc -p test/tsconfig.json",
+    "prepack": "npm run typecheck",
+    "test:examples": "node scripts/test-examples.mjs"
+  },
+  "dependencies": {
+    "@khronosgroup/gltf-interactivity-engine": "^1.1.0",
+    "acorn": "^8.15.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/needle-tools/glTF-InteractivityGraph-AuthoringTool.git",
+    "directory": "packages/gltf-interactivity-script"
+  }
+}
