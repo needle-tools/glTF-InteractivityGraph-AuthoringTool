@@ -3,7 +3,7 @@ import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BasicBehaveEngine } from "../BasicBehaveEngine/BasicBehaveEngine";
 import { DOMEventBus } from "../BasicBehaveEngine/eventBuses/DOMEventBus";
 import type { IEventBus } from "../BasicBehaveEngine/IBehaveEngine";
-import type { IInteractivityGraph } from "../BasicBehaveEngine/types/InteractivityGraph";
+import { getCustomEventChannel, type IInteractivityGraph } from "../BasicBehaveEngine/types/InteractivityGraph";
 import type { ThreeLoadedModel } from "./ThreeLoadedModel";
 import { ThreeDecorator } from "../decorators/ThreeDecorator";
 
@@ -44,8 +44,16 @@ export class InteractivityRuntime {
         return true;
     }
 
-    setCamera(camera: Camera): void {
+    setCamera(camera: Camera | null): void {
         this.decorator.setCamera(camera);
+    }
+
+    /** Dispatch an event declared by the active graph using its portable id. */
+    sendEvent(id: string, values: Record<string, unknown> = {}): void {
+        const events = this.graph?.events ?? [];
+        const index = events.findIndex(event => event.id === id);
+        if (index < 0) throw new Error(`Unknown interactivity event: ${id}`);
+        this.engine.dispatchCustomEvent(getCustomEventChannel(events[index], index), values);
     }
 
     attachPointerEvents(domElement: HTMLElement): void {
