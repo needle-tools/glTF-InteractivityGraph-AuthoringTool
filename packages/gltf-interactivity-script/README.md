@@ -120,7 +120,7 @@ function frame(time, delta) {
 events.onFrame(frame);
 ```
 
-`getTranslationX/Y/Z`, `getScaleX/Y/Z`, and `getRotationX/Y/Z/W` return numbers. `setBaseColor(material, r, g, b, a)` writes the complete float4 material factor. Vector object-model properties are atomic; numeric authoring should use these helpers rather than scalar pointer paths into individual components. `Asset.mesh` also preserves RGB/RGBA `color` attributes as standard `COLOR_0`; RGBA vertex alpha supports soft unlit footprints without textures or renderer-specific shaders.
+`getTranslationX/Y/Z`, `getScaleX/Y/Z`, and `getRotationX/Y/Z/W` return numbers. `setBaseColor(material, r, g, b, a)` writes the complete float4 material factor. Vector object-model properties are atomic; numeric authoring should use these helpers rather than scalar pointer paths into individual components. `Asset.mesh` preserves two-component `uv` attributes as standard `TEXCOORD_0`, and RGB/RGBA `color` attributes as standard `COLOR_0`; RGBA vertex alpha supports soft unlit footprints without textures or renderer-specific shaders.
 
 ### Compose source programs with native vector behavior
 

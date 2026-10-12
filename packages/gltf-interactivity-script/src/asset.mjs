@@ -154,6 +154,8 @@ export class Asset {
       ),
       NORMAL: this.accessor(geometry.attributes.normal.array, "VEC3", 34962),
     };
+    const uv = geometry.attributes.uv;
+    if (uv) attributes.TEXCOORD_0 = this.accessor(uv.array, "VEC2", 34962);
     const color = geometry.attributes.color;
     if (color) {
       if (![3, 4].includes(color.itemSize))

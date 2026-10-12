@@ -6,12 +6,14 @@ test("packed mesh retains RGBA vertex colors and alpha values", () => {
   const a = new Asset();
   const material = a.material("Shadow", [0, 0, 0], { unlit: true });
   const colors = new Float32Array([1, 1, 1, 1, 1, 1, 1, 0.5, 1, 1, 1, 0]);
+  const uv = new Float32Array([0, 0, 1, 0, 0, 1]);
   const mesh = a.mesh(
     {
       attributes: {
         position: { array: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]) },
         normal: { array: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]) },
         color: { array: colors, itemSize: 4 },
+        uv: { array: uv, itemSize: 2 },
       },
       dispose() {},
     },
@@ -34,5 +36,15 @@ test("packed mesh retains RGBA vertex colors and alpha values", () => {
       buffer.readFloatLE(view.byteOffset + i * 4),
     ),
     Array.from(colors),
+  );
+  const textureCoordinates = packed.doc.accessors[
+    packed.doc.meshes[0].primitives[0].attributes.TEXCOORD_0
+  ];
+  assert.equal(textureCoordinates.type, "VEC2");
+  assert.equal(textureCoordinates.count, 3);
+  const uvView = packed.doc.bufferViews[textureCoordinates.bufferView];
+  assert.deepEqual(
+    Array.from({ length: 6 }, (_, i) => buffer.readFloatLE(uvView.byteOffset + i * 4)),
+    Array.from(uv),
   );
 });
