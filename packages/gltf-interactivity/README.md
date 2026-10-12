@@ -144,6 +144,16 @@ KHR_INTERACTIVITY_GLTF_REPO=/path/to/glTF node scripts/generate-object-model-sch
 KHR_INTERACTIVITY_GLTF_REPO=/path/to/glTF node scripts/generate-runtime-schema.mjs
 ```
 
+## Host controls
+
+Host controls can dispatch a graph's custom event by its declared ID:
+
+```js
+runtime.sendEvent("mini-chess:self-play", { enabled: true });
+```
+
+The runtime resolves the engine's event channel; callers do not construct an internal channel name. Unknown IDs throw. `runtime.setCamera(null)` exposes all active-camera fields as NaNs until another camera is assigned.
+
 ## Release
 
 1. Submit the core validation, delay fixes and browser packaging changes to Khronos. A maintainer with access to the `@khronosgroup` npm package must publish engine 1.1.0. Confirm that `npm view @khronosgroup/gltf-interactivity-engine version` reports the required release.

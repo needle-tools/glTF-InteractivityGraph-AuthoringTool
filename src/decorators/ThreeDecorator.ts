@@ -60,9 +60,10 @@ export class ThreeDecorator extends ADecorator {
         this.bridgePointerHooks();
         this.bridgeEngineHooks();
         this.registerKnownPointers();
+        registerThreeActiveCameraPointers(null, this.bindPointer);
     }
 
-    setCamera(camera: Camera): void {
+    setCamera(camera: Camera | null): void {
         if (this.camera === camera) return;
         this.camera = camera;
         registerThreeActiveCameraPointers(camera, this.bindPointer);

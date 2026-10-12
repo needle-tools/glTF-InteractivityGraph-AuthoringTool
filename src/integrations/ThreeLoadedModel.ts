@@ -194,11 +194,15 @@ function mapNodeHierarchy(
 
 function collectInstances<T extends Object3D>(root: Object3D, isType: (object: Object3D) => object is T): T[] {
     const instances: T[] = [];
-    root.traverse((object) => {
+    const visit = (object: Object3D): void => {
+        // A child glTF node owns its camera independently of this node.
+        if (object !== root && Number.isInteger(object.userData.gltfNodeIndex)) return;
         if (isType(object)) {
             instances.push(object);
         }
-    });
+        object.children.forEach(visit);
+    };
+    visit(root);
     return instances;
 }
 
