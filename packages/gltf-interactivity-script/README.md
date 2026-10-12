@@ -107,3 +107,42 @@ events.send('app:move', {from: 85, to: 65, ply: 1});
 Interpolation lowers to `pointer/interpolate` with ease-in/out control points. Event IDs and payload keys must be static; numeric/bool expressions become float payload sockets. The engine emits `KHR_INTERACTIVITY:app:move` with the payload in `event.detail`. The reference VM records these in `sentEvents`; it treats interpolation as a final pose for comparison, without simulating time.
 
 The optional `interactivity-script:budget` event accepts `{steps: int}` clamped to 1–65536. Metadata exposes the cooperative state, stack depth, step limit, steps used and slice count. Tick delta is a frame timestamp, not a CPU stopwatch. Hosts requiring a time budget should measure actual tick duration and adjust the quantum; the default fixed quantum bounds work, not milliseconds.
+
+Scene transform components are read through the whole typed vector and standard extraction nodes:
+
+```js
+var target = scene.node('Target');
+function frame(time, delta) {
+  var height = scene.getTranslationY(target);
+  var size = scene.getScaleX(target);
+  scene.setBaseColor(0, 0, 0, 0, .5 / (1 + Math.max(0, height) * 2.8));
+}
+events.onFrame(frame);
+```
+
+`getTranslationX/Y/Z`, `getScaleX/Y/Z`, and `getRotationX/Y/Z/W` return numbers. `setBaseColor(material, r, g, b, a)` writes the complete float4 material factor. Vector object-model properties are atomic; numeric authoring should use these helpers rather than scalar pointer paths into individual components. `Asset.mesh` also preserves RGB/RGBA `color` attributes as standard `COLOR_0`; RGBA vertex alpha supports soft unlit footprints without textures or renderer-specific shaders.
+
+### Compose source programs with native vector behavior
+
+Pass an existing graph to `GraphBuilder` to add typed primitive behavior after source compilation. The builder clones the graph and preserves existing variable/event indices, so compiler metadata remains valid. Use the graph returned by `finish()` when packing the asset; node indices may change during ordering.
+
+```js
+import { compile, GraphBuilder } from 'gltf-interactivity-script';
+
+const compiled = compile(source, { scene });
+const g = new GraphBuilder({ graph: compiled.graph, optimize: false });
+const position = g.pointer('float3', '/nodes/4/translation');
+const components = g.ops.math.extract3({ a: position }).outputs;
+const footprint = g.ops.math.combine3({
+  a: components['0'],
+  b: g.float(0.052),
+  c: components['2'],
+}).outputs.value;
+g.ops.event.onTick().flow().to(
+  g.write('float3', '/nodes/5/translation', footprint),
+);
+compiled.asset.doc.extensions.KHR_interactivity.graphs[0] = g.finish();
+const glb = compiled.asset.pack();
+```
+
+This is useful for transform-following effects: keep whole vectors in typed variables, compare them with `math/eq`, and branch around unchanged writes. The source program and the added behavior both export ordinary KHR_interactivity nodes.

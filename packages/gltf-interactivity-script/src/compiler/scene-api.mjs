@@ -11,9 +11,12 @@ export function sceneCall(node,fail) {
         setVisible:{path:'/nodes/[node]/extensions/KHR_node_visibility/visible',type:'bool',write:true,arity:2},
         getVisible:{path:'/nodes/[node]/extensions/KHR_node_visibility/visible',type:'bool',arity:1},
     };
+    for(const [field,path]of [['Translation','translation'],['Scale','scale'],['Rotation','rotation']])
+      for(const [component,axis]of [...(field==='Rotation'?'XYZW':'XYZ')].entries())methods['get'+field+axis]={path:'/nodes/[node]/'+path,type:field==='Rotation'?'float4':'float3',component,arity:1};
+    methods.setBaseColor={path:'/materials/[material]/pbrMetallicRoughness/baseColorFactor',type:'float4',write:true,indices:['material'],arity:5};
     if(methods[name]) {
         const descriptor=methods[name];if(node.arguments.length!==descriptor.arity)fail(node,'Wrong scene API arity');
-        return {descriptor:{...descriptor,indices:['node']},arguments:node.arguments};
+        return {descriptor:{...descriptor,indices:descriptor.indices??['node']},arguments:node.arguments};
     }
     const generic=/^(get|set)(Float|Bool|Int)$/.exec(name);
     if(!generic)fail(node,'Unsupported scene API '+name);

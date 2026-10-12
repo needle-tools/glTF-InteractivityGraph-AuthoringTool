@@ -117,7 +117,7 @@ export class Asset {
     });
     this.chunks.push(bytes);
     this.length += bytes.length;
-    const components = { SCALAR: 1, VEC3: 3 }[type];
+    const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[type];
     const accessor = {
       bufferView: view,
       componentType:
@@ -154,6 +154,14 @@ export class Asset {
       ),
       NORMAL: this.accessor(geometry.attributes.normal.array, "VEC3", 34962),
     };
+    const color = geometry.attributes.color;
+    if (color) {
+      if (![3, 4].includes(color.itemSize))
+        throw new Error("Vertex colors require RGB or RGBA attributes");
+      attributes.COLOR_0 = this.accessor(
+        color.array, color.itemSize === 4 ? "VEC4" : "VEC3", 34962,
+      );
+    }
     const primitive = { attributes, material };
     if (geometry.index)
       primitive.indices = this.accessor(geometry.index.array, "SCALAR", 34963);

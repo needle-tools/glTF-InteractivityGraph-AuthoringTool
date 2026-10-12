@@ -918,8 +918,12 @@ export function lowerStructured(
             indices = Object.fromEntries(
               d.indices.map((n, j) => [n, integer(result[j])]),
             );
-          if (!d.write)
-            return nodeValue(g.pointer(d.path, d.type, indices), d.type, flow);
+          if (!d.write) {
+            const value = g.pointer(d.path, d.type, indices);
+            return d.component === undefined
+              ? nodeValue(value, d.type, flow)
+              : nodeValue(g.extract(value, d.type, d.component), "float", flow);
+          }
           const values = result.slice(d.indices.length),
             value =
               d.type === "float4"

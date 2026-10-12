@@ -18,7 +18,7 @@ export class VM {
                     const descriptor=p.io[a],args=stack.splice(stack.length-b,b);
                     if(descriptor.kind==='send'){this.sentEvents.push({id:descriptor.id,values:Object.fromEntries(descriptor.keys.map((key,j)=>[key,args[j]]))});stack.push(0);break;}
                     if(!this.scene)throw new Error('A scene adapter is required');const indices=args.slice(0,descriptor.indices.length);
-                    if(op===OPS.READ)stack.push(Number(this.scene.get(descriptor.path,indices)));
+                    if(op===OPS.READ){const value=this.scene.get(descriptor.path,indices);stack.push(Number(descriptor.component===undefined?value:value[descriptor.component]));}
                     else{const values=args.slice(indices.length);this.scene.set(descriptor.path,indices,['float3','float4'].includes(descriptor.type)?values.slice(0,descriptor.type==='float3'?3:4):descriptor.type==='bool'?Boolean(values[0]):values[0]);stack.push(0);}break;
                 }
                 case OPS.AND_VALUE:binary((a,b)=>a?b:a);break;case OPS.OR_VALUE:binary((a,b)=>a?a:b);break;
