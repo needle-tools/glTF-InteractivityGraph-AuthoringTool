@@ -54,7 +54,7 @@ export function registerNeedleInteractivity(
 function bindNeedleRuntime(runtime: InteractivityRuntime, context: Context, pointerEvents: boolean): void {
     const needleContext = context as unknown as NeedleContext;
     const xrInput = pointerEvents ? attachNeedleXRPointerEvents(needleContext, runtime.model, runtime.decorator) : undefined;
-    runtime.setCamera((needleContext.xrCamera ?? context.mainCamera) as Camera);
+    runtime.setCamera((needleContext.xrCamera ?? context.mainCamera ?? null) as Camera | null);
     if (pointerEvents) {
         runtime.addCleanup(attachNeedlePointerEvents(
             context as unknown as NeedleContext,
@@ -65,7 +65,7 @@ function bindNeedleRuntime(runtime: InteractivityRuntime, context: Context, poin
 
     const removeUpdate = onUpdate((currentContext) => {
         if (currentContext !== context) return;
-        runtime.setCamera((needleContext.xrCamera ?? context.mainCamera) as Camera);
+        runtime.setCamera((needleContext.xrCamera ?? context.mainCamera ?? null) as Camera | null);
         runtime.update(context.time.deltaTime);
         xrInput?.update();
     });

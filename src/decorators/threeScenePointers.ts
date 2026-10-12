@@ -83,25 +83,25 @@ function registerNodePointers(model: ThreeLoadedModel, bind: ThreePointerBinder)
     });
 }
 
-export function registerThreeActiveCameraPointers(camera: Camera, register: ThreePointerBinder): void {
+export function registerThreeActiveCameraPointers(camera: Camera | null, register: ThreePointerBinder): void {
     const worldPosition = new Vector3();
     const worldRotation = new Quaternion();
-    register("/extensions/KHR_interactivity/activeCamera/position", "float3", () => camera.getWorldPosition(worldPosition).toArray(), undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/rotation", "float4", () => camera.getWorldQuaternion(worldRotation).toArray(), undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/position", "float3", () => camera ? camera.getWorldPosition(worldPosition).toArray() : [NaN, NaN, NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/rotation", "float4", () => camera ? camera.getWorldQuaternion(worldRotation).toArray() : [NaN, NaN, NaN, NaN], undefined, true);
 
-    // WebXR writes ArrayCamera projection matrices without updating its fov/aspect fields.
-    const projectionDriven = (camera as Camera & { isArrayCamera?: boolean }).isArrayCamera === true;
-    register("/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio", "float", () => [isPerspectiveCamera(camera) ? (projectionDriven ? camera.projectionMatrix.elements[5] / camera.projectionMatrix.elements[0] : camera.aspect) : NaN], undefined, true);
+    // Read the rendered projection: zoom, view offsets and WebXR can all make
+    // the effective frustum differ from the camera's authored fov/aspect fields.
+    register("/extensions/KHR_interactivity/activeCamera/perspective/aspectRatio", "float", () => [isPerspectiveCamera(camera) ? camera.projectionMatrix.elements[5] / camera.projectionMatrix.elements[0] : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/perspective/yfov", "float", () => {
         if (!isPerspectiveCamera(camera)) return [NaN];
         const matrix = camera.projectionMatrix.elements;
-        return [projectionDriven ? Math.atan((matrix[9] + 1) / matrix[5]) - Math.atan((matrix[9] - 1) / matrix[5]) : MathUtils.degToRad(camera.fov)];
+        return [Math.atan((matrix[9] + 1) / matrix[5]) - Math.atan((matrix[9] - 1) / matrix[5])];
     }, undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/perspective/znear", "float", () => [isPerspectiveCamera(camera) ? camera.near : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/perspective/zfar", "float", () => [isPerspectiveCamera(camera) ? camera.far : NaN], undefined, true);
 
-    register("/extensions/KHR_interactivity/activeCamera/orthographic/xmag", "float", () => [isOrthographicCamera(camera) ? (camera.right - camera.left) / 2 : NaN], undefined, true);
-    register("/extensions/KHR_interactivity/activeCamera/orthographic/ymag", "float", () => [isOrthographicCamera(camera) ? (camera.top - camera.bottom) / 2 : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/orthographic/xmag", "float", () => [isOrthographicCamera(camera) ? 1 / camera.projectionMatrix.elements[0] : NaN], undefined, true);
+    register("/extensions/KHR_interactivity/activeCamera/orthographic/ymag", "float", () => [isOrthographicCamera(camera) ? 1 / camera.projectionMatrix.elements[5] : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/orthographic/znear", "float", () => [isOrthographicCamera(camera) ? camera.near : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/orthographic/zfar", "float", () => [isOrthographicCamera(camera) ? camera.far : NaN], undefined, true);
 }
@@ -236,12 +236,12 @@ function scalar(value: unknown): number {
     return Number(Array.isArray(value) ? value[0] : value);
 }
 
-function isPerspectiveCamera(camera: Camera): camera is PerspectiveCamera {
-    return Boolean((camera as PerspectiveCamera).isPerspectiveCamera);
+function isPerspectiveCamera(camera: Camera | null): camera is PerspectiveCamera {
+    return Boolean((camera as PerspectiveCamera | null)?.isPerspectiveCamera);
 }
 
-function isOrthographicCamera(camera: Camera): camera is OrthographicCamera {
-    return Boolean((camera as OrthographicCamera).isOrthographicCamera);
+function isOrthographicCamera(camera: Camera | null): camera is OrthographicCamera {
+    return Boolean((camera as OrthographicCamera | null)?.isOrthographicCamera);
 }
 
 function isPointLight(light: Light): light is PointLight {
