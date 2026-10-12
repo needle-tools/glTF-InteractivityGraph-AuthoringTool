@@ -23,3 +23,5 @@ To check the browser behaviors:
 ```sh
 EXAMPLES_URL=http://127.0.0.1:5328 npm run test:examples -- /path/to/consumer
 ```
+
+[Cooperative motion](cooperative-motion/README.md) demonstrates sliced computation, immediate hover, `pointer/interpolate` and outbound event payloads. Its index entry supplies `stepsPerTick: 32` to the packed example builder.

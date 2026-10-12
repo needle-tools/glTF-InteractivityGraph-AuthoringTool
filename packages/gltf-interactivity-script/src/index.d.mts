@@ -95,6 +95,7 @@ export interface CompileOptions {
   scene?: Asset | GltfDocument;
   entry?: string;
   sourceName?: string;
+  cooperative?: { stepsPerTick?: number; stackCapacity?: number };
   maxDepth?: number;
   arrayCapacity?: number;
   optimize?: boolean;
