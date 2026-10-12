@@ -28,7 +28,7 @@ export class VM {
       seed?: number;
       maxDepth?: number;
       scene?: {
-        get(path: string, indices: number[]): number;
+        get(path: string, indices: number[]): number | boolean | number[];
         set(
           path: string,
           indices: number[],

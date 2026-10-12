@@ -203,3 +203,24 @@ test("public node and value handles retain correct indices after topological ord
     r.dispose();
   }
 });
+
+test('native composition extends a private graph while preserving variable metadata', () => {
+  const original = new GraphBuilder();
+  const first = original.variable('original', 'int', 0);
+  original.ops.event.onStart().flow().to(original.set(first, original.int(7)));
+  const base = original.finish();
+  const snapshot = structuredClone(base);
+  const extension = new GraphBuilder({ graph: base });
+  const second = extension.variable('extension', 'float3', [0, 0, 0]);
+  extension.ops.event.onStart().flow().to(extension.set(second, extension.float3([1, 2, 3])));
+  const graph = extension.finish();
+  assert.deepEqual(base, snapshot);
+  assert.deepEqual(graph.variables[first.id], base.variables[first.id]);
+  const runtime = runGraph(graph);
+  try {
+    assert.deepEqual(runtime.value('original'), [7]);
+    assert.deepEqual(runtime.value('extension'), [1, 2, 3]);
+  } finally {
+    runtime.dispose();
+  }
+});
