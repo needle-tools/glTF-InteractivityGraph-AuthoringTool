@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Interactivity Script Examples</title>
+    <style>
+      body {
+        margin: 0;
+        background: #08141d;
+        color: #e7f3ef;
+        font: 15px system-ui;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      aside {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        padding: 14px 18px;
+        background: #08141dd9;
+        border-radius: 12px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 4px 0;
+      }
+      aside {
+        pointer-events: none;
+      }
+      #reticle {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: #ffd45a;
+        font: 24px monospace;
+        pointer-events: none;
+      }
+      body.grid #reticle {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <h1>Interactivity Script</h1>
+      <p id="status">Loading…</p>
+      <p id="instructions">Click or hover over the quad.</p>
+    </aside>
+    <div id="reticle" aria-hidden="true">+</div>
+    <script type="module" src="./viewer.mjs"></script>
+  </body>
+</html>

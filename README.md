@@ -4,6 +4,8 @@ This README provides an overview and instructions for using the DCC (Digital Con
 
 [Live Link](https://gltf-interactivity.needle.tools/)
 
+For programmatic authoring, [gltf-interactivity-script](packages/gltf-interactivity-script/README.md) compiles numeric JavaScript or typed native graph modules into standalone interactivity GLBs. Its [formatted examples](packages/gltf-interactivity-script/examples) cover selection, cursors, transforms, timers, animation and grid movement.
+
 ## Table of Contents
 - [Introduction](#introduction)
 - [Features](#features)

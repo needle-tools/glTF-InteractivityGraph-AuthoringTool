@@ -95,3 +95,33 @@ test("invalid resource bounds fail before lowering a recursive program", () => {
     (error) => error.diagnostic.code === "IGS_OPTION",
   );
 });
+
+test("whole quaternion scene writes agree between the core graph and IR oracle", () => {
+  const source =
+      'var player=scene.node("Player");function main(){var yaw=-Math.PI/2;scene.setRotation(player,0,Math.sin(yaw/2),0,Math.cos(yaw/2));}',
+    scene = { asset: { version: "2.0" }, nodes: [{ name: "Player" }] },
+    expected = [],
+    actual = [];
+  const vm = new VM(parse(source, { scene }), {
+    scene: {
+      set: (path, indices, value) => expected.push({ path, indices, value }),
+    },
+  });
+  vm.run("main");
+  const result = compile(source, { scene }),
+    r = runGraph(result.graph, (engine) => {
+      engine.isValidJsonPtr = () => true;
+      engine.isReadOnly = () => false;
+      engine.getPathTypeName = () => "float4";
+      engine.setPathValue = (path, value) => actual.push({ path, value });
+    });
+  try {
+    assert.equal(expected.length, 1);
+    assert.equal(actual.length, 1);
+    assert.equal(actual[0].path, "/nodes/0/rotation");
+    assert.deepEqual(actual[0].value, expected[0].value);
+    assert.equal(actual[0].value.length, 4);
+  } finally {
+    r.dispose();
+  }
+});
