@@ -2,7 +2,7 @@ import {evaluateScalar} from '../scalar.mjs';
 import {OPS} from './bytecode.mjs';
 // Test oracle for the IR, never imported by either browser player.
 export class VM {
-    constructor(program,{seed=1,maxDepth=32,scene}={}) {this.program=program;this.scene=scene;this.memory=[...program.data];this.seed=seed;this.maxDepth=maxDepth;this.steps=0;}
+    constructor(program,{seed=1,maxDepth=32,scene}={}) {this.sentEvents=[];this.program=program;this.scene=scene;this.memory=[...program.data];this.seed=seed;this.maxDepth=maxDepth;this.steps=0;}
     global(name) {return this.memory[this.program.globals[name]];}
     array(name,length=120) {return this.memory.slice(this.global(name),this.global(name)+length);}
     run(name,args=[],limit=5_000_000) {
@@ -15,9 +15,11 @@ export class VM {
             switch(op) {
                 case OPS.NATIVE:{const d=p.io[a],args=stack.splice(stack.length-b,b);stack.push(d.jsRound?Math.round(args[0]):evaluateScalar(d.op,args));break;}
                 case OPS.READ:case OPS.WRITE:{
-                    if(!this.scene)throw new Error('A scene adapter is required');const descriptor=p.io[a],args=stack.splice(stack.length-b,b),indices=args.slice(0,descriptor.indices.length);
+                    const descriptor=p.io[a],args=stack.splice(stack.length-b,b);
+                    if(descriptor.kind==='send'){this.sentEvents.push({id:descriptor.id,values:Object.fromEntries(descriptor.keys.map((key,j)=>[key,args[j]]))});stack.push(0);break;}
+                    if(!this.scene)throw new Error('A scene adapter is required');const indices=args.slice(0,descriptor.indices.length);
                     if(op===OPS.READ)stack.push(Number(this.scene.get(descriptor.path,indices)));
-                    else{const values=args.slice(indices.length);this.scene.set(descriptor.path,indices,['float3','float4'].includes(descriptor.type)?values:descriptor.type==='bool'?Boolean(values[0]):values[0]);stack.push(0);}break;
+                    else{const values=args.slice(indices.length);this.scene.set(descriptor.path,indices,['float3','float4'].includes(descriptor.type)?values.slice(0,descriptor.type==='float3'?3:4):descriptor.type==='bool'?Boolean(values[0]):values[0]);stack.push(0);}break;
                 }
                 case OPS.AND_VALUE:binary((a,b)=>a?b:a);break;case OPS.OR_VALUE:binary((a,b)=>a?a:b);break;
                 case OPS.SELECT:{const no=pop(),yes=pop(),condition=pop();stack.push(condition?yes:no);break;}

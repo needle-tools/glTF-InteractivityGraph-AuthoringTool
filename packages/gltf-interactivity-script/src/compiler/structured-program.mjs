@@ -1,3 +1,4 @@
+import { sliceGraph } from "./cooperative.mjs";
 import { lowerStructured } from "./structured.mjs";
 
 // Generic event loop: execute the JS callback to completion, then the next job.
@@ -8,8 +9,14 @@ export function lowerStructuredProgram(program, options = {}) {
   if (!program.bindings.length) {
     g.graph.variables[k.vars.pc].value = [1];
     const event = g.node("event/onStart");
-    g.link(event, k.prepare(options.entry ?? "main"));
+    const root = k.track(k.prepare(options.entry ?? "main"));
+    g.link(event, root.node);
+    const resume = options.cooperative
+      ? k.track(g.node("flow/sequence"))
+      : undefined;
+    if (resume) g.link(g.node("event/onTick"), resume.node);
     k.finish();
+    if (resume) sliceGraph(k, [root.node], resume.node, options.cooperative);
     return k;
   }
   const f = (n) => g.literal("float", n),
@@ -18,10 +25,15 @@ export function lowerStructuredProgram(program, options = {}) {
   const asFloat = (v, type) =>
       type === "float" ? v : g.convert(v, type, "float"),
     asInt = (v) => g.convert(v, "float", "int");
+  const cooperativeRoots = new Set();
   const bindings = program.bindings,
     maxArgs = Math.max(
       1,
-      ...bindings.map((b) => (b.kind === "Tick" ? 1 : b.args.length)),
+      ...bindings.map((b) =>
+        ["Tick", "Frame"].includes(b.kind)
+          ? program.functions[b.handler].params.length
+          : b.args.length,
+      ),
     );
   const capacity = 32,
     stride = maxArgs + 1,
@@ -57,7 +69,15 @@ export function lowerStructuredProgram(program, options = {}) {
       g.math("mul", "int", g.get(slot), i(stride)),
     );
   function launch(binding, values, execute = false) {
-    const call = k.prepare(binding.handler, values);
+    const call = k.prepare(
+      binding.handler,
+      values,
+      binding.options.immediate || binding.kind === "Frame"
+        ? "immediate:" + binding.handler
+        : "",
+    );
+    if (!(binding.options.immediate || binding.kind === "Frame"))
+      cooperativeRoots.add(call);
     if (!binding.options.interrupt) return call;
     const writes = { [head]: i(0), [tail]: i(0), [count]: i(0) };
     for (const group of groups.values()) writes[group.pending] = bool(false);
@@ -67,6 +87,7 @@ export function lowerStructuredProgram(program, options = {}) {
   }
 
   function dispatch(ids, selection, values) {
+    if (!ids.length) return undefined;
     const node = g.node("flow/switch", { selection }, { cases: ids });
     for (const id of ids)
       g.link(node, launch(bindings[id], values, true), String(id));
@@ -76,7 +97,8 @@ export function lowerStructuredProgram(program, options = {}) {
   }
   function enqueue(id, values) {
     const binding = bindings[id];
-    if (binding.options.interrupt) return launch(binding, values);
+    if (binding.options.interrupt || binding.options.immediate)
+      return launch(binding, values);
     if (binding.options.coalesce) {
       const group = groups.get(binding.options.coalesce);
       return g.set({
@@ -111,10 +133,10 @@ export function lowerStructuredProgram(program, options = {}) {
     g.link(gate, writes[0], "true");
     return gate;
   }
-  g.graph.events = [];
+  g.graph.events ??= [];
   bindings.forEach((binding, id) => {
     let node, values;
-    if (binding.kind === "Start" || binding.kind === "Tick") return;
+    if (["Start", "Tick", "Frame"].includes(binding.kind)) return;
     if (binding.kind === "Receive") {
       if (g.graph.events.some((e) => e.id === binding.target))
         throw new Error("Duplicate custom event " + binding.target);
@@ -154,7 +176,30 @@ export function lowerStructuredProgram(program, options = {}) {
     choose = g.node("flow/branch", {
       condition: g.math("gt", "bool", g.get(count), i(0)),
     });
-  g.link(tick, choose);
+  const resume = options.cooperative
+    ? k.track(g.node("flow/sequence"))
+    : undefined;
+  const busy = options.cooperative
+    ? g.node("flow/branch", {
+        condition: g.math("ge", "bool", g.get(k.vars.pc), i(0)),
+      })
+    : undefined;
+  if (busy !== undefined) {
+    g.link(busy, resume.node, "true");
+    g.link(busy, choose, "false");
+  }
+  const frameBinding = bindings.find((b) => b.kind === "Frame");
+  const tickValues = (binding) =>
+    [
+      g.output(tick, "float", "timeSinceStart"),
+      g.output(tick, "float", "timeSinceLastTick"),
+    ].slice(0, program.functions[binding.handler].params.length);
+  if (frameBinding) {
+    const frame = g.node("flow/sequence");
+    g.link(tick, frame);
+    g.link(frame, launch(frameBinding, tickValues(frameBinding)), "0");
+    g.link(frame, busy ?? choose, "1");
+  } else g.link(tick, busy ?? choose);
   const load = g.set({
     [current]: asInt(k.memory(memoryAt(head, 0))),
     ...Object.fromEntries(
@@ -173,9 +218,10 @@ export function lowerStructuredProgram(program, options = {}) {
   });
   g.link(load, pop);
   const queued = bindings.flatMap((b, id) =>
-    !["Start", "Tick"].includes(b.kind) &&
+    !["Start", "Tick", "Frame"].includes(b.kind) &&
     !b.options.coalesce &&
-    !b.options.interrupt
+    !b.options.interrupt &&
+    !b.options.immediate
       ? [id]
       : [],
   );
@@ -210,7 +256,7 @@ export function lowerStructuredProgram(program, options = {}) {
   g.link(
     previous,
     tickBinding
-      ? launch(tickBinding, [g.output(tick, "float", "timeSinceStart")], true)
+      ? launch(tickBinding, tickValues(tickBinding), true)
       : undefined,
     "false",
   );
@@ -219,7 +265,17 @@ export function lowerStructuredProgram(program, options = {}) {
     const event = g.node("event/onStart");
     g.link(event, launch(start, []));
   }
+  if (!g.graph.events.length) delete g.graph.events;
   k.eventQueue = { head, tail, count, capacity };
+  // Track callback roots through the normal optimizer before slicing their control graph.
+  const roots = [...cooperativeRoots].map((node) => k.track(node));
   k.finish();
+  if (options.cooperative)
+    sliceGraph(
+      k,
+      roots.map((anchor) => anchor.node),
+      resume.node,
+      options.cooperative,
+    );
   return k;
 }

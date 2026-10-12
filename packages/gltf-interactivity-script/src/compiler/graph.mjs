@@ -28,6 +28,7 @@ export class Graph {
     const forwards = new Map(
       this.graph.nodes.flatMap((n, id) =>
         this.graph.declarations[n.declaration].op === "flow/sequence" &&
+        !n.extras?.cooperativeEntry &&
         Object.keys(n.flows ?? {}).length === 1
           ? [[id, Object.values(n.flows)[0]]]
           : [],

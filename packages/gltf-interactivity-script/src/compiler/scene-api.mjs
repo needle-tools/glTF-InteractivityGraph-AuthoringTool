@@ -2,6 +2,9 @@
 export function sceneCall(node,fail) {
     const name=node.callee.property.name;
     const methods={
+        interpolateTranslation:{path:'/nodes/[node]/translation',type:'float3',write:true,interpolate:true,arity:5},
+        interpolateRotation:{path:'/nodes/[node]/rotation',type:'float4',write:true,interpolate:true,arity:6},
+        interpolateScale:{path:'/nodes/[node]/scale',type:'float3',write:true,interpolate:true,arity:5},
         setTranslation:{path:'/nodes/[node]/translation',type:'float3',write:true,arity:4},
         setRotation:{path:'/nodes/[node]/rotation',type:'float4',write:true,arity:5},
         setScale:{path:'/nodes/[node]/scale',type:'float3',write:true,arity:4},
@@ -53,17 +56,20 @@ export function staticBindings(ast,functions,globals,data,scene,fail) {
     function register(node) {
         if(node.type!=='CallExpression'||node.callee.type!=='MemberExpression'||node.callee.object.name!=='events')fail(node,'Only event registrations are allowed at module scope');
         const method=node.callee.property.name,args=node.arguments;
-        const simple=['onStart','onTick'].includes(method),handler=args[simple?0:1];
+        const simple=['onStart','onTick','onFrame'].includes(method),handler=args[simple?0:1];
         if(handler?.type!=='Identifier'||!functions[handler.name])fail(node,'An event handler must name a function');
         const descriptor={kind:method.slice(2),handler:handler.name,args:[],options:{}};
         if(!simple){descriptor.target=value(args[0]);descriptor.args=args[2]?value(args[2]):[];descriptor.options=args[3]?value(args[3]):{};}
-        if(!['Start','Tick','Select','HoverIn','HoverOut','Receive'].includes(descriptor.kind))fail(node,'Unsupported event '+method);
+        if(!['Start','Tick','Frame','Select','HoverIn','HoverOut','Receive'].includes(descriptor.kind))fail(node,'Unsupported event '+method);
         if(!Array.isArray(descriptor.args)||typeof descriptor.options!=='object'||Array.isArray(descriptor.options))fail(node,'Invalid event arguments/options');
         if(descriptor.kind==='Receive'){if(typeof descriptor.target!=='string'||!descriptor.args.every(t=>['int','float','bool'].includes(t)))fail(node,'Custom events require an ID and numeric socket types');}
         else if(!simple){if(!Number.isInteger(descriptor.target)||!scene?.nodes[descriptor.target]||!descriptor.args.every(n=>typeof n==='number'&&Number.isFinite(n)))fail(node,'Node events require a scene node and numeric arguments');}
-        const arity=descriptor.kind==='Tick'?1:descriptor.args.length;
+        const arity=['Tick','Frame'].includes(descriptor.kind)?functions[handler.name].params.length:descriptor.args.length;
+        if(['Tick','Frame'].includes(descriptor.kind)&&![1,2].includes(arity))fail(node,'Tick/frame handlers accept time and optional delta time');
         if(functions[handler.name].params.length!==arity)fail(node,'Event handler arity mismatch');
         if(descriptor.options.coalesce!==undefined&&typeof descriptor.options.coalesce!=='string')fail(node,'Coalescing requires a named group');
+        for(const key of ['immediate','interrupt']) if(descriptor.options[key]!==undefined&&typeof descriptor.options[key]!=='boolean')fail(node,key+' must be a boolean');
+        if(descriptor.options.immediate&&descriptor.options.interrupt)fail(node,'Immediate and interrupt callbacks cannot be combined');
         bindings.push(descriptor);
     }
     function declarations(node) {
@@ -81,6 +87,6 @@ export function staticBindings(ast,functions,globals,data,scene,fail) {
         fail(node,'Only globals, functions and static event declarations are allowed');
     }
     ast.body.forEach(declarations);
-    for(const kind of ['Start','Tick'])if(bindings.filter(b=>b.kind===kind).length>1)fail(ast,'Only one '+kind+' handler is supported');
+    for(const kind of ['Start','Tick','Frame'])if(bindings.filter(b=>b.kind===kind).length>1)fail(ast,'Only one '+kind+' handler is supported');
     return bindings;
 }

@@ -33,3 +33,7 @@ g.receive(hit).outputs
 g.send(hit, { point: a, target: g.ref("/nodes/0") });
 // @ts-expect-error: event payload must match its declared types.
 g.send(hit, { point: g.float(1), target: g.ref("/nodes/0") });
+
+compile("function main(){}", {cooperative: {stepsPerTick: 64, stackCapacity: 512}});
+// @ts-expect-error: cooperative work budgets require numbers.
+compile("function main(){}", {cooperative: {stepsPerTick: "64"}});
