@@ -10,7 +10,7 @@ import {
 } from "three";
 import { ADecorator } from "../BasicBehaveEngine/ADecorator";
 import { BehaveEngineNode } from "../BasicBehaveEngine/BehaveEngineNode";
-import { IBehaveEngine } from "../BasicBehaveEngine/IBehaveEngine";
+import { IBehaveEngine, IJsonPtrEntry } from "../BasicBehaveEngine/IBehaveEngine";
 import { IInteractivityFlow } from "../BasicBehaveEngine/types/InteractivityGraph";
 import { trackSceneInteraction } from "../utils/analytics";
 import { SUPPORTED_GLTF_EXTENSIONS } from "../diagnostics";
@@ -33,12 +33,19 @@ interface ActiveAnimation {
     virtualTime: number;
 }
 
-interface PointerBinding {
+interface PointerBinding extends IJsonPtrEntry {
     get: () => unknown;
     set?: (value: unknown) => void;
     typeName: string;
     readOnly: boolean;
 }
+
+const DELAY_REF_POINTER: IJsonPtrEntry = {
+    typeName: "ref",
+    readOnly: true,
+    getValue: (path) => [path],
+    setValue: () => undefined,
+};
 
 export class ThreeDecorator extends ADecorator {
     private readonly model: ThreeLoadedModel;
@@ -175,31 +182,21 @@ export class ThreeDecorator extends ADecorator {
     }
 
     private bindPointer: ThreePointerBinder = (path, typeName, get, set, readOnly = false): void => {
-        this.pointerBindings.set(path, { get, set, typeName, readOnly });
+        this.pointerBindings.set(path, {
+            get, set, typeName, readOnly,
+            getValue: () => get(),
+            setValue: (_path, value) => { if (!readOnly) set?.(value); },
+        });
     };
 
+    // pointers live only here: the engine resolves them through resolveJsonPtr, never its own trie
     private bridgePointerHooks(): void {
-        this.behaveEngine.isValidJsonPtr = this.isValidJsonPtrExact;
-        this.behaveEngine.isReadOnly = this.isReadOnlyExact;
-        this.behaveEngine.getPathValue = this.getPathValueExact;
-        this.behaveEngine.getPathTypeName = this.getPathTypeNameExact;
-        this.behaveEngine.setPathValue = this.setPathValueExact;
+        this.behaveEngine.resolveJsonPtr = this.resolveJsonPtrExact;
         this.behaveEngine.getRegisteredJsonPointers = () => [...this.pointerBindings.keys()].sort();
     }
 
-    private isValidJsonPtrExact = (path: string): boolean => this.pointerBindings.has(path) || this.isActiveDelayRef(path);
-    private isReadOnlyExact = (path: string): boolean => this.pointerBindings.get(path)?.readOnly ?? this.isActiveDelayRef(path);
-    private getPathValueExact = (path: string): unknown => {
-        const binding = this.pointerBindings.get(path);
-        if (binding) return binding.get();
-        if (this.isActiveDelayRef(path)) return [path];
-        return undefined;
-    };
-    private getPathTypeNameExact = (path: string): string | undefined => this.pointerBindings.get(path)?.typeName ?? (this.isActiveDelayRef(path) ? "ref" : undefined);
-    private setPathValueExact = (path: string, value: unknown): void => {
-        const binding = this.pointerBindings.get(path);
-        if (binding && !binding.readOnly) binding.set?.(value);
-    };
+    private resolveJsonPtrExact = (path: string): IJsonPtrEntry | undefined =>
+        this.pointerBindings.get(path) ?? (this.isActiveDelayRef(path) ? DELAY_REF_POINTER : undefined);
 
     private isActiveDelayRef(path: string): boolean {
         const match = path.match(/^\/extensions\/KHR_interactivity\/delays\/(\d+)$/);
