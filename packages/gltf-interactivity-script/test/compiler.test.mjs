@@ -110,10 +110,7 @@ test("whole quaternion scene writes agree between the core graph and IR oracle",
   vm.run("main");
   const result = compile(source, { scene }),
     r = runGraph(result.graph, (engine) => {
-      engine.isValidJsonPtr = () => true;
-      engine.isReadOnly = () => false;
-      engine.getPathTypeName = () => "float4";
-      engine.setPathValue = (path, value) => actual.push({ path, value });
+      engine.resolveJsonPtr = () => ({typeName:"float4",readOnly:false,getValue:()=>[0,0,0,1],setValue:(path,value)=>actual.push({path,value})});
     });
   try {
     assert.equal(expected.length, 1);
@@ -124,4 +121,12 @@ test("whole quaternion scene writes agree between the core graph and IR oracle",
   } finally {
     r.dispose();
   }
+});
+
+test("loop-local declarations are mutations when deciding which arithmetic is invariant", () => {
+  const source = "var result=0;function main(){for(var j=0;j<32;j++){var cell=j*11;result+=Math.floor(cell/10)+cell%10;}}";
+  const vm = new VM(parse(source)); vm.run("main");
+  const compiled = compile(source), r = runGraph(compiled.graph);
+  try { assert.deepEqual(r.value("JS global result"), [vm.global("result")]); }
+  finally { r.dispose(); }
 });

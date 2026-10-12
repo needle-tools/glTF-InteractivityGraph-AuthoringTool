@@ -380,6 +380,7 @@ export function lowerStructured(
   function effects(node, ctx) {
     const result = new Set();
     walk(node, (n) => {
+      if (n.type === "VariableDeclarator" && n.init) result.add(binding(ctx, n.id.name));
       if (n.type === "AssignmentExpression")
         if (n.left.type === "Identifier") result.add(binding(ctx, n.left.name));
         else {
