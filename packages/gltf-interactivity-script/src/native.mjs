@@ -17,8 +17,21 @@ const width = {
 const scalarDefault = (type) =>
   type === "bool" ? false : type === "ref" ? "" : 0;
 export class GraphBuilder {
-  constructor({ name = "Interactivity", optimize = true } = {}) {
+  constructor({ name = "Interactivity", optimize = true, graph } = {}) {
     this.raw = new Graph(name);
+    if (graph) {
+      validateInteractivityGraph(graph);
+      // Extend a private copy. Existing variable/event indices remain stable,
+      // including compiler metadata held by the consumer.
+      this.raw.graph = structuredClone(graph);
+      this.raw.graph.variables ??= [];
+      for (const signature of signatures)
+        if (this.raw.type(signature) < 0)
+          this.raw.graph.types.push({ signature });
+      this.raw.graph.declarations.forEach((d, i) =>
+        this.raw.declarations.set(d.op + (d.extension ?? ""), i),
+      );
+    }
     this.optimize = optimize;
     this.closed = false;
     this.handles = [];

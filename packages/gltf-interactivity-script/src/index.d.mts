@@ -145,7 +145,7 @@ export class Asset {
 }
 export class GraphBuilder {
   readonly ops: NativeOps;
-  constructor(options?: { name?: string; optimize?: boolean });
+  constructor(options?: { name?: string; optimize?: boolean; graph?: RawGraph });
   literal<T extends Signature>(
     type: T,
     value: T extends "bool"

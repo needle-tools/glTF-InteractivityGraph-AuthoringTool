@@ -130,3 +130,49 @@ test("loop-local declarations are mutations when deciding which arithmetic is in
   try { assert.deepEqual(r.value("JS global result"), [vm.global("result")]); }
   finally { r.dispose(); }
 });
+
+
+test("transform component reads extract whole object-model vectors and material writes use float4", () => {
+  const source = "var result=0;function main(){result=scene.getTranslationY(0)+scene.getScaleX(0)+scene.getRotationW(0);scene.setBaseColor(0,.1,.2,.3,.4);}";
+  const compiled = compile(source, {
+    scene: {
+      asset: { version: "2.0" },
+      nodes: [{ name: "Target" }],
+      scenes: [{ nodes: [0] }],
+      scene: 0,
+      materials: [{ pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1] } }],
+    },
+  });
+  let color;
+  const runtime = runGraph(compiled.graph, engine => {
+    const base = engine.resolveJsonPtr;
+    const properties = {
+      "/nodes/0/translation": { typeName: "float3", getValue: () => [2, 3, 4] },
+      "/nodes/0/scale": { typeName: "float3", getValue: () => [5, 6, 7] },
+      "/nodes/0/rotation": { typeName: "float4", getValue: () => [0, 0, 0, 1] },
+      "/materials/0/pbrMetallicRoughness/baseColorFactor": {
+        typeName: "float4", getValue: () => [1, 1, 1, 1],
+        setValue: (_, value) => { color = value; },
+      },
+    };
+    engine.resolveJsonPtr = path => properties[path]
+      ? { readOnly: false, ...properties[path] }
+      : base(path);
+  });
+  const oracle = new VM(parse(source), {
+    scene: {
+      get: path => path.endsWith("translation") ? [2, 3, 4]
+        : path.endsWith("scale") ? [5, 6, 7] : [0, 0, 0, 1],
+      set() {},
+    },
+  });
+  oracle.run("main");
+  try {
+    runtime.engine.executeEventQueueTick();
+    assert.deepEqual(runtime.value("JS global result"), [9]);
+    assert.equal(oracle.global("result"), 9);
+    assert.deepEqual(color, [.1, .2, .3, .4]);
+  } finally {
+    runtime.dispose();
+  }
+});
