@@ -7,7 +7,7 @@ import { sceneCall } from "./scene-api.mjs";
 // Constant arguments specialize recursive contexts and remove unreachable calls.
 export function lowerStructured(
   program,
-  { heapNodeBase = 0, maxDepth = 24, optimize = true } = {},
+  { heapNodeBase = 0, maxDepth = 24, optimize = true, cooperative = false } = {},
 ) {
   if (!program.syntax)
     throw new Error("Structured lowering requires source syntax");
@@ -892,6 +892,22 @@ export function lowerStructured(
         );
       }
       case "CallExpression": {
+        if (node.callee.type === "MemberExpression" && node.callee.object.name === "events" && node.callee.property.name === "send") {
+          const [id, payload] = node.arguments;
+          if (id?.type !== "Literal" || typeof id.value !== "string" || payload?.type !== "ObjectExpression") fail(node, "events.send requires a literal ID and payload object");
+          const keys = payload.properties.map(p => p.key.name ?? p.key.value);
+          const { result, flow } = operands(payload.properties.map(p => p.value), ctx);
+          g.graph.events ??= [];
+          let event = g.graph.events.findIndex(e => e.id === id.value);
+          if (event < 0) event = g.graph.events.push({ id: id.value, values: Object.fromEntries(keys.map(key => [key, { type: g.type("float") }])) }) - 1;
+          else if (JSON.stringify(Object.keys(g.graph.events[event].values ?? {})) !== JSON.stringify(keys)) fail(node, "Event payload signature mismatch");
+          const values = Object.fromEntries(keys.map((key, j) => {
+            const type = g.graph.types[g.graph.events[event].values[key].type].signature;
+            return [key, type === "int" ? integer(result[j]) : type === "bool" ? truth(result[j]) : numeric(result[j])];
+          }));
+          flow.push(g.node("event/send", values, { event }));
+          return nodeValue(f(0), "float", flow);
+        }
         if (
           node.callee.type === "MemberExpression" &&
           node.callee.object.name === "scene"
@@ -915,7 +931,12 @@ export function lowerStructured(
                     : d.type === "int"
                       ? integer(values[0])
                       : numeric(values[0]);
-          flow.push(g.write(d.path, d.type, value, indices));
+          flow.push(d.interpolate
+            ? g.node("pointer/interpolate", {
+                ...indices, value, duration: numeric(values.at(-1)),
+                p1: g.literal("float2", [0.2, 0]), p2: g.literal("float2", [0.2, 1]),
+              }, { pointer: d.path, type: g.type(d.type) })
+            : g.write(d.path, d.type, value, indices));
           return nodeValue(f(0), "float", flow);
         }
         if (
@@ -1326,7 +1347,7 @@ export function lowerStructured(
         Object.entries(constants).filter(([n]) => !writes.has(n)),
       ),
       key =
-        name +
+        (parent?.namespace ? parent.namespace + ":" : "") + name +
         ":" +
         level +
         ":" +
@@ -1336,7 +1357,7 @@ export function lowerStructured(
           .join(";");
     if (instances.has(key)) return instances.get(key);
     const signature =
-      name +
+      (parent?.namespace ? parent.namespace + ":" : "") + name +
       ":" +
       Object.entries(safe)
         .sort()
@@ -1353,6 +1374,7 @@ export function lowerStructured(
       result = g.variable(key + " return", "float", 0),
       returned = g.variable(key + " returned", "bool", false),
       entry = g.node("flow/sequence");
+    if (cooperative) g.graph.nodes[entry].extras = { cooperativeEntry: true };
     const facts = {};
     for (const [n, list] of writes)
       if (list.length === 1 && list[0].value && n in locals) {
@@ -1374,6 +1396,7 @@ export function lowerStructured(
         if (direct) facts[n] = record;
       }
     const ctx = {
+      namespace: parent?.namespace ?? "",
       name,
       level,
       constants: safe,
@@ -1394,11 +1417,11 @@ export function lowerStructured(
     if (!ctx.calls.size) terminalInstances.set(signature, ctx);
     return ctx;
   }
-  const prepared = new Map();
-  const prepare = (name, values = []) => {
-    const key = JSON.stringify([name, values]);
+  const prepared = new Map(), anchors = [];
+  const prepare = (name, values = [], namespace = "") => {
+    const key = JSON.stringify([name, values, namespace]);
     if (prepared.has(key)) return prepared.get(key);
-    const fn = instance(name);
+    const fn = instance(name, {}, { namespace });
     const initialize = g.set({
         ...Object.fromEntries(
           Object.entries(fn.locals).map(([n, id]) => [
@@ -1410,12 +1433,12 @@ export function lowerStructured(
         ),
         [fn.result]: f(0),
         [fn.returned]: b(false),
-        [vars.pc]: i(1),
+        ...(namespace ? {} : { [vars.pc]: i(1) }),
       }),
       call = g.node("flow/sequence");
     g.link(initialize, fn.entry);
     g.link(call, initialize, "0");
-    g.link(call, g.set({ [vars.pc]: i(-1) }));
+    g.link(call, namespace ? g.node("flow/sequence") : g.set({ [vars.pc]: i(-1) }));
     prepared.set(key, call);
     return call;
   };
@@ -1426,6 +1449,8 @@ export function lowerStructured(
       do {
         const removed = g.pruneNodes();
         for (const fn of instances.values()) fn.entry = removed.get(fn.entry);
+        for (const anchor of anchors) anchor.node = removed.get(anchor.node);
+        for (const [key, node] of prepared) prepared.set(key, removed.get(node));
         changed = g.eliminateDeadStores(keep);
         g.compactSequences();
       } while (changed);
@@ -1443,6 +1468,8 @@ export function lowerStructured(
     g.compactSequences();
     const pruned = g.pruneNodes();
     const mapping = g.orderFlows();
+    for (const anchor of anchors) anchor.node = mapping[pruned.get(anchor.node)];
+    for (const [key, node] of prepared) prepared.set(key, mapping[pruned.get(node)]);
     g.pruneTypes();
     for (const fn of instances.values())
       fn.entry = mapping[pruned.get(fn.entry)];
@@ -1455,6 +1482,8 @@ export function lowerStructured(
     instances,
     instance,
     prepare,
+    prepared,
+    track(node) { const anchor = { node }; anchors.push(anchor); return anchor; },
     finish,
     initial: arrayInitial,
     memorySize: arrayInitial.length,

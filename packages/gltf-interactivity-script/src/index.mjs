@@ -64,6 +64,7 @@ export function compile(
     maxDepth = 24,
     arrayCapacity = 256,
     optimize = true,
+    cooperative,
   } = {},
 ) {
   for (const [name, value] of Object.entries({ maxDepth, arrayCapacity }))
@@ -73,6 +74,13 @@ export function compile(
         `${name} must be a positive integer.`,
         { actual: value },
       );
+  if (cooperative !== undefined) {
+    if (!cooperative || typeof cooperative !== "object" || Array.isArray(cooperative))
+      throw new CompileError("IGS_OPTION", "cooperative must be an options object.");
+    for (const [name, value] of Object.entries(cooperative))
+      if (!["stepsPerTick", "stackCapacity"].includes(name) || !Number.isSafeInteger(value) || value < 1 || (name === "stepsPerTick" && value > 65536))
+        throw new CompileError("IGS_OPTION", "Invalid cooperative option " + name, { actual: value });
+  }
   const asset =
     scene instanceof Asset
       ? Asset.fromGLB(scene.pack())
@@ -87,6 +95,7 @@ export function compile(
     entry,
     maxDepth,
     optimize,
+    cooperative,
   });
   const metadata = {
     version: 1,
@@ -96,6 +105,7 @@ export function compile(
     vars: kernel.vars,
     heapNodeBase: kernel.heapNodeBase,
     memoryPageSize: 8,
+    ...(kernel.cooperative ? { cooperative: kernel.cooperative } : {}),
   };
   attachGraph(asset, kernel.g.graph, { heap: kernel.initial, metadata });
   return {

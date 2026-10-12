@@ -26,6 +26,7 @@ try {
     "--entry",
     "--max-depth",
     "--array-capacity",
+    "--steps-per-tick",
     "--op",
     "--format",
   ]);
@@ -86,6 +87,15 @@ try {
           );
         config[key] = n;
       }
+    if (options["--steps-per-tick"]) {
+      const steps = Number(options["--steps-per-tick"]);
+      if (!Number.isSafeInteger(steps) || steps < 1 || steps > 65536)
+        throw new CompileError(
+          "IGS_ARGUMENT",
+          "--steps-per-tick must be an integer from 1 to 65536.",
+        );
+      config.cooperative = { stepsPerTick: steps };
+    }
     if (
       options["--format"] &&
       !["graph", "script"].includes(options["--format"])

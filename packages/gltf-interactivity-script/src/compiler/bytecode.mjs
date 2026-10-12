@@ -89,7 +89,12 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
                 if(node.argument.type!=='Identifier')error(node,'Indexed increment is unsupported');expression(node.argument);if(!node.prefix)emit('DUP');emit('CONST',1);emit(node.operator==='++'?'ADD':'SUB');if(node.prefix)emit('DUP');store(node.argument,node);break;
             }
             case 'CallExpression': {
-                if(node.callee.type==='MemberExpression'&&node.callee.object.name==='scene') {
+                if(node.callee.type==='MemberExpression'&&node.callee.object.name==='events'&&node.callee.property.name==='send') {
+                    const [id,payload]=node.arguments;
+                    if(id?.type!=='Literal'||typeof id.value!=='string'||payload?.type!=='ObjectExpression')error(node,'events.send requires a literal event ID and a payload object');
+                    const keys=payload.properties.map(p=>{if(p.type!=='Property'||p.computed||p.kind!=='init')error(p,'Static event payload keys only');return p.key.name??p.key.value;});
+                    payload.properties.forEach(p=>expression(p.value));const at=io.length;io.push({kind:'send',id:id.value,keys});emit('WRITE',at,keys.length,node);
+                } else if(node.callee.type==='MemberExpression'&&node.callee.object.name==='scene') {
                     const call=sceneCall(node,error);call.arguments.forEach(expression);const id=io.length;io.push(call.descriptor);emit(call.descriptor.write?'WRITE':'READ',id,call.arguments.length,node);
                 } else if(node.callee.type==='MemberExpression'&&['Math','math'].includes(node.callee.object.name)) {
                     const name=node.callee.property.name;if(name==='floor'&&node.arguments.length===1){expression(node.arguments[0]);emit('FLOOR');}

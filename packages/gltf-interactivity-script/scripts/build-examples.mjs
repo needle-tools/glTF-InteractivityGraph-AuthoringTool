@@ -18,6 +18,7 @@ for (const example of examples) {
   const output = execFileSync(process.execPath, [
     cli, "compile", fileURLToPath(new URL(example.source, root)),
     "--scene", fileURLToPath(new URL(example.scene, root)),
+    ...(example.stepsPerTick ? ["--steps-per-tick", String(example.stepsPerTick)] : []),
     "--out", path.join(directory, "example.glb"), "--json",
   ], { cwd: consumer, encoding: "utf8" });
   const result = JSON.parse(output);

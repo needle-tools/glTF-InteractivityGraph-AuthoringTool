@@ -37,6 +37,7 @@ export class VM {
       };
     },
   );
+  readonly sentEvents: { id: string; values: Record<string, number> }[];
   global(name: string): number;
   array(name: string, length?: number): number[];
   run(name: string, args?: number[], limit?: number): number;
@@ -64,6 +65,7 @@ export function lowerStructuredProgram(
     heapNodeBase?: number;
     maxDepth?: number;
     entry?: string;
+    cooperative?: { stepsPerTick?: number; stackCapacity?: number };
     optimize?: boolean;
   },
 ): StructuredKernel;
