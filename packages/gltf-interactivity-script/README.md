@@ -6,9 +6,9 @@ Compile JavaScript authoring programs into standalone `KHR_interactivity` GLBs. 
 
 ```sh
 gltf-interactivity-script catalog --op math/transform
-gltf-interactivity-script check examples/click-hover.source.js --scene examples/scene.gltf --json
-gltf-interactivity-script compile examples/click-hover.source.js --scene examples/scene.gltf --out interaction.glb --json
-gltf-interactivity-script compile examples/surface-cursor.graph.mjs --scene examples/scene.gltf --out cursor.glb --json
+gltf-interactivity-script check examples/click-hover/main.source.js --scene examples/_shared/panel.gltf --json
+gltf-interactivity-script compile examples/click-hover/main.source.js --scene examples/_shared/panel.gltf --out interaction.glb --json
+gltf-interactivity-script compile examples/surface-cursor/main.graph.mjs --scene examples/_shared/panel.gltf --out cursor.glb --json
 ```
 
 `check` compiles and validates without writing an output. `--json` prints one success object on stdout, or a structured diagnostic on stderr and exits nonzero. Diagnostics have stable codes and include the operation, socket, expected type and actual type where applicable. Source syntax errors include a one-based line and column. Unknown options, duplicate options, unknown sockets and configuration typos fail explicitly.
@@ -30,7 +30,7 @@ function click() {
 events.onSelect(target, click, []);
 ```
 
-Scene methods are `setTranslation`, `setScale`, `getVisible`, `setVisible`, and `get/setFloat`, `get/setInt`, `get/setBool`. Generic setters take `(path, value, ...indices)`. Paths and node names are static strings. Runtime values stay numeric.
+Scene methods are `setTranslation`, `setRotation` (x, y, z, w quaternion), `setScale`, `getVisible`, `setVisible`, and `get/setFloat`, `get/setInt`, `get/setBool`. Generic setters take `(path, value, ...indices)`. Paths and node names are static strings. Runtime values stay numeric.
 
 Events cover startup, frame ticks, selection, hover and custom numeric payloads. Custom event socket names come from handler parameter names. Normal callbacks enter a bounded FIFO; coalescing keeps the newest job in a named group. Reset can clear queued callbacks. Each callback executes synchronously to completion.
 
@@ -59,15 +59,15 @@ Generated declarations require TypeScript 5.4 or newer. The catalogue covers all
 
 ## Formatted examples
 
-| Example                      | Demonstrates                                                               |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `click-hover.source.js`      | Numeric state, scalar math, hover coalescing and reset                     |
-| `surface-cursor.graph.mjs`   | Real selection-point payload, float3 property writes and ref state         |
-| `matrix-transform.graph.mjs` | TRS composition, homogeneous matrix transform and component extraction     |
-| `timed-animation.graph.mjs`  | Timer references, cancellation, animation playback and completion          |
-| `grid-navigation.source.js`  | FPS movement, collision against a fixed tile map and a bounded hitscan ray |
+| Example | Demonstrates |
+| --- | --- |
+| [click-hover](examples/click-hover/README.md) | Numeric state, scalar math, hover coalescing and reset |
+| [surface-cursor](examples/surface-cursor/README.md) | Selection-point payload, float3 property writes and ref state |
+| [matrix-transform](examples/matrix-transform/README.md) | TRS composition, homogeneous transform and component extraction |
+| [timed-animation](examples/timed-animation/README.md) | Timer references, cancellation, animation playback and completion |
+| [grid-navigation](examples/grid-navigation/README.md) | FPS movement, fixed tile-map collision and bounded hitscan |
 
-The first four use `scene.gltf`; grid navigation uses `grid-scene.gltf`. Compile an example to a GLB, then open `viewer.html?asset=example.glb` in a consumer with Three and `three-gltf-interactivity` installed. The viewer translates input into events; movement, collision and hitscan run in the generated graph.
+Each example has its own folder with a formatted authoring program and README. Grid navigation also owns its scene. The first four reuse `_shared/panel.gltf`; the shared viewer lives in `_shared`. [Example index and build instructions](examples/README.md). The viewer translates input into events; movement, collision and hitscan run in the generated graph.
 
 The grid example is a small step toward a Doom port. A complete port still needs larger data sets, more compiler optimization and a strategy for rendering and loading game resources. No Doom performance or compatibility claim is made.
 
@@ -86,6 +86,6 @@ The updated Khronos core is a normal dependency. Until core 1.1 is published, in
 
 ## Verification
 
-The package tests run generated operations on the actual core, compare structured programs with the IR oracle, and check strict consumer declarations. `scripts/test-examples.mjs /path/to/consumer` checks the example GLBs in a browser: selection coordinates and references, matrix transforms, timer completion/cancellation, animation completion, grid collision/hitscan/reset and hover/click. The consumer must install the packed compiler, packed core, integration, Three, Vite and Playwright normally. Serve the example viewer at `EXAMPLES_URL` (default `http://127.0.0.1:5328`); `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select an existing Chromium.
+The package tests run generated operations on the actual core, compare structured programs with the IR oracle, and check strict consumer declarations. `scripts/test-examples.mjs /path/to/consumer` checks the example GLBs in a browser: selection coordinates and references, matrix transforms, timer completion/cancellation, animation completion, grid collision/hitscan/reset and hover/click. The consumer must install the packed compiler, packed core, integration, Three, Vite and Playwright normally. Run `scripts/build-examples.mjs /path/to/consumer` first to compile the installed packed examples into `consumer/examples/<name>/example.glb` and copy the shared viewer. Serve the consumer at `EXAMPLES_URL` (default `http://127.0.0.1:5328`); `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select an existing Chromium.
 
 Compiler passes specialize constant arguments, share terminal function contexts, remove unused internal stores/state, fuse ordered writes, and hoist expensive invariant arithmetic. Globals and callback state stay observable. `compile(source, { optimize: false })` disables the newer passes for file comparisons. Short unknown-bound loops do not hoist cheap arithmetic. No runtime changes are needed to consume these optimizations.
