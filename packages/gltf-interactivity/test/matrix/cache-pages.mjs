@@ -216,12 +216,6 @@ function createPackageImportMap() {
             "@needle-tools/three-animation-pointer": rawFsUrl(
                 animationPointerEntry,
             ),
-            "@khronosgroup/gltf-interactivity-engine": rawFsUrl(
-                path.join(
-                    packed.consumer,
-                    "node_modules/@khronosgroup/gltf-interactivity-engine/build/index.js",
-                ),
-            ),
             "@iwer/sem": rawFsUrl(
                 path.join(
                     path.dirname(require.resolve("@iwer/sem/package.json")),

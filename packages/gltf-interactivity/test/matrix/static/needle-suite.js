@@ -1,6 +1,6 @@
 import "@needle-tools/engine";
 import * as THREE from "three";
-import { BasicBehaveEngine } from "@khronosgroup/gltf-interactivity-engine";
+import { InteractivityRuntime } from "three-gltf-interactivity";
 import {
   getInteractivityRuntime,
   registerNeedleInteractivity,
@@ -41,7 +41,7 @@ async function runSuite() {
     await waitFor(() => runtime?.model.nodes[0]?.position.x === 1);
 
     assert(runtime, "Needle created the interactivity runtime during import");
-    assert(runtime.engine instanceof BasicBehaveEngine,"Needle uses the installed Khronos engine dependency");
+    assert(runtime instanceof InteractivityRuntime, "Expected InteractivityRuntime");
     assert(engine.context.scene instanceof THREE.Object3D, "Needle uses the mapped host Three instance");
     assert(runtime.model.mixer instanceof THREE.AnimationMixer, "the adapter uses the same host Three instance");
     assert(readyCount === 1, "Needle created the runtime exactly once");

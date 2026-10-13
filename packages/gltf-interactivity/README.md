@@ -1,7 +1,7 @@
 # three-gltf-interactivity
 
 Play interactive glTF models in Three.js and Needle Engine with `KHR_interactivity`.
-Graphs start automatically when a model loads.
+Graphs start automatically when a model loads. The Khronos interactivity core is bundled.
 
 ## Three.js
 
