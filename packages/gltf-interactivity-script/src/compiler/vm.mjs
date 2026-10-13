@@ -6,6 +6,7 @@ export class VM {
     global(name) {return this.memory[this.program.globals[name]];}
     array(name,length=120) {return this.memory.slice(this.global(name),this.global(name)+length);}
     run(name,args=[],limit=5_000_000) {
+        if(Object.values(this.program.functions).some(fn=>fn.async))throw new Error('The synchronous reference VM cannot run async programs; test the emitted graph scheduler');
         const p=this.program,stack=[],frames=[],pushFrame=(entry,args)=>{if(frames.length>=this.maxDepth)throw new Error('Stack depth exceeded');frames.push({pc:entry,locals:[0,0,0,...args,...Array(p.frameSize-3-args.length).fill(0)]});};
         pushFrame(p.functions[name].entry,args);let result=0,count=0;
         while(frames.length) {

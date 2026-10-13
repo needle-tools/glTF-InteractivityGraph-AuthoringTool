@@ -7,6 +7,7 @@ export interface Program {
   functions: Record<
     string,
     {
+      async: boolean;
       entry: number;
       params: string[];
       locals: Record<string, number>;
