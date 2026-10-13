@@ -26,6 +26,6 @@ for (const example of examples) {
 }
 const shared = path.join(consumer, "examples", "_shared");
 await fs.mkdir(shared, { recursive: true });
-for (const file of ["viewer.html", "viewer.mjs"])
+for (const file of ["viewer.html", "viewer.mjs", "needle-viewer.html", "needle-viewer.mjs"])
   await fs.copyFile(new URL(`_shared/${file}`, root), path.join(shared, file));
 console.log("Viewer: /examples/_shared/viewer.html?asset=../surface-cursor/example.glb");
