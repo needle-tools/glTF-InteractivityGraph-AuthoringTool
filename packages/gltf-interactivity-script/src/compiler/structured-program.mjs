@@ -4,8 +4,29 @@ import { lowerStructured } from "./structured.mjs";
 // Generic event loop: execute the JS callback to completion, then the next job.
 // Pointer hover callbacks can explicitly coalesce; reset can explicitly interrupt.
 export function lowerStructuredProgram(program, options = {}) {
+  const asyncMode = Object.values(program.functions).some(fn => fn.async);
+  options = { ...options, asyncMode,
+    cooperative: asyncMode ? (options.cooperative ?? {}) : options.cooperative,
+  };
   const k = lowerStructured(program, options),
     g = k.g;
+  const tickReset = options.asyncMode ? k.track(g.node("flow/sequence")) : undefined;
+  if (tickReset) g.graph.nodes[tickReset.node].extras = { cooperativeEntry: true };
+  function clock(tick, next) {
+    if (!tickReset) return next;
+    const time = g.output(tick, "float", "timeSinceStart");
+    const update = g.set({
+      [k.vars.tick]: g.math("add", "int", g.get(k.vars.tick), g.literal("int", 1)),
+      [k.vars.time]: g.select(g.math("ge", "bool", time, g.literal("float", 0)),
+        g.literal("float", 0), time, "float"),
+    });
+    g.link(update, tickReset.node);
+    g.link(tickReset.node, next);
+    return update;
+  }
+  const scheduler = () => ({ ...options.cooperative,
+    ...(tickReset ? { tickReset: tickReset.node } : {}),
+  });
   if (!program.bindings.length) {
     g.graph.variables[k.vars.pc].value = [1];
     const event = g.node("event/onStart");
@@ -14,9 +35,12 @@ export function lowerStructuredProgram(program, options = {}) {
     const resume = options.cooperative
       ? k.track(g.node("flow/sequence"))
       : undefined;
-    if (resume) g.link(g.node("event/onTick"), resume.node);
+    if (resume) {
+      const tick = g.node("event/onTick");
+      g.link(tick, clock(tick, resume.node));
+    }
     k.finish();
-    if (resume) sliceGraph(k, [root.node], resume.node, options.cooperative);
+    if (resume) sliceGraph(k, [root.node], resume.node, scheduler());
     return k;
   }
   const f = (n) => g.literal("float", n),
@@ -79,7 +103,9 @@ export function lowerStructuredProgram(program, options = {}) {
     if (!(binding.options.immediate || binding.kind === "Frame"))
       cooperativeRoots.add(call);
     if (!binding.options.interrupt) return call;
-    const writes = { [head]: i(0), [tail]: i(0), [count]: i(0) };
+    const writes = { [head]: i(0), [tail]: i(0), [count]: i(0),
+      ...(options.asyncMode ? { [k.vars.fault]: bool(false) } : {}),
+    };
     for (const group of groups.values()) writes[group.pending] = bool(false);
     const clear = g.set(writes);
     g.link(clear, call);
@@ -185,8 +211,14 @@ export function lowerStructuredProgram(program, options = {}) {
       })
     : undefined;
   if (busy !== undefined) {
-    g.link(busy, resume.node, "true");
+    if (!options.asyncMode) g.link(busy, resume.node, "true");
     g.link(busy, choose, "false");
+  }
+  let scheduled = busy ?? choose;
+  if (options.asyncMode && resume) {
+    scheduled = g.node("flow/sequence");
+    g.link(scheduled, busy, "0");
+    g.link(scheduled, resume.node, "1");
   }
   const frameBinding = bindings.find((b) => b.kind === "Frame");
   const tickValues = (binding) =>
@@ -196,10 +228,10 @@ export function lowerStructuredProgram(program, options = {}) {
     ].slice(0, program.functions[binding.handler].params.length);
   if (frameBinding) {
     const frame = g.node("flow/sequence");
-    g.link(tick, frame);
+    g.link(tick, clock(tick, frame));
     g.link(frame, launch(frameBinding, tickValues(frameBinding)), "0");
-    g.link(frame, busy ?? choose, "1");
-  } else g.link(tick, busy ?? choose);
+    g.link(frame, scheduled, "1");
+  } else g.link(tick, clock(tick, scheduled));
   const load = g.set({
     [current]: asInt(k.memory(memoryAt(head, 0))),
     ...Object.fromEntries(
@@ -275,7 +307,7 @@ export function lowerStructuredProgram(program, options = {}) {
       k,
       roots.map((anchor) => anchor.node),
       resume.node,
-      options.cooperative,
+      scheduler(),
     );
   return k;
 }

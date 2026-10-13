@@ -5,7 +5,7 @@ export function sliceGraph(
   k,
   roots,
   resume,
-  { stepsPerTick = 64, stackCapacity = 512 } = {},
+  { stepsPerTick = 64, stackCapacity = 512, tickReset } = {},
 ) {
   for (const n of [stepsPerTick, stackCapacity])
     if (!Number.isSafeInteger(n) || n < 1)
@@ -67,6 +67,15 @@ export function sliceGraph(
         nodes[id].flows = { 0: children[0], 1: tail };
       }
     }
+  // Each wait gets a dispatchable continuation, including terminal waits.
+  const waits = new Map();
+  for (const id of initialControl) {
+    if (!nodes[id].extras?.scriptAwait) continue;
+    const continuation = g.node("flow/sequence");
+    nodes[continuation].flows = { ...nodes[id].flows };
+    nodes[id].flows = { out: { node: continuation, socket: "in" } };
+    waits.set(id, continuation);
+  }
   const original = nodes.map((n) => ({ ...n, flows: { ...n.flows } }));
   const control = new Set();
   function visit(id) {
@@ -134,7 +143,7 @@ export function sliceGraph(
       if (active.has(id)) return false;
       if (id === undefined || seen.has(id)) return true;
       seen.add(id);
-      if (seen.size > 64 || op(original[id]) === "flow/while") return false;
+      if (seen.size > 64 || op(original[id]) === "flow/while" || waits.has(id)) return false;
       active.add(id);
       const safe = Object.values(original[id].flows).every((edge) =>
         walk(edge.node),
@@ -159,7 +168,7 @@ export function sliceGraph(
   roots.forEach(live);
   // Yield only where structured control returns: loop iterations and calls.
   // Ordinary arithmetic, branches and writes keep their native flow links.
-  const continuations = new Set(roots);
+  const continuations = new Set([...roots, ...waits.values()]);
   for (const id of effective) {
     const n = original[id];
     if (op(n) === "flow/sequence")
@@ -185,6 +194,10 @@ export function sliceGraph(
   const used = g.variable("cooperative steps executed", "int", 0);
   const slices = g.variable("cooperative slices", "int", 0);
   const workStart = g.variable("cooperative quantum start", "int", 0);
+  const asyncMode = tickReset !== undefined;
+  const waiting = asyncMode ? g.variable("scheduler waiting", "bool", false) : undefined;
+  const wakeTick = asyncMode ? g.variable("scheduler wake tick", "int", 0) : undefined;
+  const deadline = asyncMode ? g.variable("scheduler deadline", "float", 0) : undefined;
   const stackBase = k.initial.length;
   k.initial.push(...Array(stackCapacity).fill(0));
   k.memorySize = k.initial.length;
@@ -192,6 +205,7 @@ export function sliceGraph(
     [k.vars.fault]: g.literal("bool", true),
     [state]: i(-1),
     [k.vars.pc]: i(-1),
+    ...(asyncMode ? { [waiting]: g.literal("bool", false) } : {}),
   });
   const pop = g.node("flow/branch", {
     condition: g.math("gt", "bool", g.get(sp), i(0)),
@@ -278,7 +292,25 @@ export function sliceGraph(
     const source = original[id],
       n = nodes[id],
       operation = op(source);
-    if (operation === "flow/sequence") {
+    if (waits.has(id)) {
+      const duration = source.values.duration;
+      const valid = g.math("and", "bool",
+        g.math("ge", "bool", duration, f(0)),
+        g.data("math/not", "bool", { a: g.data("math/isInf", "bool", { a: duration }) }));
+      n.declaration = branchDeclaration;
+      n.values = { condition: valid };
+      delete n.configuration;
+      delete n.extras;
+      n.flows = {
+        true: { node: g.set({
+          [waiting]: g.literal("bool", true),
+          [wakeTick]: g.math("add", "int", g.get(k.vars.tick), i(1)),
+          [deadline]: g.math("add", "float", g.get(k.vars.time), duration),
+          [state]: i(states.get(waits.get(id))),
+        }), socket: "in" },
+        false: { node: fault, socket: "in" },
+      };
+    } else if (operation === "flow/sequence") {
       const children = Object.keys(source.flows)
         .sort()
         .map((key) => source.flows[key].node);
@@ -378,13 +410,19 @@ export function sliceGraph(
     g.link(branch, dispatch(mid, hi), "false");
     return branch;
   }
-  const loop = g.node("flow/while", {
-    condition: g.math(
+  const runnable = asyncMode
+    ? g.math("and", "bool",
+        g.data("math/not", "bool", { a: g.get(waiting) }),
+        g.data("math/not", "bool", { a: g.get(k.vars.fault) }))
+    : g.literal("bool", true);
+  const canWork = g.math(
       "and",
       "bool",
       g.math("ge", "bool", g.get(state), i(0)),
       g.math("lt", "bool", g.get(used), g.get(limit)),
-    ),
+    );
+  const loop = g.node("flow/while", {
+    condition: asyncMode ? g.math("and", "bool", runnable, canWork) : canWork,
   });
   const body = g.node("flow/sequence");
   g.link(loop, body, "loopBody");
@@ -405,21 +443,47 @@ export function sliceGraph(
   nodes[resume].flows = {
     out: {
       node: g.set({
-        [used]: i(0),
+        ...(!asyncMode ? { [used]: i(0) } : {}),
         [slices]: g.math("add", "int", g.get(slices), i(1)),
       }),
       socket: "in",
     },
   };
-  g.link(nodes[resume].flows.out.node, loop);
+  if (asyncMode) {
+    // Only the central tick entry replenishes work; interrupt/launch/resume do not.
+    const reset = g.set({ [used]: i(0) });
+    g.link(reset, nodes[tickReset].flows?.out?.node);
+    nodes[tickReset].flows = { out: { node: reset, socket: "in" } };
+    const ready = g.math("or", "bool",
+      g.data("math/not", "bool", { a: g.get(waiting) }),
+      g.math("and", "bool",
+        g.math("ge", "bool", g.get(k.vars.tick), g.get(wakeTick)),
+        g.math("ge", "bool", g.get(k.vars.time), g.get(deadline))));
+    const check = g.node("flow/branch", { condition: g.get(k.vars.fault) });
+    const gate = g.node("flow/branch", { condition: ready });
+    const clear = g.set({ [waiting]: g.literal("bool", false) });
+    g.link(check, fault, "true");
+    g.link(check, gate, "false");
+    g.link(gate, clear, "true");
+    g.link(clear, loop);
+    g.link(nodes[resume].flows.out.node, check);
+    g.link(loop, checkFault(), "completed");
+    function checkFault() {
+      const node = g.node("flow/branch", { condition: g.get(k.vars.fault) });
+      g.link(node, fault, "true");
+      return node;
+    }
+  } else g.link(nodes[resume].flows.out.node, loop);
   // Replace external callback entries, leaving dispatch entries pointing to the original states.
   const launches = new Map(
     roots.map((root) => [
       root,
-      g.set({ [state]: i(states.get(root)), [sp]: i(0), [k.vars.pc]: i(1) }),
+      g.set({ [state]: i(states.get(root)), [sp]: i(0), [k.vars.pc]: i(1),
+        ...(asyncMode ? { [waiting]: g.literal("bool", false) } : {}),
+      }),
     ]),
   );
-  for (const launch of launches.values()) g.link(launch, resume);
+  if (!asyncMode) for (const launch of launches.values()) g.link(launch, resume);
   for (let id = 0; id < original.length; id++)
     if (!control.has(id))
       for (const edge of Object.values(nodes[id].flows ?? {}))
@@ -453,5 +517,6 @@ export function sliceGraph(
     stackCapacity,
     states: ids.length,
     budgetEvent: "interactivity-script:budget",
+    ...(asyncMode ? { async: true, waiting, wakeTick, deadline, sharedTickBudget: true } : {}),
   };
 }
