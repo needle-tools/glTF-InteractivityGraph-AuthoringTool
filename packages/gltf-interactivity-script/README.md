@@ -122,6 +122,38 @@ events.onFrame(frame);
 
 `getTranslationX/Y/Z`, `getScaleX/Y/Z`, and `getRotationX/Y/Z/W` return numbers. `setBaseColor(material, r, g, b, a)` writes the complete float4 material factor. Vector object-model properties are atomic; numeric authoring should use these helpers rather than scalar pointer paths into individual components. `Asset.mesh` preserves two-component `uv` attributes as standard `TEXCOORD_0`, and RGB/RGBA `color` attributes as standard `COLOR_0`; RGBA vertex alpha supports soft unlit footprints without textures or renderer-specific shaders.
 
+### Await and automatic scheduling
+
+Structured source now supports a deliberately bounded async subset:
+
+```js
+async function calculate(count) {
+  var sum = 0;
+  for (var i = 0; i < count; i++) sum += Math.sqrt(i);
+  await tasks.nextFrame();
+  return sum;
+}
+async function main() {
+  var result = await calculate(4000);
+  events.send("done", { result: result });
+  await tasks.sleep(0.25);
+}
+```
+
+Declaring an async function automatically enables cooperative slicing (default 64 steps per tick, configurable through `cooperative`). Ordinary numeric helper calls and loop iterations share that budget. `await` specifies a wait; it is independent of automatic computation slicing. Both mechanisms are compiled into standard graph nodes and work without a JavaScript scheduler in the player.
+
+- `await tasks.nextFrame()` resumes on a strictly later scheduler tick.
+- `await tasks.sleep(seconds)` resumes on a later tick at or after its graph-timeline deadline. Zero also waits one tick. Negative, NaN and infinite durations terminate the job with the exposed fault flag.
+- `await helper(args)` requires a directly named async helper. Its numeric result can be used in expressions, assignments, arguments, returns and nested/recursive calls. Even a helper without a wait has a later-tick await continuation.
+
+The scheduler runs one normal job at a time, retaining the 32-job FIFO while it waits. It begins/resumes normal work at the central tick entry, replenishing the computation budget exactly once per tick. Start and interrupt callbacks install a job for that scheduler; they do not immediately execute source instructions. Small synchronous `onFrame` and `{immediate: true}` callbacks run independently, outside this work budget, with private activation locals. Keep them bounded. Shared globals/scene data remain shared, but values evaluated before suspension are snapshotted to preserve expression order. Mutable arrays declared inside a helper cannot be used by both scheduled and frame/immediate paths; compilation rejects that storage collision.
+
+`{interrupt: true}` discards the parked continuation, its call stack, and queued jobs, and starts a replacement; it also clears the fault flag. Timeline waits have no native timer completion callbacks, so cancellation and immediate reuse cannot receive a stale completion. A fault terminates the active job; the fault flag remains set until interrupt/reset. This release does not implement `throw`, `try` or promise rejection values.
+
+This is a frame-scheduled source subset, not JavaScript Promise equivalence. Promise objects, `.then`, `Promise.all`, floating async calls and concurrent `spawn`/`join` are unsupported. Frame/immediate callbacks must be synchronous. Native `scene.interpolate*` remains fire-and-forget; it cannot be awaited because replacement/cancellation does not yet guarantee a completion identity. Sleeping for an animation's duration is a timeline wait, not an animation-completion guarantee. The synchronous reference VM explicitly rejects async programs; test them using the emitted graph and actual engine.
+
+See the formatted [await results example](examples/await-results/README.md) for sliced calculation, independent presentation, outbound results and interrupt/restart. Tick time is a frame timestamp, so this budget bounds graph work rather than guaranteeing a CPU duration in milliseconds.
+
 ### Compose source programs with native vector behavior
 
 Pass an existing graph to `GraphBuilder` to add typed primitive behavior after source compilation. The builder clones the graph and preserves existing variable/event indices, so compiler metadata remains valid. Use the graph returned by `finish()` when packing the asset; node indices may change during ordering.

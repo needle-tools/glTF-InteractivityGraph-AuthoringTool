@@ -1,3 +1,4 @@
+import "../src/globals.mjs";
 import { GraphBuilder, defineGraph, compile } from "../src/index.mjs";
 const g = new GraphBuilder();
 const start = g.ops.event.onStart();
@@ -37,3 +38,11 @@ g.send(hit, { point: g.float(1), target: g.ref("/nodes/0") });
 compile("function main(){}", {cooperative: {stepsPerTick: 64, stackCapacity: 512}});
 // @ts-expect-error: cooperative work budgets require numbers.
 compile("function main(){}", {cooperative: {stepsPerTick: "64"}});
+
+async function scheduledSource(): Promise<number> {
+  await tasks.nextFrame();
+  return await tasks.sleep(0.25);
+}
+events.onStart(scheduledSource);
+// @ts-expect-error: sleep requires numeric seconds.
+tasks.sleep("1");

@@ -5,7 +5,7 @@ import {sceneCall,staticBindings} from './scene-api.mjs';
 // Numeric JavaScript subset. Unsupported syntax fails at its source location.
 // A small stack IR makes recursive functions and dynamic arrays expressible in
 // standard interactivity graphs without custom execution nodes or eval.
-export const OPS=Object.freeze(Object.fromEntries(['CONST','LOAD','STORE','GET','PUT','DUP','DUP2','POP','ADD','SUB','MUL','DIV','MOD','NEG','NOT','BITNOT','AND','OR','XOR','SHL','SHR','USHR','EQ','NE','LT','LE','GT','GE','FLOOR','RANDOM','JUMP','JZ','JNZ','CALL','RET','RESET','HALT','READ','WRITE','SELECT','AND_VALUE','OR_VALUE','NATIVE'].map((name,i)=>[name,i])));
+export const OPS=Object.freeze(Object.fromEntries(['CONST','LOAD','STORE','GET','PUT','DUP','DUP2','POP','ADD','SUB','MUL','DIV','MOD','NEG','NOT','BITNOT','AND','OR','XOR','SHL','SHR','USHR','EQ','NE','LT','LE','GT','GE','FLOOR','RANDOM','JUMP','JZ','JNZ','CALL','RET','RESET','HALT','READ','WRITE','SELECT','AND_VALUE','OR_VALUE','NATIVE','SUSPEND'].map((name,i)=>[name,i])));
 const binary={'+':'ADD','-':'SUB','*':'MUL','/':'DIV','%':'MOD','&':'AND','|':'OR','^':'XOR','<<':'SHL','>>':'SHR','>>>':'USHR','==':'EQ','===':'EQ','!=':'NE','!==':'NE','<':'LT','<=':'LE','>':'GT','>=':'GE'};
 export function compile(source,{arrayCapacity=256,scene}={}) {
     const ast=parse(source,{ecmaVersion:2022,locations:true,sourceType:'script'});
@@ -16,7 +16,7 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
     const allocate=(name)=>{if(!(name in globals)){globals[name]=data.length;data.push(0);}return globals[name];};
     for(const statement of ast.body) {
         if(statement.type==='VariableDeclaration') {if(statement.kind!=='var')error(statement,'Use function-scoped var declarations');for(const d of statement.declarations) {if(d.id.type!=='Identifier')error(d,'Destructuring is unsupported');allocate(d.id.name);}}
-        else if(statement.type==='FunctionDeclaration') {if(statement.params.some(p=>p.type!=='Identifier'))error(statement,'Only named numeric parameters are supported');functions[statement.id.name]={entry:0,params:statement.params.map(p=>p.name),locals:{},calls:new Set(),arrays:[],node:statement};}
+        else if(statement.type==='FunctionDeclaration') {if(statement.generator)error(statement,'Generators are unsupported');if(statement.params.some(p=>p.type!=='Identifier'))error(statement,'Only named numeric parameters are supported');functions[statement.id.name]={async:statement.async,entry:0,params:statement.params.map(p=>p.name),locals:{},calls:new Set(),arrays:[],node:statement};}
         else if(statement.type==='ForStatement'){if(statement.init?.type==='VariableDeclaration')for(const d of statement.init.declarations)allocate(d.id.name);}
         else if(!['ExpressionStatement','ForStatement'].includes(statement.type))error(statement,'Only globals, functions and static events are allowed');
     }
@@ -42,6 +42,19 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
         const reaches=(current,seen=new Set())=>{if(current===name)return true;if(seen.has(current)||!functions[current])return false;seen.add(current);return [...functions[current].calls].some(next=>reaches(next,seen));};
         if([...fn.calls].some(next=>reaches(next)))for(const array of fn.arrays)if(!immutableArrays.has(array))error(array,'Mutable arrays in recursive functions require dynamic allocation');
     }
+    const reachable=name=>{const set=new Set();const visit=n=>{if(set.has(n)||!functions[n])return;set.add(n);functions[n].calls.forEach(visit);};visit(name);return set;};
+    const immediate=new Set(),scheduled=new Set();
+    for(const b of bindings) {
+        if(Object.values(functions).some(fn=>fn.async)&&b.options.immediate&&b.options.interrupt)error(functions[b.handler].node,'Async scheduling does not support combining immediate and interrupt');
+        const fast=b.kind==='Frame'||b.options.immediate;
+        for(const name of reachable(b.handler)) {
+            (fast?immediate:scheduled).add(name);
+            if(fast&&functions[name].async)error(functions[name].node,'Frame/immediate handlers and their helpers must be synchronous');
+        }
+    }
+    if(Object.values(functions).some(fn=>fn.async))for(const name of immediate)
+        if(scheduled.has(name))for(const a of functions[name].arrays)
+            if(!immutableArrays.has(a))error(a,'Mutable local arrays cannot be shared between scheduled and frame/immediate helpers');
     const frameSize=Math.max(16,...Object.values(functions).map(fn=>Object.keys(fn.locals).length+3));
     function store(left,node) {
         if(left.type==='Identifier')emit('STORE',...binding(left),node);
@@ -49,7 +62,7 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
     }
     // Pure branches can use math/select directly; effectful branches retain lazy flow.
     const pure=node=>node&&(['Literal','Identifier'].includes(node.type)||node.type==='UnaryExpression'&&pure(node.argument)||['BinaryExpression','LogicalExpression'].includes(node.type)&&pure(node.left)&&pure(node.right)||node.type==='MemberExpression'&&node.computed&&(pure(node.object)||node.object.type==='ArrayExpression')&&pure(node.property)||node.type==='ConditionalExpression'&&pure(node.test)&&pure(node.consequent)&&pure(node.alternate));
-    function expression(node) {
+    function expression(node,awaited=false) {
         if(!node) {emit('CONST');return;}
         switch(node.type) {
             case 'Literal': if(typeof node.value!=='number'&&typeof node.value!=='boolean')error(node,'Only numeric/boolean literals are supported');emit('CONST',Number(node.value),0,node);break;
@@ -88,6 +101,22 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
             case 'UpdateExpression': {
                 if(node.argument.type!=='Identifier')error(node,'Indexed increment is unsupported');expression(node.argument);if(!node.prefix)emit('DUP');emit('CONST',1);emit(node.operator==='++'?'ADD':'SUB');if(node.prefix)emit('DUP');store(node.argument,node);break;
             }
+            case 'AwaitExpression': {
+                const call=node.argument;
+                if(!scope?.async)error(node,'await requires an async function');
+                if(call.type!=='CallExpression')error(node,'await requires a direct async helper, tasks.nextFrame() or tasks.sleep(seconds); Promise objects are unsupported');
+                if(call.callee.type==='MemberExpression'&&call.callee.object.name==='tasks') {
+                    const name=call.callee.property.name;
+                    if(name==='nextFrame'&&call.arguments.length===0){emit('CONST');}
+                    else if(name==='sleep'&&call.arguments.length===1){expression(call.arguments[0]);}
+                    else error(call,'Supported waits: tasks.nextFrame() and tasks.sleep(seconds)');
+                    emit('SUSPEND',name==='sleep'?1:0,0,node);emit('CONST');
+                } else {
+                    if(call.callee.type!=='Identifier'||!functions[call.callee.name]?.async)error(call,'Only direct async helpers can be awaited; native interpolation completion is unsupported');
+                    expression(call,true);emit('CONST');emit('SUSPEND',0,0,node);
+                }
+                break;
+            }
             case 'CallExpression': {
                 if(node.callee.type==='MemberExpression'&&node.callee.object.name==='events'&&node.callee.property.name==='send') {
                     const [id,payload]=node.arguments;
@@ -95,12 +124,12 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
                     const keys=payload.properties.map(p=>{if(p.type!=='Property'||p.computed||p.kind!=='init')error(p,'Static event payload keys only');return p.key.name??p.key.value;});
                     payload.properties.forEach(p=>expression(p.value));const at=io.length;io.push({kind:'send',id:id.value,keys});emit('WRITE',at,keys.length,node);
                 } else if(node.callee.type==='MemberExpression'&&node.callee.object.name==='scene') {
-                    const call=sceneCall(node,error);call.arguments.forEach(expression);const id=io.length;io.push(call.descriptor);emit(call.descriptor.write?'WRITE':'READ',id,call.arguments.length,node);
+                    const call=sceneCall(node,error);call.arguments.forEach(arg=>expression(arg));const id=io.length;io.push(call.descriptor);emit(call.descriptor.write?'WRITE':'READ',id,call.arguments.length,node);
                 } else if(node.callee.type==='MemberExpression'&&['Math','math'].includes(node.callee.object.name)) {
                     const name=node.callee.property.name;if(name==='floor'&&node.arguments.length===1){expression(node.arguments[0]);emit('FLOOR');}
-                    else if(name==='random'&&node.arguments.length===0)emit('RANDOM');else{const d=scalarCall(node,error);node.arguments.forEach(expression);const id=io.length;io.push({kind:'native',...d});emit('NATIVE',id,node.arguments.length,node);}
+                    else if(name==='random'&&node.arguments.length===0)emit('RANDOM');else{const d=scalarCall(node,error);node.arguments.forEach(arg=>expression(arg));const id=io.length;io.push({kind:'native',...d});emit('NATIVE',id,node.arguments.length,node);}
                 } else if(node.callee.type==='Identifier'&&functions[node.callee.name]) {
-                    const fn=functions[node.callee.name];if(node.arguments.length!==fn.params.length)error(node,'Call arity mismatch');node.arguments.forEach(expression);calls.push([emit('CALL',0,node.arguments.length,node),node.callee.name]);
+                    const fn=functions[node.callee.name];if(fn.async&&!awaited)error(node,'Async helper calls must be directly awaited; floating promises and task spawning are unsupported');if(node.arguments.length!==fn.params.length)error(node,'Call arity mismatch');node.arguments.forEach(arg=>expression(arg));calls.push([emit('CALL',0,node.arguments.length,node),node.callee.name]);
                 } else error(node,'Only direct numeric function calls are supported');break;
             }
             default:error(node,`Unsupported expression ${node.type}`);
@@ -132,5 +161,5 @@ export function compile(source,{arrayCapacity=256,scene}={}) {
     }
     for(const fn of Object.values(functions)) {scope=fn;fn.entry=code.length;statement(fn.node.body);emit('CONST');emit('RET');}
     calls.forEach(([pc,name])=>code[pc][1]=functions[name].entry);
-    return {version:1,code,data,globals,io,bindings,syntax:ast,arrays,functions:Object.fromEntries(Object.entries(functions).map(([name,fn])=>[name,{entry:fn.entry,params:fn.params,locals:fn.locals,calls:[...fn.calls]}])),frameSize,sourceMap};
+    return {version:1,code,data,globals,io,bindings,syntax:ast,arrays,functions:Object.fromEntries(Object.entries(functions).map(([name,fn])=>[name,{async:fn.async,entry:fn.entry,params:fn.params,locals:fn.locals,calls:[...fn.calls]}])),frameSize,sourceMap};
 }

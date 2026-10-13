@@ -7,10 +7,12 @@ import { sceneCall } from "./scene-api.mjs";
 // Constant arguments specialize recursive contexts and remove unreachable calls.
 export function lowerStructured(
   program,
-  { heapNodeBase = 0, maxDepth = 24, optimize = true, cooperative = false } = {},
+  { heapNodeBase = 0, maxDepth = 24, optimize = true, cooperative = false, asyncMode = false } = {},
 ) {
   if (!program.syntax)
     throw new Error("Structured lowering requires source syntax");
+  if (!asyncMode && Object.values(program.functions).some(fn => fn.async))
+    throw new Error("Async source requires lowerStructuredProgram and its scheduler");
   const g = new Graph("Numeric JavaScript: structured control"),
     f = (n) => g.literal("float", n),
     i = (n) => g.literal("int", n),
@@ -37,6 +39,10 @@ export function lowerStructured(
     fault: g.variable("fault", "bool", false),
     seed: g.variable("seed", "float", 1),
   };
+  if (asyncMode) {
+    vars.tick = g.variable("scheduler tick", "int", 0);
+    vars.time = g.variable("scheduler time", "float", 0);
+  }
   const definitions = Object.fromEntries(
     program.syntax.body
       .filter((n) => n.type === "FunctionDeclaration")
@@ -363,6 +369,7 @@ export function lowerStructured(
       )
         effects.add(vars.seed);
     });
+    if (asyncMode) effects.add("suspend");
     summaries[name] = effects;
   }
   let changed = true;
@@ -380,6 +387,7 @@ export function lowerStructured(
   function effects(node, ctx) {
     const result = new Set();
     walk(node, (n) => {
+      if (n.type === "AwaitExpression") result.add("suspend");
       if (n.type === "VariableDeclarator" && n.init) result.add(binding(ctx, n.id.name));
       if (n.type === "AssignmentExpression")
         if (n.left.type === "Identifier") result.add(binding(ctx, n.left.name));
@@ -413,7 +421,7 @@ export function lowerStructured(
     return result;
   }
   const conflicts = (e, mutations) =>
-    [...dependencies(e.value)].some((v) => mutations?.has(v));
+    [...dependencies(e.value)].some((v) => mutations?.has("suspend") || mutations?.has(v));
   function binary(op, left, right) {
     const flow = [...actions(left)];
     if (actions(right).length && conflicts(left, right.writes)) {
@@ -535,6 +543,7 @@ export function lowerStructured(
       ["loc", "start", "end"].includes(key) ? undefined : value,
     );
   function loopInvariants(node, ctx) {
+    if (asyncMode) return { flow: [], ctx };
     const flow = [],
       hoists = new Map(ctx.hoists ?? []),
       mutations = effects(node, ctx);
@@ -837,7 +846,7 @@ export function lowerStructured(
         if (
           indexed &&
           actions(rhs).length &&
-          [...dependencies(addr)].some((v) => rhs.writes.has(v))
+          conflicts(nodeValue(addr, "int"), rhs.writes)
         ) {
           const id = g.variable("address " + temporary++, "int", 0);
           flow.push(g.set({ [id]: addr }));
@@ -890,6 +899,26 @@ export function lowerStructured(
             }),
           ],
         );
+      }
+      case "AwaitExpression": {
+        const call = node.argument;
+        let e, duration;
+        if (call.callee.object?.name === "tasks") {
+          e = call.callee.property.name === "sleep"
+            ? expression(call.arguments[0], ctx)
+            : literal(0);
+          duration = numeric(e);
+        } else {
+          e = expression(call, ctx, needed);
+          duration = f(0);
+        }
+        // A real value edge preserves the duration through pruning/renumbering.
+        // The scheduler replaces this marker before exporting the graph.
+        const wait = g.node("flow/setDelay", { duration });
+        g.graph.nodes[wait].extras = { scriptAwait: true, cooperativeEntry: true };
+        return nodeValue(call.callee.object?.name === "tasks" ? f(0) : e.value,
+          call.callee.object?.name === "tasks" ? "float" : e.type,
+          [...actions(e), wait]);
       }
       case "CallExpression": {
         if (node.callee.type === "MemberExpression" && node.callee.object.name === "events" && node.callee.property.name === "send") {
