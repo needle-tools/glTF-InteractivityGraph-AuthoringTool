@@ -4,6 +4,7 @@ Each example owns its authoring program and instructions. Shared files are in `_
 
 | Folder | Program | Scene |
 | --- | --- | --- |
+| [await-results](await-results/README.md) | `main.source.js` | `_shared/panel.gltf` |
 | [click-hover](click-hover/README.md) | `main.source.js` | `_shared/panel.gltf` |
 | [surface-cursor](surface-cursor/README.md) | `main.graph.mjs` | `_shared/panel.gltf` |
 | [matrix-transform](matrix-transform/README.md) | `main.graph.mjs` | `_shared/panel.gltf` |
