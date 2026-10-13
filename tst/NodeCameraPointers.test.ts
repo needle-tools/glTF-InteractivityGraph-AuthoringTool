@@ -1,8 +1,12 @@
 import { FreeCamera, NullEngine, Scene, TransformNode, Vector3 } from "@babylonjs/core";
+import { Group, PerspectiveCamera } from "three";
+import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BasicBehaveEngine } from "../src/BasicBehaveEngine/BasicBehaveEngine";
 import { DOMEventBus } from "../src/BasicBehaveEngine/eventBuses/DOMEventBus";
 import type { IInteractivityValue } from "../src/BasicBehaveEngine/types/InteractivityGraph";
 import { BabylonDecorator } from "../src/decorators/BabylonDecorator";
+import { ThreeDecorator } from "../src/decorators/ThreeDecorator";
+import { buildThreeLoadedModel, disposeThreeLoadedModel } from "../src/integrations/ThreeLoadedModel";
 import { createGlTFObjectModelFromGltf, GlTFObjectModelDecorator } from "../src/objectModel/glTFObjectModel";
 import { glTFSchemaMetadata } from "../src/objectModel/generated/glTFSchemaMetadata";
 
@@ -22,7 +26,7 @@ describe("node camera reference contract", () => {
         }
     });
 
-    it.each(["core", "Babylon source metadata", "Babylon camera metadata"])(
+    it.each(["core", "Three / Needle", "Babylon source metadata", "Babylon camera metadata"])(
         "%s traverses camera references and rejects missing cameras or int-typed reads",
         (adapter) => {
             const engine = new BasicBehaveEngine(60, new DOMEventBus());
@@ -30,6 +34,16 @@ describe("node camera reference contract", () => {
             if (adapter === "core") {
                 const decorator = new GlTFObjectModelDecorator(engine, createGlTFObjectModelFromGltf(gltf));
                 dispose = () => decorator.dispose();
+            } else if (adapter === "Three / Needle") {
+                const scene = new Group();
+                const cameras = gltf.cameras.map(camera => new PerspectiveCamera(camera.perspective.yfov * 180 / Math.PI, 1, 0.1));
+                scene.add(cameras[1], new Group(), cameras[0]);
+                const model = buildThreeLoadedModel({
+                    scene, scenes: [scene], animations: [], cameras,
+                    parser: { json: gltf, associations: new Map() },
+                } as unknown as GLTF);
+                const decorator = new ThreeDecorator(engine, model);
+                dispose = () => { decorator.dispose(); disposeThreeLoadedModel(model); };
             } else {
                 const renderer = new NullEngine();
                 const scene = new Scene(renderer);

@@ -129,16 +129,19 @@ registerGLTFInteractivity(loader);
 const fixture = ${JSON.stringify(JSON.parse(await fs.readFile(path.join(packageRoot, "examples/fixture/interactive.gltf"), "utf8")))};
 delete fixture.nodes[0].mesh;
 for (const key of ["meshes", "accessors", "bufferViews", "buffers"]) delete fixture[key];
-fixture.nodes[0].camera = 0;
-fixture.cameras = [{ type: "perspective", perspective: { yfov: 0.7, znear: 0.1 } }];
+fixture.nodes[0].camera = 1;
+fixture.nodes.push({ name: "NoCamera" });
+fixture.cameras = [0, 1].map(() => ({ type: "perspective", perspective: { yfov: 0.7, znear: 0.1 } }));
 const gltf = await loader.parseAsync(JSON.stringify(fixture), "");
 const runtime = getInteractivityRuntime(gltf);
 try {
     assert.ok(runtime instanceof InteractivityRuntime);
     assert.equal(runtime.model.nodes[0].position.x, 1);
-    assert.deepEqual(runtime.decorator.getPathValue("/nodes/0/camera"), ["/cameras/0"]);
+    assert.deepEqual(runtime.decorator.getPathValue("/nodes/0/camera"), ["/cameras/1"]);
+    assert.deepEqual(runtime.decorator.getPathValue("/nodes/1/camera"), ["/cameras/0"]);
     assert.equal(runtime.decorator.resolveJsonPtr("/nodes/0/camera").typeName, "ref");
     assert.equal(runtime.decorator.isReadOnly("/nodes/0/camera"), true);
+    assert.equal(runtime.decorator.isValidJsonPtr("/nodes/2/camera"), false);
 } finally { runtime?.dispose(); }
 await assert.rejects(loader.parseAsync(JSON.stringify({ ...fixture, extensions: { KHR_interactivity: { graphs: [] } } }), ""), /Invalid KHR_interactivity/);
 console.log("Packed runtime checks passed");
