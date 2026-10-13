@@ -71,7 +71,8 @@ for debugging; use an unfiltered run for release verification.
 
 4. Verify clean Three and Needle installations, then tag the tested commit.
 
-Rebuild, repack, and rerun after source or schema changes.
+Rebuild, repack, and rerun after source or schema changes. Bundled core
+provenance is recorded in `dist/bundled-core.json`.
 
 ## Schema generation
 

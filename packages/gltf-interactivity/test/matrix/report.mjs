@@ -76,6 +76,7 @@ const report = {
     revision: packed.revision,
     sourceTreeSha256: packed.sourceTreeSha256,
     artifacts: packed.artifacts,
+    bundledCore: packed.bundledCore,
     assetsRevision: coverage.assetsRevision,
     policy: {
         smoke: expected.map((e) => e.id),
@@ -105,6 +106,8 @@ const lines = [
     "# Integration matrix verification",
     "",
     `Source: ${report.revision} (working source tree ${report.sourceTreeSha256}).`,
+    "",
+    `Bundled core: ${report.bundledCore.name}@${report.bundledCore.version}, source ${report.bundledCore.coreRevision}, SHA256 ${report.bundledCore.sourceSha256}.`,
     "",
     `Assets: ${report.assetsRevision}. ${coverage.coveredCoreOperationCount}/${coverage.coreOperationCount} core operation names present; ${coverage.invalidAssets} invalid fixtures; ${coverage.manualAssertions} desktop interaction assertions.`,
     "",

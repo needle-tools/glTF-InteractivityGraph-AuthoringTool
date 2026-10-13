@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { BasicBehaveEngine } from "@khronosgroup/gltf-interactivity-engine";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
     getInteractivityRuntime,
+    InteractivityRuntime,
     registerGLTFInteractivity,
 } from "three-gltf-interactivity";
 const config = window.__GLTF_INTERACTIVITY_MATRIX_CONFIG__;
@@ -94,9 +94,9 @@ window.__RUN_ASSET__ = async (asset, kind = "valid") => {
             loaded.push(file);
             const runtime = getInteractivityRuntime(file);
             if (!runtime) throw new Error("No interactivity runtime");
-            if (!(runtime.engine instanceof BasicBehaveEngine))
+            if (!(runtime instanceof InteractivityRuntime))
                 throw new Error(
-                    "Runtime did not use the installed Khronos dependency",
+                    "Expected InteractivityRuntime",
                 );
             const onNode = runtime.engine.processNodeStarted;
             runtime.engine.processNodeStarted = (node) => {

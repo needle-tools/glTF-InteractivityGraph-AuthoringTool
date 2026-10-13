@@ -7,7 +7,6 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
-    "@khronosgroup/gltf-interactivity-engine": "file:../../../../src/BasicBehaveEngine",
     "three-gltf-interactivity": "file:../..",
     "three": "^0.174.0"
   },
