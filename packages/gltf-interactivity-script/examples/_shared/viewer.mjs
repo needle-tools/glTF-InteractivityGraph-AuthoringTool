@@ -25,9 +25,11 @@ runtime.attachPointerEvents(renderer.domElement);
 runtime.decorator.loadBehaveGraph(runtime.graph, false);
 const eventIds = new Set((runtime.graph.events ?? []).map((event) => event.id));
 const isGrid = eventIds.has("move") && eventIds.has("fire");
+const isAwait = eventIds.has("restart") && eventIds.has("calculation:done");
 document.body.classList.toggle("grid", isGrid);
 document.querySelector("#instructions").textContent = isGrid
   ? "W/S move · A/D turn · Q/E strafe · Space fire · R reset"
+  : isAwait ? "Calculation runs across frames. R cancels and restarts."
   : "Click or hover over the quad.";
 const keys = new Set();
 addEventListener("keydown", (event) => {
@@ -40,8 +42,10 @@ addEventListener("keydown", (event) => {
   keys.add(event.code);
   if (event.code === "Space" && eventIds.has("fire") && !event.repeat)
     runtime.sendEvent("fire");
-  if (event.code === "KeyR" && eventIds.has("reset") && !event.repeat)
-    runtime.sendEvent("reset");
+  if (event.code === "KeyR" && !event.repeat) {
+    if (eventIds.has("restart")) runtime.sendEvent("restart");
+    else if (eventIds.has("reset")) runtime.sendEvent("reset");
+  }
 });
 addEventListener("keyup", (event) => keys.delete(event.code));
 addEventListener("blur", () => keys.clear());
@@ -68,6 +72,12 @@ renderer.setAnimationLoop((now) => {
   runtime.engine.executeEventQueueTick();
   runtime.update(dt);
   renderer.render(scene, camera);
+  if (isAwait) {
+    const read = name => runtime.engine.variables.find(v => v.name === "JS global " + name)?.value[0];
+    document.querySelector("#status").textContent = asset + " · " +
+      (read("completed") ? "Complete" : "Working") + " · result " +
+      Number(read("result")).toFixed(2) + " · frames " + read("frames");
+  }
 });
 window.example = {
   runtime,

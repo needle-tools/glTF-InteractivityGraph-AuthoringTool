@@ -41,7 +41,8 @@
     "typecheck": "tsc -p test/tsconfig.json",
     "prepack": "npm run typecheck",
     "test:examples": "node scripts/test-examples.mjs",
-    "build:examples": "node scripts/build-examples.mjs"
+    "build:examples": "node scripts/build-examples.mjs",
+    "test:await-example": "node scripts/test-await-example.mjs"
   },
   "dependencies": {
     "@khronosgroup/gltf-interactivity-engine": "^1.1.0",
