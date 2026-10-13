@@ -28,7 +28,7 @@ export function registerThreeStructuralPointers(model: ThreeLoadedModel, bind: T
         const parentIndex = parents[nodeIndex];
         if (parentIndex !== undefined) bindRef(bind, `/nodes/${nodeIndex}/parent`, "nodes", parentIndex);
         if (node.mesh !== undefined) bindRef(bind, `/nodes/${nodeIndex}/mesh`, "meshes", node.mesh);
-        if (node.camera !== undefined) bind(`/nodes/${nodeIndex}/camera`, "int", () => [node.camera!], undefined, true);
+        if (node.camera !== undefined) bindRef(bind, `/nodes/${nodeIndex}/camera`, "cameras", node.camera);
         if (node.skin !== undefined) bindRef(bind, `/nodes/${nodeIndex}/skin`, "skins", node.skin);
         const light = node.extensions?.KHR_lights_punctual?.light;
         if (light !== undefined) bindRef(bind, `/nodes/${nodeIndex}/extensions/KHR_lights_punctual/light`, "extensions/KHR_lights_punctual/lights", light);
