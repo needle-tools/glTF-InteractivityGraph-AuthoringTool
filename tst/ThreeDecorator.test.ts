@@ -410,6 +410,9 @@ describe("ThreeDecorator", () => {
         );
         try {
             decorator.setCamera(camera);
+            expect(decorator.getPathValue("/nodes/0/camera")).toEqual(["/cameras/0"]);
+            expect(decorator.resolveJsonPtr("/nodes/0/camera")?.typeName).toBe("ref");
+            expect(decorator.isReadOnly("/nodes/0/camera")).toBe(true);
             decorator.setPathValue("/cameras/0/perspective/yfov", [
                 Math.PI / 3,
             ]);

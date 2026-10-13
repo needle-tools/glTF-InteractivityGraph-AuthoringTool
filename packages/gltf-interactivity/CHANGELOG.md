@@ -6,6 +6,7 @@
 - Initial `KHR_interactivity` runtime for Three.js and Needle Engine.
 - Portable browser declarations and delay bounds/ownership cleanup in the Khronos core candidate.
 - Use the Khronos engine as an external dependency; validate default graphs before loading.
+- Resolve node camera pointers as references to `/cameras/{index}`.
 - Correct animation stopAt completion for reverse playback, endpoints and stops outside the playback interval.
 - Keep animation playback and graph timers on the same elapsed-time clock despite Needle’s capped frame delta.
 - XR projection field-of-view/aspect pointers and stale-session event rejection.
