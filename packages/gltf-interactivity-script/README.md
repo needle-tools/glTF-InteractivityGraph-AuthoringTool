@@ -178,3 +178,7 @@ const glb = compiled.asset.pack();
 ```
 
 This is useful for transform-following effects: keep whole vectors in typed variables, compare them with `math/eq`, and branch around unchanged writes. The source program and the added behavior both export ordinary KHR_interactivity nodes.
+
+### Importing graph declarations
+
+`new GraphBuilder({ graph })` accepts sparse valid graphs and normalizes optional arrays on a private copy. It reuses declarations with matching interfaces and can replace unused incomplete declarations. Adding a typed operation that conflicts with a **used** imported declaration raises `IGS_DECLARATION_CONFLICT` immediately. Repair that declaration deliberately before composition: silently widening it could activate imported nodes that were previously unsupported no-ops. Extension input variants have separate declaration identities; output sockets do not distinguish duplicate declarations.

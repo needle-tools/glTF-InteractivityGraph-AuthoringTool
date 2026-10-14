@@ -1,4 +1,12 @@
 import { catalog } from "../catalog.mjs";
+import { fail } from "../diagnostics.mjs";
+export const declarationKey = d => JSON.stringify([
+  d.op, d.extension ?? null,
+  Object.entries(d.inputValueSockets ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    .map(([id, socket]) => [id, socket.type]),
+]);
+const socketKey = sockets => JSON.stringify(Object.entries(sockets ?? {})
+  .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, socket]) => [id, socket.type]));
 // Small typed builder shared by the compiler and visual conformance assets.
 export class Graph {
   constructor(name) {
@@ -167,10 +175,10 @@ export class Graph {
         } else {
           delete node.values;
           delete node.configuration;
-          const key = "flow/sequence";
+          const key = declarationKey({ op: "flow/sequence" });
           if (!this.declarations.has(key)) {
             this.declarations.set(key, this.graph.declarations.length);
-            this.graph.declarations.push({ op: key });
+            this.graph.declarations.push({ op: "flow/sequence" });
           }
           node.declaration = this.declarations.get(key);
         }
@@ -291,6 +299,7 @@ export class Graph {
         };
     }
     this.graph.types = this.graph.types.filter((_, id) => used.has(id));
+    this.declarations = new Map(this.graph.declarations.map((d, id) => [declarationKey(d), id]));
   }
   orderFlows() {
     const nodes = this.graph.nodes,
@@ -339,25 +348,34 @@ export class Graph {
   type(name) {
     return this.graph.types.findIndex((t) => t.signature === name);
   }
-  node(op, values = {}, configuration = {}, extension) {
-    const key = op + (extension ?? "");
-    if (!this.declarations.has(key)) {
+  node(op, values = {}, configuration = {}, extension, outputTypes = {}) {
+    const declaration = { op, ...(extension !== undefined ? { extension } : {}) };
+    if (extension !== undefined && catalog[op]?.extension === extension) {
+      const groups = {};
+      for (const [name, socket] of Object.entries(catalog[op].inputs))
+        if (socket.group) groups[socket.group] = values[name]?.type ?? this.type(socket.types[0]);
+      for (const [source, target] of [["inputs", "inputValueSockets"], ["outputs", "outputValueSockets"]]) {
+        const sockets = catalog[op][source];
+        if (Object.keys(sockets).length) declaration[target] = Object.fromEntries(
+          Object.entries(sockets).map(([name, socket]) => [name, { type:
+            source === "inputs" ? (values[name]?.type ?? this.type(socket.types[0]))
+              : (outputTypes[name] ?? groups[socket.group] ?? this.type(socket.types[0])),
+          }]),
+        );
+      }
+    }
+    const key = declarationKey(declaration);
+    if (this.declarations.has(key)) {
+      const id = this.declarations.get(key), existing = this.graph.declarations[id];
+      if (socketKey(existing.outputValueSockets) !== socketKey(declaration.outputValueSockets)) {
+        // Widening a used imported interface would activate previously unsupported nodes.
+        if (this.graph.nodes.some(node => node.declaration === id))
+          fail("IGS_DECLARATION_CONFLICT", "Imported declaration has an incompatible output interface for " + op,
+            { operation: op, declaration: id, expected: declaration.outputValueSockets, actual: existing.outputValueSockets });
+        this.graph.declarations[id] = declaration;
+      }
+    } else {
       this.declarations.set(key, this.graph.declarations.length);
-      const declaration = { op, ...(extension ? { extension } : {}) };
-      if (extension && catalog[op])
-        for (const [source, target] of [
-          ["inputs", "inputValueSockets"],
-          ["outputs", "outputValueSockets"],
-        ]) {
-          const sockets = catalog[op][source];
-          if (Object.keys(sockets).length)
-            declaration[target] = Object.fromEntries(
-              Object.entries(sockets).map(([name, socket]) => [
-                name,
-                { type: this.type(socket.types[0]) },
-              ]),
-            );
-        }
       this.graph.declarations.push(declaration);
     }
     const node = { declaration: this.declarations.get(key) };
