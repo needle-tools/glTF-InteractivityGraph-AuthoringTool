@@ -1,5 +1,7 @@
 import "../src/globals.mjs";
 import { GraphBuilder, defineGraph, compile } from "../src/index.mjs";
+new GraphBuilder({ graph: {} });
+new GraphBuilder({ graph: { types: [{ signature: "float" }] } });
 const g = new GraphBuilder();
 const start = g.ops.event.onStart();
 const a = g.float3([1, 2, 3]);
