@@ -2,6 +2,12 @@
 
 All notable changes to `@khronosgroup/gltf-interactivity-engine` are documented here.
 
+## Unreleased
+
+- Resolve extension operations by extension identity and complete primitive socket signatures before constructing implementations.
+- Keep unsupported declarations as no-ops, and support explicit vendor registration interfaces.
+- Compare duplicate declarations using sorted input socket IDs and type indices.
+
 ## [1.1.0] - 2026-10-12
 
 ### API changes
