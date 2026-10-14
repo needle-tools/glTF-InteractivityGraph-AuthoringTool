@@ -1,4 +1,4 @@
-import { Graph } from "./compiler/graph.mjs";
+import { Graph, declarationKey } from "./compiler/graph.mjs";
 import { catalog, signatures } from "./catalog.mjs";
 import { fail } from "./diagnostics.mjs";
 import { validateInteractivityGraph } from "@khronosgroup/gltf-interactivity-engine";
@@ -24,12 +24,12 @@ export class GraphBuilder {
       // Extend a private copy. Existing variable/event indices remain stable,
       // including compiler metadata held by the consumer.
       this.raw.graph = structuredClone(graph);
-      this.raw.graph.variables ??= [];
+      for (const key of ["types", "variables", "declarations", "nodes"]) this.raw.graph[key] ??= [];
       for (const signature of signatures)
         if (this.raw.type(signature) < 0)
           this.raw.graph.types.push({ signature });
       this.raw.graph.declarations.forEach((d, i) =>
-        this.raw.declarations.set(d.op + (d.extension ?? ""), i),
+        this.raw.declarations.set(declarationKey(d), i),
       );
     }
     this.optimize = optimize;
@@ -407,6 +407,7 @@ export class GraphBuilder {
         Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, v.edge])),
         config,
         spec.extension,
+        Object.fromEntries(Object.entries(outputTypes).map(([id, type]) => [id, this.raw.type(type)])),
       ),
       outputs = Object.fromEntries(
         Object.entries(outputTypes).map(([name, type]) => [

@@ -86,6 +86,8 @@ export interface RawGraph {
     flows?: Record<string, { node: number; socket: string }>;
   }[];
 }
+/** Graph input arrays may be omitted; composition normalizes a private copy. */
+export type GraphInput = Partial<RawGraph>;
 export interface GltfDocument {
   asset: { version: string; generator?: string };
   nodes?: { name?: string; [key: string]: unknown }[];
@@ -145,7 +147,7 @@ export class Asset {
 }
 export class GraphBuilder {
   readonly ops: NativeOps;
-  constructor(options?: { name?: string; optimize?: boolean; graph?: RawGraph });
+  constructor(options?: { name?: string; optimize?: boolean; graph?: GraphInput });
   literal<T extends Signature>(
     type: T,
     value: T extends "bool"
