@@ -227,3 +227,19 @@ The provided Basic BehaveEngine uses a decorator approach, so you behave nodes w
 
 ### Non normative implementations
 - writing mesh material with pointer path (will be replaced in the future when KHR_materials_variants is specified) > "/meshes/${nodeIndex}/primitives/${primitiveIndex}/material""
+
+### Extension operation registration
+
+Registered operation names alone do not establish extension support. Loading a graph matches the extension name and complete input/output value interface before constructing a node. Unsupported or mismatched declarations become no-ops with declared type-default outputs; they do not register events or execute core namesakes. Known built-in definitions remain available when their implementation is registered.
+
+Vendor implementations declare their primitive interface explicitly (an array supports multiple input variants):
+
+```ts
+engine.registerBehaveEngineNode("math/vendor", VendorNode, {
+  extension: "VND_example",
+  inputValueSockets: { a: "float" },
+  outputValueSockets: { value: "float" },
+});
+```
+
+The existing two-argument registration still supports replacing known implementations. Unknown vendor definitions need the explicit third argument; custom value-type definitions are outside this primitive registration API.

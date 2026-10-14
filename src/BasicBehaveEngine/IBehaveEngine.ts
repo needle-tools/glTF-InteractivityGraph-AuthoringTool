@@ -1,3 +1,5 @@
+import type { BehaviourNodeSignature } from "./declarations";
+export type { BehaviourNodeSignature } from "./declarations";
 import { IInteractivityFlow } from "./types/InteractivityGraph";
 import {BehaveEngineNode} from "./BehaveEngineNode";
 
@@ -121,7 +123,7 @@ export interface IBehaveEngine {
      * @param type - The type of the Behave Engine node.
      * @param behaveEngineNode - The class representing the Behave Engine node.
      */
-    registerBehaveEngineNode: (type: string, behaveEngineNode: typeof BehaveEngineNode) => void
+    registerBehaveEngineNode: (type: string, behaveEngineNode: typeof BehaveEngineNode, signatures?: BehaviourNodeSignature | readonly BehaviourNodeSignature[]) => void
 
     /**
      * Animate a property over time using specified values.

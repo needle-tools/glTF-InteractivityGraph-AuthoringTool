@@ -1,3 +1,4 @@
+import { supportsDeclaration, type BehaviourNodeSignature } from "./declarations";
 import {compileControlNodes,compileValueOutputs,CompiledOutput} from './compiledEvaluation';
 import {IBehaveEngine, IEventBus, IEventQueueItem, IHoverInformation, IInterpolateAction, IJsonPtrEntry, IRigidBodyTriggerInformation} from "./IBehaveEngine";
 import {JsonPtrTrie} from "./JsonPtrTrie";
@@ -330,6 +331,8 @@ export class BasicBehaveEngine implements IBehaveEngine {
     public propagationCancelled: Set<string>;
     public propagationCancelledPending: Set<string>;
     public animationCompletionCallbacks: Map<number, () => void>;
+
+    private readonly registeredNodeSignatures = new Map<string, readonly BehaviourNodeSignature[]>();
 
     constructor(fps: number, eventBus: IEventBus) {
         this.registry = new Map<string, any>();
@@ -704,7 +707,7 @@ export class BasicBehaveEngine implements IBehaveEngine {
             const nodeType = nodeDeclaration.op;
             let behaviourNode: BehaveEngineNode;
             try {
-                if (this.registry.get(nodeType) === undefined) {
+                if (this.registry.get(nodeType) === undefined || !supportsDeclaration(nodeDeclaration, this.types, this.registeredNodeSignatures.get(nodeType))) {
                     behaviourNode = new NoOpNode(behaviourNodeProps);
                 } else {
                     behaviourNode = this.registry.get(nodeType).init(behaviourNodeProps);
@@ -875,11 +878,13 @@ export class BasicBehaveEngine implements IBehaveEngine {
         validateInteractivityGraph(behaviorGraph);
     }
 
-    public registerBehaveEngineNode = (type: string, behaviorNode: typeof BehaveEngineNode) => {
+    public registerBehaveEngineNode = (type: string, behaviorNode: typeof BehaveEngineNode, signatures?: BehaviourNodeSignature | readonly BehaviourNodeSignature[]) => {
         if (this.registry.has(type)) {
             console.warn(`Behavior node ${type} is already registered and will be overwritten`);
         }
         this.registry.set(type, behaviorNode);
+        if (signatures) this.registeredNodeSignatures.set(type, "extension" in signatures ? [signatures] : signatures);
+        else this.registeredNodeSignatures.delete(type);
     }
 
     protected addEventToWorkQueue = (flow: IInteractivityFlow) => {

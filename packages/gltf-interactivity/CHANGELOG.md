@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Match extension identity and complete socket interfaces before runtime dispatch; unsupported declarations become no-ops.
+- Preserve extension input variants when detecting duplicate declarations.
+
 ## 0.1.0
 
 - Initial `KHR_interactivity` support for Three.js and Needle Engine.
