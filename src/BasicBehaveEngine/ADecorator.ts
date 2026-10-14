@@ -1,4 +1,4 @@
-import {IBehaveEngine, IEventQueueItem, IInterpolateAction, IJsonPtrEntry} from "./IBehaveEngine";
+import {IBehaveEngine, IEventQueueItem, IInterpolateAction, IJsonPtrEntry, BehaviourNodeSignature} from "./IBehaveEngine";
 import {BehaveEngineNode} from "./BehaveEngineNode";
 import {IInteractivityFlow} from "./types/InteractivityGraph";
 import { ApplyImpulse } from "./nodes/rigid_body/ApplyImpulse";
@@ -111,8 +111,8 @@ export abstract class ADecorator implements IBehaveEngine {
         this.behaveEngine.clearCustomEventListeners();
     }
 
-    registerBehaveEngineNode(type: string, behaveEngineNode: typeof BehaveEngineNode) {
-        this.behaveEngine.registerBehaveEngineNode(type, behaveEngineNode);
+    registerBehaveEngineNode(type: string, behaveEngineNode: typeof BehaveEngineNode, signatures?: BehaviourNodeSignature | readonly BehaviourNodeSignature[]) {
+        this.behaveEngine.registerBehaveEngineNode(type, behaveEngineNode, signatures);
     }
 
     getRegisteredJsonPointers(): string[] {

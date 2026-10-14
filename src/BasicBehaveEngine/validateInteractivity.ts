@@ -2,6 +2,7 @@ import {
     INTERACTIVITY_SCHEMAS,
     OPERATION_SCHEMAS,
 } from "./generated/interactivitySchemas";
+import { declarationKey } from "./declarations";
 import { parsePathTemplate } from "./pointerTemplate";
 import { parseMessageTemplate } from "./messageTemplate";
 
@@ -228,21 +229,12 @@ export function validateInteractivityGraph(graph: any): void {
             if (id === "event") fail("reserved event socket id");
             literal(value);
         }
-    // spec: equal = same op, extension and input socket ids/types; output sockets are not compared
     unique(
-        declarations.map((declaration) =>
-            JSON.stringify([
-                declaration.op,
-                declaration.extension ?? "",
-                Object.entries<any>(declaration.inputValueSockets ?? {})
-                    .map(([id, socket]) => [id, socket?.type])
-                    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-            ]),
-        ),
+        declarations.map(declarationKey),
         "declarations",
     );
     for (const declaration of declarations) {
-        if (!declaration.extension) {
+        if (declaration.extension === undefined) {
             if (
                 !OPERATION_SCHEMAS[declaration.op] ||
                 OPERATION_SCHEMAS[declaration.op].extension
@@ -266,7 +258,7 @@ export function validateInteractivityGraph(graph: any): void {
             ];
         const op = declaration.op;
         // Extension operations have exactly the value sockets their declaration defines.
-        const spec = declaration.extension ? undefined : OPERATION_SCHEMAS[op];
+        const spec = declaration.extension !== undefined ? undefined : OPERATION_SCHEMAS[op];
         const inputs: Record<string, string> = {};
         for (const [id, source] of Object.entries<any>(node.values ?? {})) {
             if (source.node !== undefined) {
