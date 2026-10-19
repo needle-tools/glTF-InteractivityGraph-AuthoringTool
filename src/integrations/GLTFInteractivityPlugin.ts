@@ -21,6 +21,9 @@ import {
 export interface GLTFInteractivityPluginOptions extends InteractivityRuntimeOptions {
     autoStart?: boolean;
     initializeWithoutExtension?: boolean;
+    // false: an invalid KHR_interactivity extension does not fail the glTF load; the caller
+    // resolves the default graph itself and reports the rejection
+    validateExtension?: boolean;
     onReady?: (runtime: InteractivityRuntime, gltf: GLTF) => void | Promise<void>;
 }
 
@@ -48,7 +51,7 @@ export class GLTFInteractivityPlugin implements GLTFLoaderPlugin {
         if (!this.shouldInitialize) return;
 
         const extension = this.parser.json.extensions?.KHR_interactivity;
-        if (extension !== undefined) validateInteractivityExtension(extension);
+        if (extension !== undefined && this.options.validateExtension !== false) validateInteractivityExtension(extension);
 
         [this.dependencyMaterials, this.dependencyNodes] = await Promise.all([
             this.parser.getDependencies("material") as Promise<Material[]>,
