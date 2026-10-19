@@ -9,6 +9,8 @@ import {
     registerGLTFInteractivity,
 } from "../src/integrations/GLTFInteractivityPlugin";
 import { getInteractivityRuntime } from "../src/integrations/InteractivityRuntime";
+import { resolveEmbeddedGraph } from "../src/components/engineViews/threeLoadedModel";
+import type { IInteractivityGraph } from "../src/BasicBehaveEngine/types/InteractivityGraph";
 
 const EMPTY_INTERACTIVITY_GLTF = {
     asset: { version: "2.0" },
@@ -31,6 +33,27 @@ beforeAll(() => {
 });
 
 describe("GLTFInteractivityPlugin", () => {
+    it("rejects an invalid extension object unless the caller validates it (validateExtension: false)", async () => {
+        const invalid = JSON.stringify({
+            ...EMPTY_INTERACTIVITY_GLTF,
+            extensions: { KHR_interactivity: { graph: "0", graphs: [{}] } },
+        });
+        const strict = new GLTFLoader();
+        registerGLTFInteractivity(strict);
+        await expect(strict.parseAsync(invalid, "")).rejects.toThrow(/Invalid KHR_interactivity/);
+
+        const lenient = new GLTFLoader();
+        registerGLTFInteractivity(lenient, { autoStart: false, validateExtension: false });
+        const gltf = await lenient.parseAsync(invalid, "");
+        const runtime = getInteractivityRuntime(gltf)!;
+        expect(resolveEmbeddedGraph(runtime.model.gltf)).toEqual({
+            error: "Invalid KHR_interactivity: default graph index is out of range",
+        });
+        const graph = {} as IInteractivityGraph;
+        expect(resolveEmbeddedGraph({ extensions: { KHR_interactivity: { graphs: [graph] } } })).toEqual({ graph });
+        runtime.dispose();
+    });
+
     it("attaches one runtime during the real GLTFLoader lifecycle", async () => {
         const loader = new GLTFLoader();
         registerGLTFInteractivity(loader);

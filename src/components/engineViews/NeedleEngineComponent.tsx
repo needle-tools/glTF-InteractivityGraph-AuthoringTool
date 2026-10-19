@@ -8,7 +8,8 @@ import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring/CustomEventControls";
 import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
-import { computeExtensionDiagnostics } from "../../diagnostics";
+import { computeExecutionDiagnostics, computeExtensionDiagnostics } from "../../diagnostics";
+import { omitEmptyGraphArrays } from "../../authoring/executableGraph";
 import { registerNeedleInteractivity } from "../../integrations/NeedleInteractivityPlugin";
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
@@ -24,11 +25,12 @@ import { ModelDropOverlay, ModelFileControls } from "./ModelFileControls";
 import { MODEL_VIEW_Z_DIRECTION } from "./cameraFraming";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
 import type { NeedleContext } from "../../integrations/NeedlePointerEvents";
-import type { ThreeLoadedModel } from "./threeLoadedModel";
+import { resolveEmbeddedGraph, type ThreeLoadedModel } from "./threeLoadedModel";
 
 registerNeedleInteractivity({
     autoStart: false,
     initializeWithoutExtension: true,
+    validateExtension: false,
 });
 
 interface PendingLoad {
@@ -155,24 +157,31 @@ export const NeedleEngineComponent: React.FC<NeedleEngineComponentProps> = ({ mo
         runtimeRef.current = runtime;
 
         const gltf = model.gltf;
+        const embedded = resolveEmbeddedGraph(gltf);
         setDiagnosticsForCategory(
             "extension",
-            computeExtensionDiagnostics(gltf.extensionsUsed, gltf.extensionsRequired),
+            computeExtensionDiagnostics(gltf.extensionsUsed, gltf.extensionsRequired, embedded.error),
         );
+        setDiagnosticsForCategory("execution", []);
         setGltfObjectModel(buildGltfObjectModel(gltf));
 
         const decorator = runtime.decorator;
         attachPointerEventLogging(decorator);
         setSupportedPointerTemplates(buildNormalizedTemplateSet(decorator.getRegisteredJsonPointers()));
 
-        const interactivity = gltf.extensions?.KHR_interactivity;
-        const embeddedGraph = interactivity?.graphs?.[interactivity.graph ?? 0];
         await loadSelectedModelGraph({
-            authoredGraph: pending.authoredGraph,
-            embeddedGraph,
+            authoredGraph: omitEmptyGraphArrays(pending.authoredGraph),
+            embeddedGraph: embedded.graph,
             replaceAuthoringGraph: pending.replaceAuthoringGraph,
             loadGraphFromJson,
-            loadBehaveGraph: (graph) => decorator.loadBehaveGraph(graph),
+            loadBehaveGraph: (graph) => {
+                try {
+                    decorator.loadBehaveGraph(graph);
+                } catch (error) {
+                    setDiagnosticsForCategory("execution", computeExecutionDiagnostics(error));
+                    throw error;
+                }
+            },
         });
         frameNeedleModel(context, (file as unknown as { scene: unknown }).scene);
         setGraphRunning(true);

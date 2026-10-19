@@ -17,7 +17,8 @@ import { InteractivityGraphContext } from "../../InteractivityGraphContext";
 import { buildGltfObjectModel } from "../../authoring/gltfObjectModel";
 import { attachPointerEventLogging, SendCustomEventPanel } from "../../authoring/CustomEventControls";
 import { buildNormalizedTemplateSet } from "../../authoring/pointerCatalogue";
-import { computeExtensionDiagnostics } from "../../diagnostics";
+import { computeExecutionDiagnostics, computeExtensionDiagnostics } from "../../diagnostics";
+import { omitEmptyGraphArrays } from "../../authoring/executableGraph";
 import { registerGLTFInteractivity } from "../../integrations/GLTFInteractivityPlugin";
 import { trackEvent } from "../../utils/analytics";
 import { getInteractivityRuntime, type InteractivityRuntime } from "../../integrations/InteractivityRuntime";
@@ -27,7 +28,7 @@ import { useModelFileDrop } from "../../hooks/useModelFileDrop";
 import { IconPlay, IconSendEvent } from "../toolbarIcons";
 import { ViewportControls } from "./ViewportControls";
 import { loadSelectedModelGraph } from "./modelGraphExecution";
-import { createThreeLoader, disposeThreeLoadedModel, ThreeLoadedModel } from "./threeLoadedModel";
+import { createThreeLoader, disposeThreeLoadedModel, resolveEmbeddedGraph, ThreeLoadedModel } from "./threeLoadedModel";
 import { downloadInteractiveModel, ModelExportFormat, ModelSource } from "./modelExport";
 import { findModelEntry, ModelFileEntry } from "./modelFiles";
 import { useModelSourceUrl } from "./modelSourceUrl";
@@ -144,10 +145,12 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             sourceRef.current = source;
             setModelName(source.kind === "files" ? source.model.file.name : source.url.split("/").pop() ?? "model.glb");
 
+            const embedded = resolveEmbeddedGraph(model.gltf);
             setDiagnosticsForCategory(
                 "extension",
-                computeExtensionDiagnostics(model.gltf.extensionsUsed, model.gltf.extensionsRequired),
+                computeExtensionDiagnostics(model.gltf.extensionsUsed, model.gltf.extensionsRequired, embedded.error),
             );
+            setDiagnosticsForCategory("execution", []);
             setGltfObjectModel(buildGltfObjectModel(model.gltf));
 
             const decorator = runtime.decorator;
@@ -157,14 +160,19 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
             runtimeRef.current = runtime;
             setSupportedPointerTemplates(buildNormalizedTemplateSet(decorator.getRegisteredJsonPointers()));
 
-            const interactivity = model.gltf.extensions?.KHR_interactivity;
-            const embeddedGraph = interactivity?.graphs?.[interactivity.graph ?? 0];
             await loadSelectedModelGraph({
-                authoredGraph,
-                embeddedGraph,
+                authoredGraph: omitEmptyGraphArrays(authoredGraph),
+                embeddedGraph: embedded.graph,
                 replaceAuthoringGraph,
                 loadGraphFromJson,
-                loadBehaveGraph: (graph) => decorator.loadBehaveGraph(graph),
+                loadBehaveGraph: (graph) => {
+                    try {
+                        decorator.loadBehaveGraph(graph);
+                    } catch (error) {
+                        setDiagnosticsForCategory("execution", computeExecutionDiagnostics(error));
+                        throw error;
+                    }
+                },
             });
             setGraphRunning(true);
             clearGraphDirty();
@@ -224,6 +232,7 @@ export const ThreeEngineComponent: React.FC<ThreeEngineComponentProps> = ({ mode
         const unregisterInteractivity = registerGLTFInteractivity(loader, {
             autoStart: false,
             initializeWithoutExtension: true,
+            validateExtension: false,
         });
         loaderRef.current = loader;
 
