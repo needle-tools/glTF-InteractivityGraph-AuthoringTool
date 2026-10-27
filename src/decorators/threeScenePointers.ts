@@ -16,7 +16,6 @@ import type { ThreePointerBinder } from "./threePointerTypes";
 
 export function registerThreeScenePointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {
     registerNodePointers(model, bind);
-    registerMeshWeightPointers(model, bind);
     registerCameraPointers(model, bind);
     registerLightPointers(model, bind);
 }
@@ -104,28 +103,6 @@ export function registerThreeActiveCameraPointers(camera: Camera | null, registe
     register("/extensions/KHR_interactivity/activeCamera/orthographic/ymag", "float", () => [isOrthographicCamera(camera) ? 1 / camera.projectionMatrix.elements[5] : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/orthographic/znear", "float", () => [isOrthographicCamera(camera) ? camera.near : NaN], undefined, true);
     register("/extensions/KHR_interactivity/activeCamera/orthographic/zfar", "float", () => [isOrthographicCamera(camera) ? camera.far : NaN], undefined, true);
-}
-
-function registerMeshWeightPointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {
-    model.meshInstances.forEach((roots, meshIndex) => {
-        const defaultWeightRoots = roots.filter((root) => model.gltf.nodes?.[root.userData.gltfNodeIndex]?.weights === undefined);
-        const meshes = defaultWeightRoots.flatMap(findMorphMeshes);
-        const weights = model.meshWeights[meshIndex];
-        if (!weights) {
-            return;
-        }
-        weights.forEach((_weight, weightIndex) => {
-            bind(`/meshes/${meshIndex}/weights/${weightIndex}`, "float", () => [weights[weightIndex]], (value) => {
-                const next = scalar(value);
-                weights[weightIndex] = next;
-                meshes.forEach((mesh) => {
-                    if (mesh.morphTargetInfluences) {
-                        mesh.morphTargetInfluences[weightIndex] = next;
-                    }
-                });
-            });
-        });
-    });
 }
 
 function registerCameraPointers(model: ThreeLoadedModel, bind: ThreePointerBinder): void {

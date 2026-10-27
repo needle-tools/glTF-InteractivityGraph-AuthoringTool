@@ -37,7 +37,6 @@ export function registerThreeStructuralPointers(model: ThreeLoadedModel, bind: T
     gltf.meshes?.forEach((mesh, meshIndex) => {
         const primitives = mesh.primitives ?? [];
         bindCount(bind, `/meshes/${meshIndex}/primitives.length`, primitives.length);
-        bindCount(bind, `/meshes/${meshIndex}/weights.length`, model.meshWeights[meshIndex]?.length ?? 0);
         primitives.forEach((primitive, primitiveIndex) => {
             if (primitive.material !== undefined) {
                 bindRef(bind, `/meshes/${meshIndex}/primitives/${primitiveIndex}/material`, "materials", primitive.material);
